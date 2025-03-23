@@ -5,5 +5,6 @@
 # License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 # of this source tree.
 
+# To set `CARGO_MANIFEST_DIR`
 cargo_env = true
-buildscript = []
+extra_srcs = ["Cargo.toml"]
