@@ -1,0 +1,11 @@
+# MIT / Apache-2.0 https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
+cargo_env = true
+
+rustc_flags = [
+    "-Lnative=$(location //third-party:rdkafka-sys-4.8.0+2.3.0-build-script-run[out_dir])/lib",
+    "-lstatic=rdkafka",
+]
+
+[[buildscript]]
+[buildscript.gen_srcs]
+env = { PROFILE = "release", OPT_LEVEL = "3", DEBUG = "false" }

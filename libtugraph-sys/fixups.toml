@@ -1,0 +1,4 @@
+# MIT / Apache-2.0 https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
+[[buildscript]]
+[buildscript.gen_srcs]
+env = { LGRAPH_C_COMPILER = "/usr/local/bin/gcc", LGRAPH_CXX_COMPILER = "/usr/local/bin/g++", NUM_JOBS = "8" }

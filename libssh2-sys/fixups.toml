@@ -1,0 +1,12 @@
+# MIT / Apache-2.0 https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
+rustc_flags = [
+    "-Lnative=$(location //third-party:libssh2-sys-0.3.0-build-script-run[out_dir])/build",
+    "-lstatic=ssh2",
+    "-lz",
+    "-lssl",
+    "-lcrypto",
+]
+
+[[buildscript]]
+[buildscript.gen_srcs]
+env = { DEP_OPENSSL_INCLUDE = "/usr/include", PROFILE = "release", OPT_LEVEL = "3" }

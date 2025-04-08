@@ -1,0 +1,9 @@
+# MIT / Apache-2.0 https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
+rustc_flags = [
+    "-Lnative=$(location :lzma-sys-0.1.20-build-script-run[out_dir])",
+    "-lstatic=lzma",
+]
+
+[[buildscript]]
+[buildscript.gen_srcs]
+env = { OPT_LEVEL = "3" }
