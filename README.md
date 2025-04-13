@@ -11,6 +11,4 @@ https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
 MIT / Apache-2.0
 
 
-To explore:
-
-https://github.com/uulinux/buck2-linux/tree/trunk/buck/third-party/rust/fixups
+PR's Welcome!
