@@ -1,0 +1,5 @@
+cargo_env = ["CARGO_PKG_VERSION"]
+rustc_flags = ["-lpythonXY:python3"]
+
+[[buildscript]]
+[buildscript.rustc_flags]
