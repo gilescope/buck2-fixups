@@ -1,0 +1,3 @@
+# Apache 2.0 from https://github.com/suiwombat/sui/tree/buck_sui_up_rc1
+buildscript = []
+extra_srcs = ["src/**/*.der"]

@@ -7,11 +7,17 @@ If there is no attribution as it's contributed directly to this repo then the li
 Please use at your own risk. No warrent is given for the use of these fixups.
 They may not be quite what you need. PRs welcome!
 
+Licensing:
+
+Everything is licensed as Apache 2.0. Some are MIT duel licensed.
+
 Fixme Sources:
 
-https://github.com/facebook/buck2/tree/main/shim/third-party - MIT
+https://github.com/facebook/buck2/tree/main/shim/third-party - MIT / Apache-2.0
 
 https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
 MIT / Apache-2.0
 
 https://github.com/systeminit/si/tree/main/third-party/rust - Apache 2.0
+
+https://github.com/suiwombat/sui/tree/buck_sui_up_rc1 - Apache 2.0
