@@ -13,3 +13,5 @@ https://github.com/facebook/buck2/tree/main/shim/third-party - MIT
 
 https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
 MIT / Apache-2.0
+
+https://github.com/systeminit/si/tree/main/third-party/rust - Apache 2.0
