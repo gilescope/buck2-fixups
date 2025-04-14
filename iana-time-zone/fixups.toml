@@ -1,0 +1,5 @@
+# Apache 2.0 from https://github.com/systeminit/si/tree/main/third-party/rust
+
+# Reindeer can't find all the sources due to being confused by the
+# cfg_attr(target_os = "linux", path = "tz_linux.rs") attributes.
+extra_srcs = ["src/**/*.rs"]

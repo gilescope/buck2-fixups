@@ -1,0 +1,5 @@
+# Apache 2.0 from https://github.com/systeminit/si/tree/main/third-party/rust
+cargo_env = true
+
+[[buildscript]]
+[buildscript.rustc_flags]
