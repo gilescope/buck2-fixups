@@ -1,0 +1,16 @@
+# Apache 2.0 from https://github.com/thoughtpolice/qq
+features = [
+    "hot_backup",
+    "blob",
+    "collation",
+    "functions",
+    "trace",
+    "release_memory",
+    "limits",
+    "hooks",
+    "vtab",
+    "array",
+    "session",
+    "window",
+    "series",
+]

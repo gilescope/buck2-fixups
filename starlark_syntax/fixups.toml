@@ -1,0 +1,6 @@
+# Apache 2.0 from https://github.com/thoughtpolice/qq
+cargo_env = true
+extra_srcs = ["src/**/*.lalrpop"]
+
+[[buildscript]]
+[buildscript.gen_srcs]
