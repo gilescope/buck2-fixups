@@ -1,0 +1,14 @@
+[package]
+name = "rust-third-party"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Dummy target to keep Cargo happy
+[[bin]]
+name = "top"
+path = "top/main.rs"
+
+[dependencies]
+# There exists at least one version where buck builds this crate
+assert_matches = "1.5.0"
