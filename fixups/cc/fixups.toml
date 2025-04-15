@@ -1,0 +1,2 @@
+# Apache 2.0 from https://github.com/openharmony/third_party_rust_cxx
+omit_targets = ["gcc-shim"]

@@ -12,3 +12,4 @@ path = "top/main.rs"
 [dependencies]
 # There exists at least one version where buck builds this crate
 assert_matches = "1.5.0"
+cc = "1.0.49"
