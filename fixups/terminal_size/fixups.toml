@@ -1,0 +1,11 @@
+# license ??? from https://github.com/pulanski/skylark
+
+extra_deps = [":libc"]
+
+[[buildscript]]
+[buildscript.gen_srcs.mapped]
+# generated/ avoids conflict with non-generated names.rs
+"names.rs" = "generated/names.rs"
+
+[env]
+OUT_DIR = "generated"
