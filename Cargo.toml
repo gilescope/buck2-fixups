@@ -13,3 +13,5 @@ path = "top/main.rs"
 # There exists at least one version where buck builds this crate
 assert_matches = "1.5.0"
 cc = "1.0.49"
+portable-atomic-util = "0.2.4"
+typeid = "1.0.3"

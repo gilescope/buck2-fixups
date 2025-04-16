@@ -51,6 +51,90 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "portable-atomic-1.11.0.crate",
+    sha256 = "350e9b48cbc6b0e028b0473b114454c6316e57336ee184ceab6e53f72c178b3e",
+    strip_prefix = "portable-atomic-1.11.0",
+    urls = ["https://static.crates.io/crates/portable-atomic/1.11.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "portable-atomic-1.11.0",
+    srcs = [":portable-atomic-1.11.0.crate"],
+    crate = "portable_atomic",
+    crate_root = "portable-atomic-1.11.0.crate/src/lib.rs",
+    edition = "2018",
+    env = {
+        "CARGO_MANIFEST_DIR": "portable-atomic-1.11.0.crate",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "Portable atomic types including support for 128-bit atomics, atomic float, etc.\n",
+        "CARGO_PKG_NAME": "portable-atomic",
+        "CARGO_PKG_REPOSITORY": "https://github.com/taiki-e/portable-atomic",
+        "CARGO_PKG_VERSION": "1.11.0",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "11",
+        "CARGO_PKG_VERSION_PATCH": "0",
+    },
+    features = ["require-cas"],
+    rustc_flags = ["@$(location :portable-atomic-1.11.0-build-script-run[rustc_flags])"],
+    visibility = [],
+)
+
+cargo.rust_binary(
+    name = "portable-atomic-1.11.0-build-script-build",
+    srcs = [":portable-atomic-1.11.0.crate"],
+    crate = "build_script_build",
+    crate_root = "portable-atomic-1.11.0.crate/build.rs",
+    edition = "2018",
+    env = {
+        "CARGO_MANIFEST_DIR": "portable-atomic-1.11.0.crate",
+        "CARGO_PKG_AUTHORS": "",
+        "CARGO_PKG_DESCRIPTION": "Portable atomic types including support for 128-bit atomics, atomic float, etc.\n",
+        "CARGO_PKG_NAME": "portable-atomic",
+        "CARGO_PKG_REPOSITORY": "https://github.com/taiki-e/portable-atomic",
+        "CARGO_PKG_VERSION": "1.11.0",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "11",
+        "CARGO_PKG_VERSION_PATCH": "0",
+    },
+    features = ["require-cas"],
+    visibility = [],
+)
+
+buildscript_run(
+    name = "portable-atomic-1.11.0-build-script-run",
+    package_name = "portable-atomic",
+    buildscript_rule = ":portable-atomic-1.11.0-build-script-build",
+    features = ["require-cas"],
+    version = "1.11.0",
+)
+
+alias(
+    name = "portable-atomic-util",
+    actual = ":portable-atomic-util-0.2.4",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "portable-atomic-util-0.2.4.crate",
+    sha256 = "d8a2f0d8d040d7848a709caf78912debcc3f33ee4b3cac47d73d1e1069e83507",
+    strip_prefix = "portable-atomic-util-0.2.4",
+    urls = ["https://static.crates.io/crates/portable-atomic-util/0.2.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "portable-atomic-util-0.2.4",
+    srcs = [":portable-atomic-util-0.2.4.crate"],
+    crate = "portable_atomic_util",
+    crate_root = "portable-atomic-util-0.2.4.crate/src/lib.rs",
+    edition = "2018",
+    features = ["default"],
+    visibility = [],
+    deps = [":portable-atomic-1.11.0"],
+)
+
+http_archive(
     name = "shlex-1.3.0.crate",
     sha256 = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64",
     strip_prefix = "shlex-1.3.0",
@@ -68,5 +152,28 @@ cargo.rust_library(
         "default",
         "std",
     ],
+    visibility = [],
+)
+
+alias(
+    name = "typeid",
+    actual = ":typeid-1.0.3",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "typeid-1.0.3.crate",
+    sha256 = "bc7d623258602320d5c55d1bc22793b57daff0ec7efc270ea7d55ce1d5f5471c",
+    strip_prefix = "typeid-1.0.3",
+    urls = ["https://static.crates.io/crates/typeid/1.0.3/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "typeid-1.0.3",
+    srcs = [":typeid-1.0.3.crate"],
+    crate = "typeid",
+    crate_root = "typeid-1.0.3.crate/src/lib.rs",
+    edition = "2018",
     visibility = [],
 )
