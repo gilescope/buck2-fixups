@@ -1,0 +1,3 @@
+# license ??? from https://github.com/pulanski/skylark
+features = ["rustc_private"]
+extra_deps = [":libc"]

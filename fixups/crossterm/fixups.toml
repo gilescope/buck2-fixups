@@ -1,0 +1,13 @@
+# license ??? from https://github.com/pulanski/skylark
+cargo_env = true
+extra_deps = [
+    ":libc",
+    ":mio",
+    ":signal-hook-mio",
+    ":signal-hook",
+    ":futures-core",
+]
+features = ["event-stream"]
+
+[[buildscript]]
+[buildscript.build]
