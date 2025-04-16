@@ -22,6 +22,7 @@ https://github.com/systeminit/si/tree/main/third-party/rust - Apache 2.0
 
 https://github.com/suiwombat/sui/tree/buck_sui_up_rc1 - Apache 2.0
 
+https://github.com/pulanski/skylark - ??? license
 
 Other rust buck2 projects:
 https://github.com/search?q=load%28%22%40prelude%2F%2Ftoolchains%3Arust.bzl%22%2C+%22system_rust_toolchain%22%29&type=code

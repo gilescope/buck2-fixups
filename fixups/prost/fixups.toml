@@ -1,0 +1,3 @@
+# license ??? from https://github.com/pulanski/skylark
+# Includes inline document files
+extra_srcs = ["README.md"]
