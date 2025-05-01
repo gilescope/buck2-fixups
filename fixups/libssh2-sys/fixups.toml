@@ -7,6 +7,7 @@ rustc_flags = [
     "-lcrypto",
 ]
 
-[[buildscript]]
-[buildscript.gen_srcs]
-env = { DEP_OPENSSL_INCLUDE = "/usr/include", PROFILE = "release", OPT_LEVEL = "3" }
+[buildscript.run.env]
+DEP_OPENSSL_INCLUDE = "/usr/include"
+PROFILE = "release"
+OPT_LEVEL = "3"

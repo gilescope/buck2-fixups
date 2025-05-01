@@ -4,6 +4,5 @@ rustc_flags = [
     "-lstatic=lzma",
 ]
 
-[[buildscript]]
-[buildscript.gen_srcs]
-env = { OPT_LEVEL = "3" }
+[buildscript.run.env]
+OPT_LEVEL = "3"

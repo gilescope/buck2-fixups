@@ -1,6 +1,6 @@
 # MIT / Apache-2.0 https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
-[[buildscript]]
-[buildscript.rustc_flags]
+
+[buildscript.run.env]
 # See https://github.com/sfackler/rust-openssl/blob/538a5cb737e8d83085553cac01643820dc7ff205/openssl/build.rs#L127
 # OpenSSL version number 0x1_01_01_07_0 corresponds to OpenSSL 1.1.1g, which is installed in the remote execution worker
-env = { DEP_OPENSSL_VERSION_NUMBER = "10101070" }
+DEP_OPENSSL_VERSION_NUMBER = "10101070"

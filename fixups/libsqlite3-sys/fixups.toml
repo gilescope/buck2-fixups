@@ -11,8 +11,7 @@
 
 env = { "OUT_DIR" = "$(location //third-party/rust/fixups/libsqlite3-sys:out_dir)" }
 
-[[buildscript]]
-[buildscript.cxx_library]
+[[cxx_library]]
 name = "sqlite3"
 srcs = ["sqlite3/sqlite3.c"]
 headers = ["sqlite3/*.h"]
