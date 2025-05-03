@@ -3,6 +3,23 @@
 load("@prelude//rust:cargo_buildscript.bzl", "buildscript_run")
 load("@prelude//rust:cargo_package.bzl", "cargo")
 
+http_archive(
+    name = "adler2-2.0.0.crate",
+    sha256 = "512761e0bb2578dd7380c6baaa0f4ce03e84f95e960231d1dec8bf4d7d6e2627",
+    strip_prefix = "adler2-2.0.0",
+    urls = ["https://static.crates.io/crates/adler2/2.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "adler2-2.0.0",
+    srcs = [":adler2-2.0.0.crate"],
+    crate = "adler2",
+    crate_root = "adler2-2.0.0.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+)
+
 alias(
     name = "assert_matches",
     actual = ":assert_matches-1.5.0",
@@ -48,6 +65,154 @@ cargo.rust_library(
     edition = "2018",
     visibility = [],
     deps = [":shlex-1.3.0"],
+)
+
+http_archive(
+    name = "cfg-if-1.0.0.crate",
+    sha256 = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd",
+    strip_prefix = "cfg-if-1.0.0",
+    urls = ["https://static.crates.io/crates/cfg-if/1.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "cfg-if-1.0.0",
+    srcs = [":cfg-if-1.0.0.crate"],
+    crate = "cfg_if",
+    crate_root = "cfg-if-1.0.0.crate/src/lib.rs",
+    edition = "2018",
+    visibility = [],
+)
+
+http_archive(
+    name = "crc32fast-1.4.2.crate",
+    sha256 = "a97769d94ddab943e4510d138150169a2758b5ef3eb191a9ee688de3e23ef7b3",
+    strip_prefix = "crc32fast-1.4.2",
+    urls = ["https://static.crates.io/crates/crc32fast/1.4.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "crc32fast-1.4.2",
+    srcs = [":crc32fast-1.4.2.crate"],
+    crate = "crc32fast",
+    crate_root = "crc32fast-1.4.2.crate/src/lib.rs",
+    edition = "2015",
+    features = [
+        "default",
+        "std",
+    ],
+    visibility = [],
+    deps = [":cfg-if-1.0.0"],
+)
+
+http_archive(
+    name = "flate2-1.1.1.crate",
+    sha256 = "7ced92e76e966ca2fd84c8f7aa01a4aea65b0eb6648d72f7c8f3e2764a67fece",
+    strip_prefix = "flate2-1.1.1",
+    urls = ["https://static.crates.io/crates/flate2/1.1.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "flate2-1.1.1",
+    srcs = [":flate2-1.1.1.crate"],
+    crate = "flate2",
+    crate_root = "flate2-1.1.1.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "any_impl",
+        "default",
+        "miniz_oxide",
+        "rust_backend",
+    ],
+    visibility = [],
+    deps = [
+        ":crc32fast-1.4.2",
+        ":miniz_oxide-0.8.8",
+    ],
+)
+
+http_archive(
+    name = "memchr-2.7.4.crate",
+    sha256 = "78ca9ab1a0babb1e7d5695e3530886289c18cf2f87ec19a575a0abdce112e3a3",
+    strip_prefix = "memchr-2.7.4",
+    urls = ["https://static.crates.io/crates/memchr/2.7.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "memchr-2.7.4",
+    srcs = [":memchr-2.7.4.crate"],
+    crate = "memchr",
+    crate_root = "memchr-2.7.4.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "alloc",
+        "std",
+    ],
+    visibility = [],
+)
+
+http_archive(
+    name = "miniz_oxide-0.8.8.crate",
+    sha256 = "3be647b768db090acb35d5ec5db2b0e1f1de11133ca123b9eacf5137868f892a",
+    strip_prefix = "miniz_oxide-0.8.8",
+    urls = ["https://static.crates.io/crates/miniz_oxide/0.8.8/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "miniz_oxide-0.8.8",
+    srcs = [":miniz_oxide-0.8.8.crate"],
+    crate = "miniz_oxide",
+    crate_root = "miniz_oxide-0.8.8.crate/src/lib.rs",
+    edition = "2021",
+    features = ["with-alloc"],
+    visibility = [],
+    deps = [":adler2-2.0.0"],
+)
+
+alias(
+    name = "object",
+    actual = ":object-0.36.7",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "object-0.36.7.crate",
+    sha256 = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87",
+    strip_prefix = "object-0.36.7",
+    urls = ["https://static.crates.io/crates/object/0.36.7/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "object-0.36.7",
+    srcs = [":object-0.36.7.crate"],
+    crate = "object",
+    crate_root = "object-0.36.7.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "archive",
+        "coff",
+        "compression",
+        "default",
+        "elf",
+        "macho",
+        "pe",
+        "read",
+        "read_core",
+        "std",
+        "unaligned",
+        "xcoff",
+    ],
+    visibility = [],
+    deps = [
+        ":flate2-1.1.1",
+        ":memchr-2.7.4",
+        ":ruzstd-0.7.3",
+    ],
 )
 
 http_archive(
@@ -135,6 +300,29 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "ruzstd-0.7.3.crate",
+    sha256 = "fad02996bfc73da3e301efe90b1837be9ed8f4a462b6ed410aa35d00381de89f",
+    strip_prefix = "ruzstd-0.7.3",
+    urls = ["https://static.crates.io/crates/ruzstd/0.7.3/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ruzstd-0.7.3",
+    srcs = [":ruzstd-0.7.3.crate"],
+    crate = "ruzstd",
+    crate_root = "ruzstd-0.7.3.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "default",
+        "hash",
+        "std",
+    ],
+    visibility = [],
+    deps = [":twox-hash-1.6.3"],
+)
+
+http_archive(
     name = "shlex-1.3.0.crate",
     sha256 = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64",
     strip_prefix = "shlex-1.3.0",
@@ -153,6 +341,44 @@ cargo.rust_library(
         "std",
     ],
     visibility = [],
+)
+
+http_archive(
+    name = "static_assertions-1.1.0.crate",
+    sha256 = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f",
+    strip_prefix = "static_assertions-1.1.0",
+    urls = ["https://static.crates.io/crates/static_assertions/1.1.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "static_assertions-1.1.0",
+    srcs = [":static_assertions-1.1.0.crate"],
+    crate = "static_assertions",
+    crate_root = "static_assertions-1.1.0.crate/src/lib.rs",
+    edition = "2015",
+    visibility = [],
+)
+
+http_archive(
+    name = "twox-hash-1.6.3.crate",
+    sha256 = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675",
+    strip_prefix = "twox-hash-1.6.3",
+    urls = ["https://static.crates.io/crates/twox-hash/1.6.3/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "twox-hash-1.6.3",
+    srcs = [":twox-hash-1.6.3.crate"],
+    crate = "twox_hash",
+    crate_root = "twox-hash-1.6.3.crate/src/lib.rs",
+    edition = "2018",
+    visibility = [],
+    deps = [
+        ":cfg-if-1.0.0",
+        ":static_assertions-1.1.0",
+    ],
 )
 
 alias(
