@@ -1,5 +1,2 @@
+buildscript.run = true
 cargo_env = true
-features = [ ]
-
-[[buildscript]]
-[buildscript.gen_srcs]

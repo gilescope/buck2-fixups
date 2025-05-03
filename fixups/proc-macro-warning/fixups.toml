@@ -1,4 +1,4 @@
+buildscript.run = false
 cargo_env = true
 extra_srcs = ["README.md"]
 env = { README_PATH = "README.md" }
-buildscript = []

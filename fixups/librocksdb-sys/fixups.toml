@@ -1,4 +1,4 @@
-buildscript = []
+buildscript.run = false
 
 # intent is to apply to all arch targets
 # omit_features = ["bzip2","default","static","lz4"]
@@ -19,14 +19,13 @@ cargo_env = true
 OUT_DIR = "."
 OPT_LEVEL = "0"
 
-[platform_fixup.'cfg(all(target_arch = "aarch64", target_os = "linux"))']
+['cfg(all(target_arch = "aarch64", target_os = "linux"))']
 # not a cpp dep but rather a bindings.rs that would normally get generated
 # from the buildscript. it was easier to generate it via cargo and then copy
 # it into a arch specific fixup
 overlay = "aarch64/linux"
 rustc_flags = ["-lstdc++", "-latomic"]
-[[platform_fixup.'cfg(all(target_arch = "aarch64", target_os = "linux"))'.buildscript]]
-[platform_fixup.'cfg(all(target_arch = "aarch64", target_os = "linux"))'.buildscript.cxx_library]
+[['cfg(all(target_arch = "aarch64", target_os = "linux"))'.cxx_library]]
 name = "rocksdb-aarch64-linux"
 srcs = [
     "build_version.cc",                                        # yes! it's prebuilt from crate
@@ -393,7 +392,7 @@ compiler_flags = [
     "-std=c++17",
 ]
 
-[platform_fixup.'cfg(all(target_arch = "x86_64", target_os = "linux"))']
+['cfg(all(target_arch = "x86_64", target_os = "linux"))']
 # not a cpp dep but rather a bindings.rs that would normally get generated
 # from the buildscript. it was easier to generate it via cargo and then copy
 # it into a arch specific fixup
@@ -402,8 +401,7 @@ rustc_flags = [
     "-lstdc++",
     "-latomic",
 ]
-[[platform_fixup.'cfg(all(target_arch = "x86_64", target_os = "linux"))'.buildscript]]
-[platform_fixup.'cfg(all(target_arch = "x86_64", target_os = "linux"))'.buildscript.cxx_library]
+[['cfg(all(target_arch = "x86_64", target_os = "linux"))'.cxx_library]]
 name = "rocksdb-x86_64-linux"
 srcs = [
     "build_version.cc",                                        # yes! it's prebuilt from crate
@@ -776,11 +774,10 @@ compiler_flags = [
     "-std=c++17",
 ]
 
-[platform_fixup.'cfg(all(target_arch = "aarch64", target_os = "macos"))']
+['cfg(all(target_arch = "aarch64", target_os = "macos"))']
 overlay = "aarch64/macos"
 rustc_flags = ["-lc++"]
-[[platform_fixup.'cfg(all(target_arch = "aarch64", target_os = "macos"))'.buildscript]]
-[platform_fixup.'cfg(all(target_arch = "aarch64", target_os = "macos"))'.buildscript.cxx_library]
+[['cfg(all(target_arch = "aarch64", target_os = "macos"))'.cxx_library]]
 name = "rocksdb-aarch64-macos"
 srcs = [
     "build_version.cc",                                        # yes! it's prebuilt from crate

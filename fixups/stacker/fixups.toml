@@ -1,10 +1,9 @@
 # Apache 2.0 from https://github.com/thoughtpolice/qq
+
+buildscript.run = false
 cargo_env = true
 
-buildscript = []
-
-[[platform_fixup.'cfg(all(target_os = "windows"))'.buildscript]]
-[platform_fixup.'cfg(all(target_os = "windows"))'.buildscript.cxx_library]
+[['cfg(all(target_os = "windows"))'.cxx_library]]
 name = "cbits-windows"
 srcs = ["src/arch/windows.c"]
 include_paths = ["src/arch"]

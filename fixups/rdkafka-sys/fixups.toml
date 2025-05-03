@@ -6,6 +6,7 @@ rustc_flags = [
     "-lstatic=rdkafka",
 ]
 
-[[buildscript]]
-[buildscript.gen_srcs]
-env = { PROFILE = "release", OPT_LEVEL = "3", DEBUG = "false" }
+[buildscript.run.env]
+PROFILE = "release"
+OPT_LEVEL = "3"
+DEBUG = "false"

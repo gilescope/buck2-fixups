@@ -1,5 +1,4 @@
 # Apache 2.0 from https://github.com/thoughtpolice/qq
-cargo_env = true
 
-[[buildscript]]
-[buildscript.gen_srcs]
+buildscript.run = true
+cargo_env = true

@@ -1,4 +1,4 @@
 # Apache 2.0 from https://github.com/suiwombat/sui/tree/buck_sui_up_rc1
+
+buildscript.run = true
 cargo_env = true
-[[buildscript]]
-[buildscript.gen_srcs]
