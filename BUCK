@@ -1122,6 +1122,35 @@ cargo.rust_library(
     ],
 )
 
+alias(
+    name = "basic-toml",
+    actual = ":basic-toml-0.1.10",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "basic-toml-0.1.10.crate",
+    sha256 = "ba62675e8242a4c4e806d12f11d136e626e6c8361d6b829310732241652a178a",
+    strip_prefix = "basic-toml-0.1.10",
+    urls = ["https://static.crates.io/crates/basic-toml/0.1.10/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "basic-toml-0.1.10",
+    srcs = [":basic-toml-0.1.10.crate"],
+    crate = "basic_toml",
+    crate_root = "basic-toml-0.1.10.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "10",
+    },
+    visibility = [],
+    deps = [":serde-1.0.219"],
+)
+
 http_archive(
     name = "beef-0.5.2.crate",
     sha256 = "3a8241f3ebb85c056b509d4327ad0358fbbba6ffb340bf388f26350aeda225b1",
@@ -4783,12 +4812,14 @@ cargo.rust_library(
         "equivalent",
         "inline-more",
         "raw-entry",
+        "serde",
     ],
     visibility = [],
     deps = [
         ":allocator-api2-0.2.21",
         ":equivalent-1.0.2",
         ":foldhash-0.1.5",
+        ":serde-1.0.219",
     ],
 )
 
@@ -5199,6 +5230,29 @@ cargo.rust_library(
 )
 
 alias(
+    name = "icu_list_data",
+    actual = ":icu_list_data-1.5.1",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "icu_list_data-1.5.1.crate",
+    sha256 = "52b1a7fbdbf3958f1be8354cb59ac73f165b7b7082d447ff2090355c9a069120",
+    strip_prefix = "icu_list_data-1.5.1",
+    urls = ["https://static.crates.io/crates/icu_list_data/1.5.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "icu_list_data-1.5.1",
+    srcs = [":icu_list_data-1.5.1.crate"],
+    crate = "icu_list_data",
+    crate_root = "icu_list_data-1.5.1.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+)
+
+alias(
     name = "icu_locid_transform_data",
     actual = ":icu_locid_transform_data-1.5.1",
     visibility = ["PUBLIC"],
@@ -5400,6 +5454,7 @@ cargo.rust_library(
     edition = "2021",
     features = [
         "default",
+        "serde",
         "std",
     ],
     rustc_flags = ["--cfg=has_std"],
@@ -5407,6 +5462,7 @@ cargo.rust_library(
     deps = [
         ":equivalent-1.0.2",
         ":hashbrown-0.15.3",
+        ":serde-1.0.219",
     ],
 )
 
@@ -10246,6 +10302,33 @@ cargo.rust_library(
     visibility = [],
 )
 
+alias(
+    name = "rustc_apfloat",
+    actual = ":rustc_apfloat-0.2.2+llvm-462a31f5a5ab",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "rustc_apfloat-0.2.2+llvm-462a31f5a5ab.crate",
+    sha256 = "121e2195ff969977a4e2b5c9965ea867fce7e4cb5aee5b09dee698a7932d574f",
+    strip_prefix = "rustc_apfloat-0.2.2+llvm-462a31f5a5ab",
+    urls = ["https://static.crates.io/crates/rustc_apfloat/0.2.2+llvm-462a31f5a5ab/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "rustc_apfloat-0.2.2+llvm-462a31f5a5ab",
+    srcs = [":rustc_apfloat-0.2.2+llvm-462a31f5a5ab.crate"],
+    crate = "rustc_apfloat",
+    crate_root = "rustc_apfloat-0.2.2+llvm-462a31f5a5ab.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+    deps = [
+        ":bitflags-2.9.0",
+        ":smallvec-1.15.0",
+    ],
+)
+
 http_archive(
     name = "rustc_version-0.4.1.crate",
     sha256 = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92",
@@ -11463,6 +11546,7 @@ cargo.rust_library(
     features = [
         "const_generics",
         "const_new",
+        "union",
         "write",
     ],
     visibility = [],
@@ -14202,6 +14286,86 @@ cargo.rust_library(
     },
     visibility = [],
     deps = [":unicode-ident-1.0.18"],
+)
+
+alias(
+    name = "wasmparser",
+    actual = ":wasmparser-0.230.0",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "wasmparser-0.230.0.crate",
+    sha256 = "808198a69b5a0535583370a51d459baa14261dfab04800c4864ee9e1a14346ed",
+    strip_prefix = "wasmparser-0.230.0",
+    urls = ["https://static.crates.io/crates/wasmparser/0.230.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "wasmparser-0.230.0",
+    srcs = [":wasmparser-0.230.0.crate"],
+    crate = "wasmparser",
+    crate_root = "wasmparser-0.230.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "OUT_DIR": "$(location :wasmparser-0.230.0-build-script-run[out_dir])",
+    },
+    features = [
+        "component-model",
+        "default",
+        "features",
+        "hash-collections",
+        "serde",
+        "simd",
+        "std",
+        "validate",
+    ],
+    rustc_flags = ["@$(location :wasmparser-0.230.0-build-script-run[rustc_flags])"],
+    visibility = [],
+    deps = [
+        ":bitflags-2.9.0",
+        ":hashbrown-0.15.3",
+        ":indexmap-2.9.0",
+        ":semver-1.0.26",
+        ":serde-1.0.219",
+    ],
+)
+
+cargo.rust_binary(
+    name = "wasmparser-0.230.0-build-script-build",
+    srcs = [":wasmparser-0.230.0.crate"],
+    crate = "build_script_build",
+    crate_root = "wasmparser-0.230.0.crate/build.rs",
+    edition = "2021",
+    features = [
+        "component-model",
+        "default",
+        "features",
+        "hash-collections",
+        "serde",
+        "simd",
+        "std",
+        "validate",
+    ],
+    visibility = [],
+)
+
+buildscript_run(
+    name = "wasmparser-0.230.0-build-script-run",
+    package_name = "wasmparser",
+    buildscript_rule = ":wasmparser-0.230.0-build-script-build",
+    features = [
+        "component-model",
+        "default",
+        "features",
+        "hash-collections",
+        "serde",
+        "simd",
+        "std",
+        "validate",
+    ],
+    version = "0.230.0",
 )
 
 http_archive(

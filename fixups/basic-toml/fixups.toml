@@ -1,0 +1,6 @@
+# Apache 2 or MIT from https://github.com/dtolnay/buck2-rustc-bootstrap
+cargo_env = [
+    "CARGO_PKG_VERSION_MAJOR",
+    "CARGO_PKG_VERSION_MINOR",
+    "CARGO_PKG_VERSION_PATCH",
+]

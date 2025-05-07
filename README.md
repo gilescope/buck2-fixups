@@ -19,6 +19,7 @@ https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
 MIT / Apache-2.0
 
 https://github.com/dtolnay/cxx/tree/master/third-party/fixups - MIT / Apache-2.0
+https://github.com/dtolnay/buck2-rustc-bootstrap/tree/master/fixups - MIT / Apache-2.0
 
 https://github.com/systeminit/si/tree/main/third-party/rust - Apache 2.0
 
