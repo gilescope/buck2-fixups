@@ -426,6 +426,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "basic-toml"
+version = "0.1.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ba62675e8242a4c4e806d12f11d136e626e6c8361d6b829310732241652a178a"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "beef"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1684,6 +1693,7 @@ dependencies = [
  "allocator-api2",
  "equivalent",
  "foldhash",
+ "serde",
 ]
 
 [[package]]
@@ -1880,6 +1890,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "icu_list_data"
+version = "1.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52b1a7fbdbf3958f1be8354cb59ac73f165b7b7082d447ff2090355c9a069120"
+
+[[package]]
 name = "icu_locid_transform_data"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1954,6 +1970,7 @@ checksum = "cea70ddb795996207ad57735b50c5982d8844f38ba9ee5f1aedcfb708a2aa11e"
 dependencies = [
  "equivalent",
  "hashbrown 0.15.3",
+ "serde",
 ]
 
 [[package]]
@@ -3503,6 +3520,7 @@ dependencies = [
  "axum",
  "axum-core",
  "backtrace",
+ "basic-toml",
  "bigdecimal",
  "bindgen",
  "bitcoin-private",
@@ -3545,6 +3563,7 @@ dependencies = [
  "heapless",
  "httparse",
  "hyper",
+ "icu_list_data",
  "icu_locid_transform_data",
  "icu_normalizer_data",
  "icu_properties_data",
@@ -3615,6 +3634,7 @@ dependencies = [
  "rend",
  "rkyv",
  "rstest_macros",
+ "rustc_apfloat",
  "rustix 1.0.7",
  "rustversion",
  "schemars",
@@ -3657,6 +3677,7 @@ dependencies = [
  "unicode-linebreak",
  "wasm-bindgen",
  "wasm-bindgen-shared",
+ "wasmparser",
  "windows-targets 0.53.0",
  "windows_aarch64_gnullvm 0.53.0",
  "windows_x86_64_gnu 0.53.0",
@@ -3677,6 +3698,16 @@ name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
+
+[[package]]
+name = "rustc_apfloat"
+version = "0.2.2+llvm-462a31f5a5ab"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "121e2195ff969977a4e2b5c9965ea867fce7e4cb5aee5b09dee698a7932d574f"
+dependencies = [
+ "bitflags 2.9.0",
+ "smallvec",
+]
 
 [[package]]
 name = "rustc_version"
@@ -4939,6 +4970,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1a05d73b933a847d6cccdda8f838a22ff101ad9bf93e33684f39c1f5f0eece3d"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "wasmparser"
+version = "0.230.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "808198a69b5a0535583370a51d459baa14261dfab04800c4864ee9e1a14346ed"
+dependencies = [
+ "bitflags 2.9.0",
+ "hashbrown 0.15.3",
+ "indexmap 2.9.0",
+ "semver",
+ "serde",
 ]
 
 [[package]]
