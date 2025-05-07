@@ -1,0 +1,9 @@
+# Apache 2 or MIT from https://github.com/web3infra-foundation/mega
+cargo_env = true
+env = {OPT_LEVEL = "3"}
+
+[buildscript.run.env]
+OPT_LEVEL = "3"
+
+# [buildscript.build.env]
+# OPT_LEVEL = "3"
