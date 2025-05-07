@@ -1,4 +1,0 @@
-# Apache 2 or MIT from https://github.com/web3infra-foundation/mega
-extra_srcs = [
-    "README.md"
-]
