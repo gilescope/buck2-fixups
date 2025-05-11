@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 [ $# -ne 2 ] && echo "Usage: $0 <source_dir> <target_dir>" && exit 1
 [ ! -d "$1" ] && echo "Error: Source '$1' not found." && exit 1
