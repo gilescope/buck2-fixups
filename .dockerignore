@@ -1,0 +1,10 @@
+.vscode
+.github
+.git
+buck-out
+buck-out-docker
+target
+ci.sh
+Dockerfile
+*.sh
+README.md
