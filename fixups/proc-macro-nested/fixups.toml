@@ -1,0 +1,6 @@
+cargo_env = true
+buildscript.run = true
+
+[env]
+# TODO: windows
+PATH_SEPARATOR="/"

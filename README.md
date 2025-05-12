@@ -1,7 +1,7 @@
 # buck2-fixups
 Fixups for buck2
 
-415 and counting... (please feel free to contribute!)
+417 and counting... (please feel free to contribute!)
 
 Each fixup.toml has the license and attribution at the top.
 If there is no attribution as it's contributed directly to this repo then the license is Apache 2.0 license.
@@ -45,5 +45,3 @@ https://github.com/benbrittain/my-react-router-app/tree/main/third-party/rust/fi
 https://github.com/c00t/Bubble/tree/main/third-party/rust/fixups
 
 https://github.com/thoughtpolice/a/tree/main/buck/third-party
-
-https://github.com/GaloyMoney/blink
