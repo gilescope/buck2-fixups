@@ -9119,6 +9119,7 @@ cargo.rust_library(
     features = [
         "debug",
         "default",
+        "from",
         "std",
     ],
     visibility = [],
@@ -9170,6 +9171,7 @@ cargo.rust_library(
     features = [
         "debug",
         "default",
+        "from",
     ],
     proc_macro = True,
     visibility = [],
@@ -21339,7 +21341,9 @@ cargo.rust_library(
     features = [
         "chain-error",
         "default",
+        "derive",
         "max-encoded-len",
+        "parity-scale-codec-derive",
         "serde",
         "std",
     ],
@@ -27051,6 +27055,54 @@ cargo.rust_library(
         ),
     },
     visibility = [],
+)
+
+alias(
+    name = "scale-info",
+    actual = ":scale-info-2.11.6",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "scale-info-2.11.6.crate",
+    sha256 = "346a3b32eba2640d17a9cb5927056b08f3de90f65b72fe09402c2ad07d684d0b",
+    strip_prefix = "scale-info-2.11.6",
+    urls = ["https://static.crates.io/crates/scale-info/2.11.6/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "scale-info-2.11.6",
+    srcs = [":scale-info-2.11.6.crate"],
+    crate = "scale_info",
+    crate_root = "scale-info-2.11.6.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_CRATE_NAME": "scale_info",
+        "CARGO_MANIFEST_DIR": "scale-info-2.11.6.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>:Centrality Developers <support@centrality.ai>",
+        "CARGO_PKG_DESCRIPTION": "Info about SCALE encodable Rust types",
+        "CARGO_PKG_NAME": "scale-info",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/scale-info",
+        "CARGO_PKG_VERSION": "2.11.6",
+        "CARGO_PKG_VERSION_MAJOR": "2",
+        "CARGO_PKG_VERSION_MINOR": "11",
+        "CARGO_PKG_VERSION_PATCH": "6",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "default",
+        "std",
+    ],
+    named_deps = {
+        "scale": ":parity-scale-codec-3.7.4",
+    },
+    visibility = [],
+    deps = [
+        ":bitvec-1.0.1",
+        ":cfg-if-1.0.0",
+        ":derive_more-1.0.0",
+    ],
 )
 
 http_archive(
