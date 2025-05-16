@@ -1311,6 +1311,57 @@ cargo.rust_library(
     ],
 )
 
+http_archive(
+    name = "ark-ec-0.5.0.crate",
+    sha256 = "43d68f2d516162846c1238e755a7c4d131b892b70cc70c471a8e3ca3ed818fce",
+    strip_prefix = "ark-ec-0.5.0",
+    urls = ["https://static.crates.io/crates/ark-ec/0.5.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ark-ec-0.5.0",
+    srcs = [":ark-ec-0.5.0.crate"],
+    crate = "ark_ec",
+    crate_root = "ark-ec-0.5.0.crate/src/lib.rs",
+    edition = "2021",
+    features = ["std"],
+    platform = {
+        "linux-arm64": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "linux-x86_64": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "macos-arm64": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "macos-x86_64": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "windows-gnu": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "windows-msvc": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+    },
+    visibility = [],
+    deps = [
+        ":ark-ff-0.5.0",
+        ":ark-poly-0.5.0",
+        ":ark-serialize-0.5.0",
+        ":ark-std-0.5.0",
+        ":educe-0.6.0",
+        ":hashbrown-0.15.3",
+        ":itertools-0.13.0",
+        ":num-bigint-0.4.6",
+        ":num-integer-0.1.46",
+        ":num-traits-0.2.19",
+        ":zeroize-1.8.1",
+    ],
+)
+
 alias(
     name = "ark-ff",
     actual = ":ark-ff-0.5.0",
@@ -1331,7 +1382,10 @@ cargo.rust_library(
     crate = "ark_ff",
     crate_root = "ark-ff-0.5.0.crate/src/lib.rs",
     edition = "2021",
-    features = ["default"],
+    features = [
+        "default",
+        "std",
+    ],
     visibility = [],
     deps = [
         ":ark-ff-asm-0.5.0",
@@ -1408,6 +1462,51 @@ cargo.rust_library(
     ],
 )
 
+http_archive(
+    name = "ark-poly-0.5.0.crate",
+    sha256 = "579305839da207f02b89cd1679e50e67b4331e2f9294a57693e5051b7703fe27",
+    strip_prefix = "ark-poly-0.5.0",
+    urls = ["https://static.crates.io/crates/ark-poly/0.5.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ark-poly-0.5.0",
+    srcs = [":ark-poly-0.5.0.crate"],
+    crate = "ark_poly",
+    crate_root = "ark-poly-0.5.0.crate/src/lib.rs",
+    edition = "2021",
+    features = ["std"],
+    platform = {
+        "linux-arm64": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "linux-x86_64": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "macos-arm64": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "macos-x86_64": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "windows-gnu": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+        "windows-msvc": dict(
+            deps = [":ahash-0.8.12"],
+        ),
+    },
+    visibility = [],
+    deps = [
+        ":ark-ff-0.5.0",
+        ":ark-serialize-0.5.0",
+        ":ark-std-0.5.0",
+        ":educe-0.6.0",
+        ":hashbrown-0.15.3",
+    ],
+)
+
 alias(
     name = "ark-serialize",
     actual = ":ark-serialize-0.5.0",
@@ -1428,13 +1527,42 @@ cargo.rust_library(
     crate = "ark_serialize",
     crate_root = "ark-serialize-0.5.0.crate/src/lib.rs",
     edition = "2021",
-    features = ["default"],
+    features = [
+        "ark-serialize-derive",
+        "default",
+        "derive",
+        "std",
+    ],
     visibility = [],
     deps = [
+        ":ark-serialize-derive-0.5.0",
         ":ark-std-0.5.0",
         ":arrayvec-0.7.6",
         ":digest-0.10.7",
         ":num-bigint-0.4.6",
+    ],
+)
+
+http_archive(
+    name = "ark-serialize-derive-0.5.0.crate",
+    sha256 = "213888f660fddcca0d257e88e54ac05bca01885f258ccdf695bafd77031bb69d",
+    strip_prefix = "ark-serialize-derive-0.5.0",
+    urls = ["https://static.crates.io/crates/ark-serialize-derive/0.5.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ark-serialize-derive-0.5.0",
+    srcs = [":ark-serialize-derive-0.5.0.crate"],
+    crate = "ark_serialize_derive",
+    crate_root = "ark-serialize-derive-0.5.0.crate/src/lib.rs",
+    edition = "2021",
+    proc_macro = True,
+    visibility = [],
+    deps = [
+        ":proc-macro2-1.0.95",
+        ":quote-1.0.40",
+        ":syn-2.0.101",
     ],
 )
 
@@ -1466,6 +1594,71 @@ cargo.rust_library(
     deps = [
         ":num-traits-0.2.19",
         ":rand-0.8.5",
+    ],
+)
+
+http_archive(
+    name = "ark-transcript-0.0.3.crate",
+    sha256 = "47c1c928edb9d8ff24cb5dcb7651d3a98494fff3099eee95c2404cd813a9139f",
+    strip_prefix = "ark-transcript-0.0.3",
+    urls = ["https://static.crates.io/crates/ark-transcript/0.0.3/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ark-transcript-0.0.3",
+    srcs = [":ark-transcript-0.0.3.crate"],
+    crate = "ark_transcript",
+    crate_root = "ark-transcript-0.0.3.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+    deps = [
+        ":ark-ff-0.5.0",
+        ":ark-serialize-0.5.0",
+        ":ark-std-0.5.0",
+        ":digest-0.10.7",
+        ":rand_core-0.6.4",
+        ":sha3-0.10.8",
+    ],
+)
+
+alias(
+    name = "ark-vrf",
+    actual = ":ark-vrf-0.1.0",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "ark-vrf-0.1.0.crate",
+    sha256 = "9501da18569b2afe0eb934fb7afd5a247d238b94116155af4dd068f319adfe6d",
+    strip_prefix = "ark-vrf-0.1.0",
+    urls = ["https://static.crates.io/crates/ark-vrf/0.1.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "ark-vrf-0.1.0",
+    srcs = [":ark-vrf-0.1.0.crate"],
+    crate = "ark_vrf",
+    crate_root = "ark-vrf-0.1.0.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "default",
+        "std",
+    ],
+    named_deps = {
+        "ring_proof": ":w3f-ring-proof-0.0.2",
+    },
+    visibility = [],
+    deps = [
+        ":ark-ec-0.5.0",
+        ":ark-ff-0.5.0",
+        ":ark-serialize-0.5.0",
+        ":ark-std-0.5.0",
+        ":digest-0.10.7",
+        ":rand_chacha-0.3.1",
+        ":sha2-0.10.9",
+        ":zeroize-1.8.1",
     ],
 )
 
@@ -4667,12 +4860,61 @@ cargo.rust_library(
         "CARGO_PKG_VERSION_MINOR": "5",
         "CARGO_PKG_VERSION_PATCH": "7",
         "CARGO_PKG_VERSION_PRE": "",
+        "OUT_DIR": "$(location :borsh-1.5.7-build-script-run[out_dir])",
+    },
+    features = [
+        "default",
+        "std",
+    ],
+    rustc_flags = ["@$(location :borsh-1.5.7-build-script-run[rustc_flags])"],
+    visibility = [],
+)
+
+cargo.rust_binary(
+    name = "borsh-1.5.7-build-script-build",
+    srcs = [":borsh-1.5.7.crate"],
+    crate = "build_script_build",
+    crate_root = "borsh-1.5.7.crate/build.rs",
+    edition = "2018",
+    env = {
+        "CARGO_CRATE_NAME": "build_script_build",
+        "CARGO_MANIFEST_DIR": "borsh-1.5.7.crate",
+        "CARGO_PKG_AUTHORS": "Near Inc <hello@near.org>",
+        "CARGO_PKG_DESCRIPTION": "Binary Object Representation Serializer for Hashing\n",
+        "CARGO_PKG_NAME": "borsh",
+        "CARGO_PKG_REPOSITORY": "https://github.com/near/borsh-rs",
+        "CARGO_PKG_VERSION": "1.5.7",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "5",
+        "CARGO_PKG_VERSION_PATCH": "7",
+        "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
         "default",
         "std",
     ],
     visibility = [],
+    deps = [":cfg_aliases-0.2.1"],
+)
+
+buildscript_run(
+    name = "borsh-1.5.7-build-script-run",
+    package_name = "borsh",
+    buildscript_rule = ":borsh-1.5.7-build-script-build",
+    env = {
+        "CARGO_PKG_AUTHORS": "Near Inc <hello@near.org>",
+        "CARGO_PKG_DESCRIPTION": "Binary Object Representation Serializer for Hashing\n",
+        "CARGO_PKG_REPOSITORY": "https://github.com/near/borsh-rs",
+        "CARGO_PKG_VERSION_MAJOR": "1",
+        "CARGO_PKG_VERSION_MINOR": "5",
+        "CARGO_PKG_VERSION_PATCH": "7",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "default",
+        "std",
+    ],
+    version = "1.5.7",
 )
 
 alias(
@@ -6603,6 +6845,7 @@ cargo.rust_library(
     crate = "color_spantrace",
     crate_root = "color-spantrace-0.2.2.crate/src/lib.rs",
     edition = "2018",
+    rustc_flags = ["--cfg=stable"],
     visibility = [],
     deps = [
         ":once_cell-1.21.3",
@@ -10782,6 +11025,7 @@ http_archive(
     name = "errno-dragonfly-0.1.2.crate",
     sha256 = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf",
     strip_prefix = "errno-dragonfly-0.1.2",
+    sub_targets = ["src/errno.c"],
     urls = ["https://static.crates.io/crates/errno-dragonfly/0.1.2/download"],
     visibility = [],
 )
@@ -10793,7 +11037,17 @@ cargo.rust_library(
     crate_root = "errno-dragonfly-0.1.2.crate/src/lib.rs",
     edition = "2018",
     visibility = [],
-    deps = [":libc-0.2.172"],
+    deps = [
+        ":errno-dragonfly-0.1.2-errno",
+        ":libc-0.2.172",
+    ],
+)
+
+cxx_library(
+    name = "errno-dragonfly-0.1.2-errno",
+    srcs = [":errno-dragonfly-0.1.2.crate[src/errno.c]"],
+    headers = [],
+    visibility = [],
 )
 
 alias(
@@ -10820,6 +11074,10 @@ cargo.rust_library(
         "backtrace",
         "default",
         "example_generated",
+    ],
+    rustc_flags = [
+        "--cfg=has_error_description_deprecated",
+        "--cfg=has_error_source",
     ],
     visibility = [],
     deps = [":backtrace-0.3.75"],
@@ -11047,6 +11305,7 @@ cargo.rust_library(
     crate_root = "failure_derive-0.1.8.crate/src/lib.rs",
     edition = "2015",
     proc_macro = True,
+    rustc_flags = ["--cfg=has_dyn_trait"],
     visibility = [],
     deps = [
         ":proc-macro2-1.0.95",
@@ -12769,6 +13028,33 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "getrandom_or_panic-0.0.3.crate",
+    sha256 = "6ea1015b5a70616b688dc230cfe50c8af89d972cb132d5a622814d29773b10b9",
+    strip_prefix = "getrandom_or_panic-0.0.3",
+    urls = ["https://static.crates.io/crates/getrandom_or_panic/0.0.3/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "getrandom_or_panic-0.0.3",
+    srcs = [":getrandom_or_panic-0.0.3.crate"],
+    crate = "getrandom_or_panic",
+    crate_root = "getrandom_or_panic-0.0.3.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "alloc",
+        "getrandom",
+        "rand",
+        "std",
+    ],
+    visibility = [],
+    deps = [
+        ":rand-0.8.5",
+        ":rand_core-0.6.4",
+    ],
+)
+
+http_archive(
     name = "ghash-0.5.1.crate",
     sha256 = "f0d8a4362ccb29cb0b265253fb0a2728f592895ee6854fd9bc13f2ffda266ff1",
     strip_prefix = "ghash-0.5.1",
@@ -14488,6 +14774,7 @@ http_archive(
     name = "iana-time-zone-haiku-0.1.2.crate",
     sha256 = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f",
     strip_prefix = "iana-time-zone-haiku-0.1.2",
+    sub_targets = ["src/implementation.cc"],
     urls = ["https://static.crates.io/crates/iana-time-zone-haiku/0.1.2/download"],
     visibility = [],
 )
@@ -14498,6 +14785,14 @@ cargo.rust_library(
     crate = "iana_time_zone_haiku",
     crate_root = "iana-time-zone-haiku-0.1.2.crate/src/lib.rs",
     edition = "2018",
+    visibility = [],
+    deps = [":iana-time-zone-haiku-0.1.2-tz_haiku"],
+)
+
+cxx_library(
+    name = "iana-time-zone-haiku-0.1.2-tz_haiku",
+    srcs = [":iana-time-zone-haiku-0.1.2.crate[src/implementation.cc]"],
+    headers = [],
     visibility = [],
 )
 
@@ -15964,6 +16259,10 @@ cargo.rust_library(
     crate = "itertools",
     crate_root = "itertools-0.13.0.crate/src/lib.rs",
     edition = "2018",
+    features = [
+        "use_alloc",
+        "use_std",
+    ],
     visibility = [],
     deps = [":either-1.15.0"],
 )
@@ -16588,8 +16887,62 @@ cargo.rust_library(
     crate = "kernel32",
     crate_root = "kernel32-sys-0.2.2.crate/src/lib.rs",
     edition = "2015",
+    env = {
+        "CARGO_CRATE_NAME": "kernel32",
+        "CARGO_MANIFEST_DIR": "kernel32-sys-0.2.2.crate",
+        "CARGO_PKG_AUTHORS": "Peter Atashian <retep998@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Contains function definitions for the Windows API library kernel32. See winapi for types and constants.",
+        "CARGO_PKG_NAME": "kernel32-sys",
+        "CARGO_PKG_REPOSITORY": "https://github.com/retep998/winapi-rs",
+        "CARGO_PKG_VERSION": "0.2.2",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "2",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+        "OUT_DIR": "$(location :kernel32-sys-0.2.2-build-script-run[out_dir])",
+    },
+    rustc_flags = ["@$(location :kernel32-sys-0.2.2-build-script-run[rustc_flags])"],
     visibility = [],
     deps = [":winapi-0.2.8"],
+)
+
+cargo.rust_binary(
+    name = "kernel32-sys-0.2.2-build-script-build",
+    srcs = [":kernel32-sys-0.2.2.crate"],
+    crate = "build_script_build",
+    crate_root = "kernel32-sys-0.2.2.crate/build.rs",
+    edition = "2015",
+    env = {
+        "CARGO_CRATE_NAME": "build_script_build",
+        "CARGO_MANIFEST_DIR": "kernel32-sys-0.2.2.crate",
+        "CARGO_PKG_AUTHORS": "Peter Atashian <retep998@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Contains function definitions for the Windows API library kernel32. See winapi for types and constants.",
+        "CARGO_PKG_NAME": "kernel32-sys",
+        "CARGO_PKG_REPOSITORY": "https://github.com/retep998/winapi-rs",
+        "CARGO_PKG_VERSION": "0.2.2",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "2",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+    deps = [":winapi-build-0.1.1"],
+)
+
+buildscript_run(
+    name = "kernel32-sys-0.2.2-build-script-run",
+    package_name = "kernel32-sys",
+    buildscript_rule = ":kernel32-sys-0.2.2-build-script-build",
+    env = {
+        "CARGO_PKG_AUTHORS": "Peter Atashian <retep998@gmail.com>",
+        "CARGO_PKG_DESCRIPTION": "Contains function definitions for the Windows API library kernel32. See winapi for types and constants.",
+        "CARGO_PKG_REPOSITORY": "https://github.com/retep998/winapi-rs",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "2",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    version = "0.2.2",
 )
 
 http_archive(
@@ -18345,6 +18698,7 @@ cargo.rust_library(
         "default",
         "std",
     ],
+    rustc_flags = ["--cfg=native_uninit"],
     visibility = [],
     deps = [":rawpointer-0.2.1"],
 )
@@ -18544,6 +18898,30 @@ cargo.rust_library(
     edition = "2015",
     features = ["default"],
     visibility = [],
+)
+
+http_archive(
+    name = "merlin-3.0.0.crate",
+    sha256 = "58c38e2799fc0978b65dfff8023ec7843e2330bb462f19198840b34b6582397d",
+    strip_prefix = "merlin-3.0.0",
+    urls = ["https://static.crates.io/crates/merlin/3.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "merlin-3.0.0",
+    srcs = [":merlin-3.0.0.crate"],
+    crate = "merlin",
+    crate_root = "merlin-3.0.0.crate/src/lib.rs",
+    edition = "2018",
+    features = ["std"],
+    visibility = [],
+    deps = [
+        ":byteorder-1.5.0",
+        ":keccak-0.1.5",
+        ":rand_core-0.6.4",
+        ":zeroize-1.8.1",
+    ],
 )
 
 alias(
@@ -18895,6 +19273,7 @@ cargo.rust_library(
     crate_root = "mockall_derive-0.13.1.crate/src/lib.rs",
     edition = "2021",
     proc_macro = True,
+    rustc_flags = ["--cfg=reprocheck"],
     visibility = [],
     deps = [
         ":cfg-if-1.0.0",
@@ -24475,7 +24854,9 @@ cargo.rust_library(
     edition = "2021",
     env = {
         "CARGO_PKG_VERSION": "0.24.2",
+        "OUT_DIR": "$(location :pyo3-macros-backend-0.24.2-build-script-run[out_dir])",
     },
+    rustc_flags = ["@$(location :pyo3-macros-backend-0.24.2-build-script-run[rustc_flags])"],
     visibility = [],
     deps = [
         ":heck-0.5.0",
@@ -24484,6 +24865,26 @@ cargo.rust_library(
         ":quote-1.0.40",
         ":syn-2.0.101",
     ],
+)
+
+cargo.rust_binary(
+    name = "pyo3-macros-backend-0.24.2-build-script-build",
+    srcs = [":pyo3-macros-backend-0.24.2.crate"],
+    crate = "build_script_build",
+    crate_root = "pyo3-macros-backend-0.24.2.crate/build.rs",
+    edition = "2021",
+    env = {
+        "CARGO_PKG_VERSION": "0.24.2",
+    },
+    visibility = [],
+    deps = [":pyo3-build-config-0.24.2"],
+)
+
+buildscript_run(
+    name = "pyo3-macros-backend-0.24.2-build-script-run",
+    package_name = "pyo3-macros-backend",
+    buildscript_rule = ":pyo3-macros-backend-0.24.2-build-script-build",
+    version = "0.24.2",
 )
 
 http_archive(
@@ -29227,6 +29628,7 @@ cargo.rust_library(
         "default",
         "std",
     ],
+    rustc_flags = ["--cfg=has_min_const_generics"],
     visibility = [],
 )
 
@@ -29318,12 +29720,44 @@ cargo.rust_library(
     crate = "smartstring",
     crate_root = "smartstring-1.0.1.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "OUT_DIR": "$(location :smartstring-1.0.1-build-script-run[out_dir])",
+    },
+    features = [
+        "default",
+        "std",
+    ],
+    rustc_flags = ["@$(location :smartstring-1.0.1-build-script-run[rustc_flags])"],
+    visibility = [],
+    deps = [":static_assertions-1.1.0"],
+)
+
+cargo.rust_binary(
+    name = "smartstring-1.0.1-build-script-build",
+    srcs = [":smartstring-1.0.1.crate"],
+    crate = "build_script_build",
+    crate_root = "smartstring-1.0.1.crate/build.rs",
+    edition = "2021",
     features = [
         "default",
         "std",
     ],
     visibility = [],
-    deps = [":static_assertions-1.1.0"],
+    deps = [
+        ":autocfg-1.4.0",
+        ":version_check-0.9.5",
+    ],
+)
+
+buildscript_run(
+    name = "smartstring-1.0.1-build-script-run",
+    package_name = "smartstring",
+    buildscript_rule = ":smartstring-1.0.1-build-script-build",
+    features = [
+        "default",
+        "std",
+    ],
+    version = "1.0.1",
 )
 
 alias(
@@ -34536,12 +34970,42 @@ cargo.rust_library(
     crate = "valuable",
     crate_root = "valuable-0.1.1.crate/src/lib.rs",
     edition = "2021",
+    env = {
+        "OUT_DIR": "$(location :valuable-0.1.1-build-script-run[out_dir])",
+    },
+    features = [
+        "alloc",
+        "default",
+        "std",
+    ],
+    rustc_flags = ["@$(location :valuable-0.1.1-build-script-run[rustc_flags])"],
+    visibility = [],
+)
+
+cargo.rust_binary(
+    name = "valuable-0.1.1-build-script-build",
+    srcs = [":valuable-0.1.1.crate"],
+    crate = "build_script_build",
+    crate_root = "valuable-0.1.1.crate/build.rs",
+    edition = "2021",
     features = [
         "alloc",
         "default",
         "std",
     ],
     visibility = [],
+)
+
+buildscript_run(
+    name = "valuable-0.1.1-build-script-run",
+    package_name = "valuable",
+    buildscript_rule = ":valuable-0.1.1-build-script-build",
+    features = [
+        "alloc",
+        "default",
+        "std",
+    ],
+    version = "0.1.1",
 )
 
 alias(
@@ -34788,6 +35252,88 @@ cargo.rust_library(
     deps = [
         ":arrayvec-0.7.6",
         ":memchr-2.7.4",
+    ],
+)
+
+http_archive(
+    name = "w3f-pcs-0.0.2.crate",
+    sha256 = "fbe7a8d5c914b69392ab3b267f679a2e546fe29afaddce47981772ac71bd02e1",
+    strip_prefix = "w3f-pcs-0.0.2",
+    urls = ["https://static.crates.io/crates/w3f-pcs/0.0.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "w3f-pcs-0.0.2",
+    srcs = [":w3f-pcs-0.0.2.crate"],
+    crate = "w3f_pcs",
+    crate_root = "w3f-pcs-0.0.2.crate/src/lib.rs",
+    edition = "2021",
+    features = ["std"],
+    visibility = [],
+    deps = [
+        ":ark-ec-0.5.0",
+        ":ark-ff-0.5.0",
+        ":ark-poly-0.5.0",
+        ":ark-serialize-0.5.0",
+        ":ark-std-0.5.0",
+        ":merlin-3.0.0",
+    ],
+)
+
+http_archive(
+    name = "w3f-plonk-common-0.0.2.crate",
+    sha256 = "1aca389e494fe08c5c108b512e2328309036ee1c0bc7bdfdb743fef54d448c8c",
+    strip_prefix = "w3f-plonk-common-0.0.2",
+    urls = ["https://static.crates.io/crates/w3f-plonk-common/0.0.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "w3f-plonk-common-0.0.2",
+    srcs = [":w3f-plonk-common-0.0.2.crate"],
+    crate = "w3f_plonk_common",
+    crate_root = "w3f-plonk-common-0.0.2.crate/src/lib.rs",
+    edition = "2021",
+    features = ["std"],
+    visibility = [],
+    deps = [
+        ":ark-ec-0.5.0",
+        ":ark-ff-0.5.0",
+        ":ark-poly-0.5.0",
+        ":ark-serialize-0.5.0",
+        ":ark-std-0.5.0",
+        ":getrandom_or_panic-0.0.3",
+        ":rand_core-0.6.4",
+        ":w3f-pcs-0.0.2",
+    ],
+)
+
+http_archive(
+    name = "w3f-ring-proof-0.0.2.crate",
+    sha256 = "8a639379402ad51504575dbd258740383291ac8147d3b15859bdf1ea48c677de",
+    strip_prefix = "w3f-ring-proof-0.0.2",
+    urls = ["https://static.crates.io/crates/w3f-ring-proof/0.0.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "w3f-ring-proof-0.0.2",
+    srcs = [":w3f-ring-proof-0.0.2.crate"],
+    crate = "w3f_ring_proof",
+    crate_root = "w3f-ring-proof-0.0.2.crate/src/lib.rs",
+    edition = "2021",
+    features = ["std"],
+    visibility = [],
+    deps = [
+        ":ark-ec-0.5.0",
+        ":ark-ff-0.5.0",
+        ":ark-poly-0.5.0",
+        ":ark-serialize-0.5.0",
+        ":ark-std-0.5.0",
+        ":ark-transcript-0.0.3",
+        ":w3f-pcs-0.0.2",
+        ":w3f-plonk-common-0.0.2",
     ],
 )
 
@@ -35121,6 +35667,7 @@ cargo.rust_library(
         "default",
         "std",
     ],
+    rustc_flags = ["--cfg=core_error"],
     visibility = [],
     deps = [
         ":leb128fmt-0.1.0",

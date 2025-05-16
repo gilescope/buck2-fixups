@@ -1,1 +1,2 @@
 cargo_env = ["CARGO_PKG_VERSION"]
+buildscript.run = true
