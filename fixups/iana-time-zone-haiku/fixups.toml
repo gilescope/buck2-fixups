@@ -1,0 +1,9 @@
+# Think this is just for haiku OS...
+buildscript.run = false
+
+[[cxx_library]]
+name = "tz_haiku"
+srcs = ["src/implementation.cc"]
+headers = ["src/interface.h"]
+
+# TODO: link to "be" static lib. (BeOS)

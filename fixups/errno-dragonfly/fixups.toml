@@ -1,0 +1,5 @@
+buildscript.run = false
+
+[[cxx_library]]
+name = "errno"
+srcs = ["src/errno.c"]

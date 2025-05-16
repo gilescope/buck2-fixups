@@ -2,7 +2,13 @@
 set -e -x
 
 # Test:
-reindeer buckify
+output=$(reindeer buckify 2>&1)
+if [[ -n "$output" ]]; then
+  echo "Expected reindeer buckify to produced no output if all good but produced: $output"
+  echo ""
+  echo "Please fix above buckify warnings..."
+  exit 1
+fi
 
 # Rather than build all targets with:
 # buck2 build //...

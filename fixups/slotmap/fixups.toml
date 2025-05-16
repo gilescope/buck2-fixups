@@ -1,0 +1,2 @@
+buildscript.run = false
+cfgs = [ "has_min_const_generics" ]
