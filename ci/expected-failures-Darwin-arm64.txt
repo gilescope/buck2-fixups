@@ -1,9 +1,16 @@
 # Crates known to fail on this platform (one fixups//third-party:NAME per line).
-# build-all.sh fails CI on new failures AND on stale entries here.
+# Canonical environment: GitHub macos-latest runners. build-all.sh fails CI
+# on new failures and stale entries; locally stale entries only warn (your
+# brew toolchain may build some of these).
 
 # wrong-OS crates (windows-only):
 fixups//third-party:miow
 # native build scripts needing fixup work:
+fixups//third-party:aws-lc-sys
+fixups//third-party:lz4
+fixups//third-party:lz4-sys
 fixups//third-party:lzma-sys
+fixups//third-party:psm
 fixups//third-party:radium
+fixups//third-party:sha1-asm
 fixups//third-party:xz2

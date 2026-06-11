@@ -40,10 +40,13 @@ if [ -n "$new_failures" ]; then
   echo "$new_failures"
   status=1
 fi
+# The lists track the GitHub-runner environment; local toolchains (extra
+# brew/apt packages) legitimately make some entries pass, so stale entries
+# only fail in CI.
 if [ -n "$fixed" ]; then
-  echo "✗ Stale entries in $expected (now passing — remove them):"
+  echo "⚠ Stale entries in $expected (now passing — remove them):"
   echo "$fixed"
-  status=1
+  [ -n "$GITHUB_ACTIONS" ] && status=1
 fi
 [ "$status" = 0 ] && echo "OK: failure set matches $expected ($(echo "$expected_content" | sed '/^$/d' | wc -l | tr -d ' ') known)"
 exit $status
