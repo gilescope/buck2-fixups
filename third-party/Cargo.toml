@@ -270,7 +270,7 @@ rustls-pki-types = "1.12.0"
 rustc_apfloat = "0.2.2"
 rustc_version = "0.4.1"
 rustix = "1.0.7"
-# rustls = "0.23.26"
+# rustls = { version = "0.23.29", features= [ "graviola" ]}
 # rustls-webpki = "0.103.1"
 rustversion = "1.0.20"
 rustc_version_runtime = "0.3.0"
@@ -382,8 +382,8 @@ zerocopy = "0.8.25"
 # Commented out until figure out how to stop
 # buck2 building win crates on other OSes
 # [target.'cfg(windows)'.dependencies]
-# 
-# winapi = "0.3.9"
+#
+winapi = "0.3.9"
 # winapi-x86_64-pc-windows-gnu = "0.4.0"
 
 
@@ -563,7 +563,7 @@ zerocopy-derive = "0.8.25"
 
 aes = "0.9.0-pre.3"
 allocator-api2 = "0.3.0"
-android_system_properties = "0.1.5"
+# android_system_properties = "0.1.5"
 arc-swap = "1.7.1"
 arrayref = "0.3.9"
 async-lock = "3.4.0"
@@ -655,7 +655,7 @@ wit-bindgen-rt = "0.42.1"
 # aead = "0.6.0-rc.0"
 alloc-no-stdlib = "2.0.4"
 alloc-stdlib = "0.2.2"
-android-tzdata = "0.1.1"
+# android-tzdata = "0.1.1"
 anstyle-wincon = "3.0.7"
 async-compression = "0.4.23"
 async-task = "4.7.1"
@@ -880,7 +880,7 @@ lexical-parse-float = "1.0.5"
 lexical-parse-integer = "1.0.5"
 lexical-util = "1.0.6"
 # libgit2-sys = "0.18.1+1.9.0"
-miow = "0.6.0"
+
 # net2 = "0.2.39"
 normalize-line-endings = "0.3.0"
 notify = "8.0.0"
@@ -1195,3 +1195,6 @@ windows-interface = "0.59.1"
 windows-registry = "0.5.1"
 xz2 = "0.1.7"
 yasna = "0.5.2"
+
+[target.'cfg(windows)'.dependencies]
+miow = "0.6.0"

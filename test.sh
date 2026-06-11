@@ -13,4 +13,7 @@ fi
 # Rather than build all targets with:
 # buck2 build //...
 # build only each package where the fixup has changed:
-git diff --name-only origin/main...HEAD | grep fixups | cut -d/ -f2 | sort | uniq | xargs -I{} sh -c 'echo buck2 build //:{}; buck2 build //:{}'
+git diff --name-only origin/main...HEAD | grep '^fixups/' | cut -d/ -f2 | sort | uniq | xargs -I{} sh -c 'echo buck2 build //third-party:{}; buck2 build //third-party:{}'
+
+# Prove the repo works as a buck2 cell:
+./test-cell.sh

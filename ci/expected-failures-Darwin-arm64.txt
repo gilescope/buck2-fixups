@@ -1,0 +1,9 @@
+# Crates known to fail on this platform (one fixups//third-party:NAME per line).
+# build-all.sh fails CI on new failures AND on stale entries here.
+
+# wrong-OS crates (windows-only):
+fixups//third-party:miow
+# native build scripts needing fixup work:
+fixups//third-party:lzma-sys
+fixups//third-party:radium
+fixups//third-party:xz2

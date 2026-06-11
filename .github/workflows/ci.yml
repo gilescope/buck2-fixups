@@ -5,11 +5,36 @@ on:
     branches: [ 'main' ]
   pull_request:
       branches: [ '**' ]
+  schedule:
+    - cron: '14 5 * * 1'  # weekly full crate sweep
+  workflow_dispatch:
+    inputs:
+      sweep:
+        description: 'Run the full crate sweep'
+        type: boolean
+        default: true
+
+env:
+  # Keep in sync with Earthfile ARG defaults. buck2 bundles its prelude, so
+  # the binary and prelude can't drift.
+  BUCK2_VERSION: 2026-06-01
+  REINDEER_VERSION: v2026.04.27.00
 
 jobs:
-  run:
-    name: CI
-    runs-on: ubuntu-latest
+  linux:
+    name: linux ${{ matrix.arch }}
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
     env:
       FORCE_COLOR: 1
     steps:
@@ -18,19 +43,94 @@ jobs:
         with:
           fetch-depth: 0  # Full clone so we can diff against main
 
-      - name: Install Buck2
-        uses: dtolnay/install-buck2@latest
+      - name: Install earthly
+        uses: earthly/actions-setup@43211c7a0eae5344d6d79fb4aaf209c8f8866203 # v1.0.13
+        with:
+          version: v0.8.15
 
-      - name: Download reindeer
-        run: |
-          wget -q https://github.com/facebookincubator/reindeer/releases/download/v2025.04.30.00/reindeer-x86_64-unknown-linux-gnu.zst
+      - name: Buckify check + cell test
+        run: earthly +ci
 
-      - name: Install reindeer
+      - name: Build changed fixups
         run: |
-          zstd -d ./reindeer-x86_64-unknown-linux-gnu.zst -o ./reindeer
-          chmod +x ./reindeer
-          sudo ln -s "$PWD/reindeer" /usr/local/bin/reindeer
+          crates=$(git diff --name-only origin/main...HEAD | grep '^fixups/' | cut -d/ -f2 | sort -u | sed 's|^|//third-party:|' | tr '\n' ' ')
+          if [ -n "$crates" ]; then
+            earthly +build-crates --crates="$crates"
+          else
+            echo "No fixups changed"
+          fi
 
-      - name: Run build
+  macos:
+    name: macos aarch64
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+        with:
+          fetch-depth: 0
+
+      - name: Install buck2 + reindeer
         run: |
-          ./test.sh
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/buck2
+          curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/reindeer
+          chmod +x /usr/local/bin/buck2 /usr/local/bin/reindeer
+          buck2 --version
+
+      - name: Run tests
+        run: ./test.sh
+
+  sweep-linux:
+    name: sweep linux ${{ matrix.arch }}
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: x86_64
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Install earthly
+        uses: earthly/actions-setup@43211c7a0eae5344d6d79fb4aaf209c8f8866203 # v1.0.13
+        with:
+          version: v0.8.15
+
+      - name: Build all crates
+        run: earthly +build-all
+
+  sweep-macos:
+    name: sweep macos aarch64
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
+    runs-on: macos-latest
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      - name: Install buck2 + reindeer
+        run: |
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/buck2
+          curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/reindeer
+          chmod +x /usr/local/bin/buck2 /usr/local/bin/reindeer
+
+      - name: Build all crates
+        run: ./build-all.sh

@@ -1,2 +1,4 @@
 buck-out
 buck-out-docker
+target
+.tools

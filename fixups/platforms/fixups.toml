@@ -6,7 +6,6 @@
 # of this source tree.
 
 # Buildscript sets TARGET in environment
-buildscript.run = false
 
 ['cfg(all(target_os = "linux", target_arch = "aarch64"))']
 env = { TARGET = "aarch64-unknown-linux-gnu" }

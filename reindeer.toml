@@ -1,0 +1,4 @@
+# Test rig lives in third-party/ so the repo root stays a clean buck2 cell.
+# fixups/ remains at the root (the product); third-party/fixups is a symlink
+# to it, since reindeer hardcodes <third_party_dir>/fixups.
+third_party_dir = "third-party"

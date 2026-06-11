@@ -2,9 +2,9 @@
 set -e -x
 
 # Install dependencies:
-rustup install nightly-2025-02-16
-cargo +nightly-2025-02-16 install --git https://github.com/facebook/buck2.git buck2
-cargo +nightly-2025-02-16 install --locked --git https://github.com/facebookincubator/reindeer reindeer
+rustup install nightly-2025-05-09
+cargo +nightly-2025-05-09 install --git https://github.com/facebook/buck2.git buck2
+cargo +nightly-2025-05-09 install --locked --git https://github.com/facebookincubator/reindeer reindeer
 
 # Test:
 ./test.sh

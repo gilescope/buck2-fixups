@@ -1,5 +1,8 @@
 [cells]
-root = .
+# The root cell is named `fixups` so the labels that fixups bake into
+# generated BUCK files (e.g. fixups//win:ws2_32.lib) resolve identically
+# here and in consumer projects that mount this repo as a `fixups` cell.
+fixups = .
 prelude = prelude
 toolchains = toolchains
 none = none
@@ -14,7 +17,7 @@ fbsource = none
 buck = none
 
 [parser]
-target_platform_detector_spec = target:root//...->prelude//platforms:default
+target_platform_detector_spec = target:fixups//...->prelude//platforms:default
 
 [rust]
 default_edition = 2021

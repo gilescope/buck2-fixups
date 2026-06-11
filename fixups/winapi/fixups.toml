@@ -1,1 +1,92 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+#
+# This source code is licensed under both the MIT license found in the
+# LICENSE-MIT file in the root directory of this source tree and the Apache
+# License, Version 2.0 found in the LICENSE-APACHE file in the root directory
+# of this source tree.
+#
+# From https://github.com/facebook/buck2/blob/main/shim/third-party/rust/fixups/winapi/fixups.toml
+# with labels retargeted at this repo's cell. Requires a `fixups` cell (or
+# cell alias) in your .buckconfig pointing at gilescope/buck2-fixups — see
+# the README "External cell" section.
+
+buildscript.run = false
+
+['cfg(target_os = "windows")']
 buildscript.run = true
+extra_deps = [
+    "fixups//win:advapi32.lib",
+    "fixups//win:avrt.lib",
+    "fixups//win:bcrypt.lib",
+    "fixups//win:bluetoothapis.lib",
+    "fixups//win:bthprops.lib",
+    "fixups//win:cfgmgr32.lib",
+    "fixups//win:comctl32.lib",
+    "fixups//win:comdlg32.lib",
+    "fixups//win:credui.lib",
+    "fixups//win:crypt32.lib",
+    "fixups//win:cryptnet.lib",
+    "fixups//win:d2d1.lib",
+    "fixups//win:d3d11.lib",
+    "fixups//win:d3d12.lib",
+    "fixups//win:d3d9.lib",
+    "fixups//win:d3dcompiler.lib",
+    "fixups//win:dbghelp.lib",
+    "fixups//win:dcomp.lib",
+    "fixups//win:dsound.lib",
+    "fixups//win:dwmapi.lib",
+    "fixups//win:dwrite.lib",
+    "fixups//win:dxgi.lib",
+    "fixups//win:dxva2.lib",
+    "fixups//win:fwpuclnt.lib",
+    "fixups//win:gdi32.lib",
+    "fixups//win:hid.lib",
+    "fixups//win:httpapi.lib",
+    "fixups//win:imm32.lib",
+    "fixups//win:iphlpapi.lib",
+    "fixups//win:kernel32.lib",
+    "fixups//win:ktmw32.lib",
+    "fixups//win:mmdevapi.lib",
+    "fixups//win:mpr.lib",
+    "fixups//win:msimg32.lib",
+    "fixups//win:mswsock.lib",
+    "fixups//win:ncrypt.lib",
+    "fixups//win:netapi32.lib",
+    "fixups//win:ntdll.lib",
+    "fixups//win:odbc32.lib",
+    "fixups//win:ole32.lib",
+    "fixups//win:oleaut32.lib",
+    "fixups//win:opengl32.lib",
+    "fixups//win:pdh.lib",
+    "fixups//win:powrprof.lib",
+    "fixups//win:psapi.lib",
+    "fixups//win:rstrtmgr.lib",
+    "fixups//win:runtimeobject.lib",
+    "fixups//win:secur32.lib",
+    "fixups//win:setupapi.lib",
+    "fixups//win:shcore.lib",
+    "fixups//win:shell32.lib",
+    "fixups//win:shlwapi.lib",
+    "fixups//win:sporder.lib",
+    "fixups//win:synchronization.lib",
+    "fixups//win:user32.lib",
+    "fixups//win:userenv.lib",
+    "fixups//win:usp10.lib",
+    "fixups//win:uxtheme.lib",
+    "fixups//win:version.lib",
+    "fixups//win:vssapi.lib",
+    "fixups//win:wer.lib",
+    "fixups//win:wevtapi.lib",
+    "fixups//win:windowscodecs.lib",
+    "fixups//win:winhttp.lib",
+    "fixups//win:wininet.lib",
+    "fixups//win:winmm.lib",
+    "fixups//win:winscard.lib",
+    "fixups//win:winspool.lib",
+    "fixups//win:wintrust.lib",
+    "fixups//win:winusb.lib",
+    "fixups//win:wlanapi.lib",
+    "fixups//win:ws2_32.lib",
+    "fixups//win:wtsapi32.lib",
+    "fixups//win:xinput.lib",
+]
