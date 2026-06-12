@@ -1,4 +1,14 @@
 2026-06-12
+CI extended to windows-x86_64 and windows-aarch64 (native buck2 msvc
+binaries under Git Bash; reindeer x86_64-emulated on arm) plus a
+windows-x86_64 weekly sweep. Crate builds skipped on windows-arm: the
+prelude's msvc discovery hardcodes x64 lib paths so aarch64 links fail.
+Fixed two latent windows breaks from main: unix-only absolute compiler
+paths in toolchains/BUCK (now select()ed per OS) and missing vcruntime.lib
+(__CxxFrameHandler3) on msvc targets. test-cell.sh copies via
+git ls-files | tar (no rsync on windows runners); .gitattributes forces LF.
+
+2026-06-12
 Top-100 crates.io coverage: rustls added to the rig (ring provider; the
 default aws-lc-rs chains into the known prelude ld-shim failure on linux) —
 the only top-100 crate previously absent. ring fixup modernised to
@@ -13,7 +23,12 @@ dependabot can't run reindeer, so its third-party bumps always failed
 buckify-check; the helper regenerates third-party/BUCK (new earthly
 +buckify target), pushes the fix to the PR branch, and re-dispatches CI
 (workflow_dispatch with sweep=false now runs the normal PR jobs, since
-GITHUB_TOKEN pushes don't retrigger pull_request workflows).
+GITHUB_TOKEN pushes don't retrigger pull_request workflows). Helper
+hardened after first contact: gate on PR author rather than event actor
+(so maintainer "Update branch" still heals), and build with main's
+Earthfile (dependabot branches fork from an older main that may predate
+the +buckify target), plus a workflow_dispatch trigger to force a run on
+any PR number.
 
 2026-06-11
 Expected-failure lists cut to one entry (aws-lc-sys on linux; macOS empty).

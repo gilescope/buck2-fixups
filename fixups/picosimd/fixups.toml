@@ -1,0 +1,3 @@
+# Build script detects rustc version to enable SIMD cfgs; without it the
+# crate falls back to scalar paths, which is correct and deterministic.
+buildscript.run = false
