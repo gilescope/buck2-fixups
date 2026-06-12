@@ -1,2 +1,4 @@
-buildscript.run = true
 cargo_env = true
+
+[buildscript.run.env]
+OPT_LEVEL = "3"

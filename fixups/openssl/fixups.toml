@@ -3,4 +3,8 @@
 [buildscript.run.env]
 # See https://github.com/sfackler/rust-openssl/blob/538a5cb737e8d83085553cac01643820dc7ff205/openssl/build.rs#L127
 # OpenSSL version number 0x1_01_01_07_0 corresponds to OpenSSL 1.1.1g, which is installed in the remote execution worker
-DEP_OPENSSL_VERSION_NUMBER = "10101070"
+# 3.5.0 (vendored via openssl-src 300.5.0): (3<<28)|(5<<20)|(0<<4)|0xf
+DEP_OPENSSL_VERSION_NUMBER = "3050000f"
+# Union of vendored-build disables across platforms (linux adds no-idea);
+# declaring a cipher disabled when present only leaves bindings unused.
+DEP_OPENSSL_CONF = "OPENSSL_NO_IDEA,OPENSSL_NO_SSL3_METHOD"
