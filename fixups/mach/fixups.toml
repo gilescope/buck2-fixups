@@ -1,0 +1,2 @@
+# macOS-only crate: mark incompatible elsewhere so pattern builds skip it.
+target_compatible_with = ["config//os:macos"]

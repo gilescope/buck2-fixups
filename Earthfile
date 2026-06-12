@@ -1,7 +1,9 @@
 VERSION 0.8
 # CI targets, runnable locally: earthly +ci · earthly +build-all
 # Works on amd64 and arm64 (TARGETARCH picks the right release binaries).
-FROM rust:1.87-bookworm
+# trixie: the prelude's buildscript shims need python >= 3.12
+# (PurePath.relative_to walk_up); bookworm ships 3.11.
+FROM rust:1.92-trixie
 WORKDIR /repo
 
 tools:
@@ -42,12 +44,20 @@ test-cell:
     FROM +src
     RUN ./test-cell.sh
 
-# Build a specific set of crates, e.g. the ones whose fixups changed:
-#   earthly +build-crates --crates="//third-party:serde //third-party:ring"
+# Build specific crates by bare name, e.g. the ones whose fixups changed:
+#   earthly +build-crates --crates="serde ring"
+# Names without a top-level rig target are skipped (a fixup can exist for a
+# crate the test rig doesn't depend on).
 build-crates:
     FROM +src
     ARG --required crates
-    RUN buck2 build $crates
+    RUN available=$(buck2 uquery "kind('^alias\$', //third-party:)" | sed 's|.*:||'); \
+        to_build=""; \
+        for c in $crates; do \
+          if echo "$available" | grep -qx "$c"; then to_build="$to_build //third-party:$c"; \
+          else echo "skipping $c - no rig target"; fi; \
+        done; \
+        if [ -n "$to_build" ]; then buck2 build $to_build; else echo "nothing to build"; fi
 
 # Sweep every crate; failure set must match ci/expected-failures-<platform>.txt
 build-all:
