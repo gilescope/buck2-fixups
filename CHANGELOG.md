@@ -13,7 +13,12 @@ dependabot can't run reindeer, so its third-party bumps always failed
 buckify-check; the helper regenerates third-party/BUCK (new earthly
 +buckify target), pushes the fix to the PR branch, and re-dispatches CI
 (workflow_dispatch with sweep=false now runs the normal PR jobs, since
-GITHUB_TOKEN pushes don't retrigger pull_request workflows).
+GITHUB_TOKEN pushes don't retrigger pull_request workflows). Helper
+hardened after first contact: gate on PR author rather than event actor
+(so maintainer "Update branch" still heals), and build with main's
+Earthfile (dependabot branches fork from an older main that may predate
+the +buckify target), plus a workflow_dispatch trigger to force a run on
+any PR number.
 
 2026-06-11
 Expected-failure lists cut to one entry (aws-lc-sys on linux; macOS empty).
