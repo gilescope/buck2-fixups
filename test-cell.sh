@@ -11,8 +11,9 @@ trap 'buck2 killall 2>/dev/null || true; rm -rf "$scratch"' EXIT
 
 consumer="$scratch/consumer"
 mkdir -p "$consumer/fixups-src"
-rsync -a --exclude buck-out --exclude buck-out-docker --exclude .git \
-      --exclude target --exclude '.cargo' ./ "$consumer/fixups-src/"
+# Tracked files only (skips buck-out, target, .git, .cargo). tar instead of
+# rsync: Git Bash on Windows runners has no rsync.
+git ls-files -z | tar -cf - --null -T - | tar -xf - -C "$consumer/fixups-src"
 
 cd "$consumer"
 touch .buckroot BUCK

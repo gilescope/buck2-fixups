@@ -84,6 +84,34 @@ jobs:
       - name: Run tests
         run: ./test.sh
 
+  windows:
+    name: windows x86_64
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+        with:
+          fetch-depth: 0
+
+      - name: Install buck2 + reindeer
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/reindeer.exe"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/buck2.exe" --version
+
+      - name: Run tests
+        run: ./test.sh
+
   sweep-linux:
     name: sweep linux ${{ matrix.arch }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
@@ -137,6 +165,38 @@ jobs:
           curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/buck2
           curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/reindeer
           chmod +x /usr/local/bin/buck2 /usr/local/bin/reindeer
+
+      - name: Build all crates
+        run: ./build-all.sh
+
+  sweep-windows:
+    name: sweep windows x86_64
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
+    runs-on: windows-latest
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@eef61447b9ff4aafe5dcd4e0bbf5d482be7e7871 # v4.2.1
+
+      # pyo3 0.24 supports python <= 3.13; the runner default is newer.
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install buck2 + reindeer
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/reindeer.exe"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
 
       - name: Build all crates
         run: ./build-all.sh

@@ -4,7 +4,8 @@
 
 411 and counting... (please feel free to contribute!)
 
-CI-tested on linux-x86_64, linux-aarch64 and macos-aarch64: `reindeer
+CI-tested on linux-x86_64, linux-aarch64, macos-aarch64 and
+windows-x86_64: `reindeer
 buckify` must be warning-free, the committed `third-party/BUCK` must be
 up to date, changed fixups must `buck2 build`, and cell consumption is
 verified (`test-cell.sh`). A weekly sweep builds **every** crate
@@ -124,14 +125,12 @@ https://github.com/suiwombat/sui/tree/buck_sui_up_rc1 - Apache 2.0
 
 https://github.com/theoparis/bevy-os - Apache 2.0
 
-
 Other rust buck2 projects:
 https://github.com/search?q=load%28%22%40prelude%2F%2Ftoolchains%3Arust.bzl%22%2C+%22system_rust_toolchain%22%29&type=code
 
 Related upstream discussions: shared fixup repositories
 ([reindeer#73](https://github.com/facebookincubator/reindeer/issues/73)),
 fixup gallery ([reindeer#19](https://github.com/facebookincubator/reindeer/issues/19)).
-
 
 ## TODO
 
