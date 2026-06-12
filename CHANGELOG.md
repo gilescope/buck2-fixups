@@ -1,9 +1,14 @@
+2026-06-12
+CI extended to windows-x86_64 (native buck2/reindeer msvc binaries under
+Git Bash) plus a windows weekly sweep. test-cell.sh copies via
+git ls-files | tar (no rsync on windows runners); .gitattributes forces LF.
+
 2026-06-11
 CI extended: linux-x86_64 + linux-aarch64 + macos-aarch64 matrix; Linux jobs
 run via Earthfile (locally reproducible: earthly +ci / +build-all). Weekly
 full-crate sweep (build-all.sh, ~950 crates in one --keep-going build)
 checked against `ci/expected-failures-<platform>.txt`. Pinned buck2 2026-06-01
-+ reindeer v2026.04.27.00 (now canonical for generating third-party/BUCK).
+and reindeer v2026.04.27.00 (now canonical for generating third-party/BUCK).
 Newer reindeer flushed out 57 stale buildscript fixups (crates that dropped
 their build.rs) — removed; windows_*​ static_libs now glob lib versions.
 
