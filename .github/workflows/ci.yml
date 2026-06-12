@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       sweep:
-        description: 'Run the full crate sweep'
+        description: 'Run the full crate sweep (false = normal PR jobs)'
         type: boolean
         default: true
 
@@ -23,7 +23,10 @@ env:
 jobs:
   linux:
     name: linux ${{ matrix.arch }}
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    # workflow_dispatch with sweep=false runs the normal PR jobs: the
+    # dependabot helper uses it to re-run CI after pushing a fix (pushes made
+    # with GITHUB_TOKEN don't retrigger pull_request workflows).
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.sweep)
     strategy:
       fail-fast: false
       matrix:
@@ -62,7 +65,7 @@ jobs:
 
   macos:
     name: macos aarch64
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && !inputs.sweep)
     runs-on: macos-latest
     permissions:
       contents: read

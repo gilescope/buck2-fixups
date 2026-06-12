@@ -1,0 +1,61 @@
+# Dependabot bumps third-party/Cargo.{toml,lock} but can't run `reindeer
+# buckify`, so its PRs always fail the buckify-check. This workflow
+# regenerates third-party/BUCK on dependabot's PR branch, pushes the fix,
+# and re-dispatches CI (a GITHUB_TOKEN push doesn't retrigger pull_request
+# workflows; workflow_dispatch is exempt from that recursion guard).
+name: Dependabot helper
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['third-party/**']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  regenerate-buck:
+    # Same-repo dependabot branches only — never run PR code from forks or
+    # other authors with a write token.
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.head_ref, 'dependabot/') &&
+      github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # push the regenerated BUCK to the PR branch
+      actions: write   # re-dispatch ci.yml after the push
+    env:
+      FORCE_COLOR: 1
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Install earthly
+        uses: earthly/actions-setup@43211c7a0eae5344d6d79fb4aaf209c8f8866203 # v1.0.13
+        with:
+          version: v0.8.15
+
+      - name: Regenerate third-party/BUCK
+        run: earthly +buckify
+
+      - name: Commit, push, re-dispatch CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          git add third-party/BUCK
+          if git diff --staged --quiet; then
+            echo "third-party/BUCK already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci: regenerate third-party/BUCK"
+          git push origin "HEAD:$HEAD_REF"
+          gh workflow run ci.yml --ref "$HEAD_REF" -f sweep=false
