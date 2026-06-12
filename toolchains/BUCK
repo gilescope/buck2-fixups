@@ -18,6 +18,14 @@ system_rust_toolchain(
 
 system_cxx_toolchain(
     name = "cxx",
+    # Absolute path: the prelude's buildscript cc shim execs the compiler
+    # via os.execl, which does no PATH lookup - a bare "clang" fails with
+    # FileNotFoundError (prelude/rust/tools/from_any_dir.py). Absolute paths
+    # sidestep it.
+    compiler = "/usr/bin/clang",
+    cxx_compiler = "/usr/bin/clang++",
+    linker = "/usr/bin/clang++",
+    archiver = "/usr/bin/ar",
     visibility = ["PUBLIC"],
 )
 

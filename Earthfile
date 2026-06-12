@@ -1,7 +1,9 @@
 VERSION 0.8
 # CI targets, runnable locally: earthly +ci · earthly +build-all
 # Works on amd64 and arm64 (TARGETARCH picks the right release binaries).
-FROM rust:1.87-bookworm
+# trixie: the prelude's buildscript shims need python >= 3.12
+# (PurePath.relative_to walk_up); bookworm ships 3.11.
+FROM rust:1.92-trixie
 WORKDIR /repo
 
 tools:
