@@ -8,7 +8,12 @@ header from 38 fixups that were authored here, not copied from the
 facebook/buck2 or ocamlrep shims (template copy-paste artifact). Added
 .github/dependabot.yml (cargo now lives in /third-party) with a 7-day
 cooldown. build-all.sh now detects mid-build DICE cancellation instead of
-reporting unbuilt targets as failures.
+reporting unbuilt targets as failures. Added dependabot-helper workflow:
+dependabot can't run reindeer, so its third-party bumps always failed
+buckify-check; the helper regenerates third-party/BUCK (new earthly
++buckify target), pushes the fix to the PR branch, and re-dispatches CI
+(workflow_dispatch with sweep=false now runs the normal PR jobs, since
+GITHUB_TOKEN pushes don't retrigger pull_request workflows).
 
 2026-06-11
 Expected-failure lists cut to one entry (aws-lc-sys on linux; macOS empty).

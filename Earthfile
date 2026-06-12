@@ -39,6 +39,14 @@ buckify-check:
         if [ $rc -ne 0 ] || [ -n "$output" ]; then echo "buckify (exit $rc):"; echo "$output"; exit 1; fi; \
         diff -u /tmp/BUCK.committed third-party/BUCK || { echo "committed third-party/BUCK is stale — re-run reindeer buckify"; exit 1; }
 
+# Regenerate third-party/BUCK and write it back to the host. Used by the
+# dependabot-helper workflow to fix bot PRs that bump third-party deps
+# without re-running reindeer; also handy locally.
+buckify:
+    FROM +src
+    RUN reindeer buckify
+    SAVE ARTIFACT third-party/BUCK AS LOCAL third-party/BUCK
+
 # Prove the repo works as a buck2 cell named `fixups` (README contract).
 test-cell:
     FROM +src
