@@ -109,6 +109,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      # The prelude's msvc discovery (vswhere.py) hardcodes x64 lib/bin paths;
+      # with VCINSTALLDIR set it trusts PATH/LIB/INCLUDE instead, so vcvars
+      # arm64 is the only way to link ARM64 (else LNK4272 x64-vs-ARM64).
+      - name: MSVC arm64 environment
+        if: matrix.arch == 'aarch64'
+        uses: ilammy/msvc-dev-cmd@a102174a2b586eec2ea151a69e6fd14404a8ce7c # v1.13.0
+        with:
+          arch: arm64
+
       # reindeer ships no windows-arm build; the x86_64 binary runs under
       # Windows 11 x64 emulation.
       - name: Install buck2 + reindeer
@@ -211,6 +220,15 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: '3.13'
+
+      # The prelude's msvc discovery (vswhere.py) hardcodes x64 lib/bin paths;
+      # with VCINSTALLDIR set it trusts PATH/LIB/INCLUDE instead, so vcvars
+      # arm64 is the only way to link ARM64 (else LNK4272 x64-vs-ARM64).
+      - name: MSVC arm64 environment
+        if: matrix.arch == 'aarch64'
+        uses: ilammy/msvc-dev-cmd@a102174a2b586eec2ea151a69e6fd14404a8ce7c # v1.13.0
+        with:
+          arch: arm64
 
       # reindeer ships no windows-arm build; the x86_64 binary runs under
       # Windows 11 x64 emulation.

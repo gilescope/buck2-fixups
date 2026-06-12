@@ -9,7 +9,16 @@ set -e
 # Git Bash reports e.g. MINGW64_NT-10.0-20348; fold to a stable name.
 os="$(uname -s)"
 case "$os" in MINGW*|MSYS*|CYGWIN*) os=Windows ;; esac
-platform="${os}-$(uname -m)"
+arch="$(uname -m)"
+if [ "$os" = Windows ]; then
+  # Git Bash may itself run x64-emulated on arm64, making uname -m lie;
+  # PROCESSOR_ARCHITEW6432 exposes the real machine arch to emulated shells.
+  case "${PROCESSOR_ARCHITEW6432:-${PROCESSOR_ARCHITECTURE:-}}" in
+    ARM64) arch=aarch64 ;;
+    AMD64) arch=x86_64 ;;
+  esac
+fi
+platform="${os}-${arch}"
 expected="ci/expected-failures-${platform}.txt"
 report=$(mktemp)
 trap 'rm -f "$report"' EXIT
