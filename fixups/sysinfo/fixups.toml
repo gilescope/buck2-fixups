@@ -1,4 +1,3 @@
-buildscript.run = false
 extra_srcs = ["README.md", "md_doc/**/*.md"]
 
 ['cfg(target_os = "macos")']

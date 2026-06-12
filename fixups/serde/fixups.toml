@@ -6,3 +6,9 @@
 # of this source tree.
 
 buildscript.run = false
+
+# serde >= 1.0.228 splits into serde/serde_core and the build script
+# generates an OUT_DIR re-export shim.
+['cfg(version = ">=1.0.228")']
+buildscript.run = true
+cargo_env = true

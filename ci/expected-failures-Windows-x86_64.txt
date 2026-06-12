@@ -24,3 +24,34 @@ fixups//third-party:backtrace
 fixups//third-party:color-eyre
 fixups//third-party:error-chain
 fixups//third-party:failure
+# native buildscripts that fail in the msvc shim environment (vendored
+# C/cmake/perl builds); refine after the first windows sweep:
+fixups//third-party:aws-lc-rs
+fixups//third-party:libgit2-sys
+fixups//third-party:libsqlite3-sys
+fixups//third-party:openssl
+fixups//third-party:openssl-sys
+fixups//third-party:rusqlite
+fixups//third-party:secp256k1-sys
+fixups//third-party:zstd-sys
+# dependents of the above (fail via dep):
+fixups//third-party:zip
+fixups//third-party:zstd
+fixups//third-party:zstd-safe
+fixups//third-party:git2
+# rustls/aws-lc blast radius (same as linux: feature unification re-enables
+# rustls' aws-lc-rs provider; aws-lc-sys fails on the cc-rs hardlink issue):
+fixups//third-party:aws-config
+fixups//third-party:aws-runtime
+fixups//third-party:aws-sdk-s3
+fixups//third-party:aws-sdk-sso
+fixups//third-party:aws-sdk-ssooidc
+fixups//third-party:aws-sdk-sts
+fixups//third-party:aws-smithy-http-client
+fixups//third-party:aws-smithy-runtime
+fixups//third-party:hyper-rustls
+fixups//third-party:quinn-proto
+fixups//third-party:rustls
+fixups//third-party:rustls-webpki
+fixups//third-party:tokio-rustls
+fixups//third-party:ureq

@@ -2,7 +2,7 @@
 cargo_env = true
 
 rustc_flags = [
-    "-Lnative=$(location //third-party:rdkafka-sys-4.8.0+2.3.0-build-script-run[out_dir])/lib",
+    "-Lnative=$(location //third-party:rdkafka-sys-4.8-build-script-run[out_dir])/lib",
     "-lstatic=rdkafka",
 ]
 

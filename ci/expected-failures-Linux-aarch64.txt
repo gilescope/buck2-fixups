@@ -5,4 +5,21 @@
 # aws-lc-sys's buildscript probe-links a C binary through the prelude's
 # rust-configured ld shim, hitting "duplicate symbol: __dso_handle" — the
 # same failure as the TODO in prelude/rust/tools/from_any_dir.py.
+# Everything below is its blast radius: feature unification (quinn,
+# hyper-rustls, ureq) re-enables rustls' default aws-lc-rs provider.
 fixups//third-party:aws-lc-sys
+fixups//third-party:aws-config
+fixups//third-party:aws-lc-rs
+fixups//third-party:aws-runtime
+fixups//third-party:aws-sdk-s3
+fixups//third-party:aws-sdk-sso
+fixups//third-party:aws-sdk-ssooidc
+fixups//third-party:aws-sdk-sts
+fixups//third-party:aws-smithy-http-client
+fixups//third-party:aws-smithy-runtime
+fixups//third-party:hyper-rustls
+fixups//third-party:quinn-proto
+fixups//third-party:rustls
+fixups//third-party:rustls-webpki
+fixups//third-party:tokio-rustls
+fixups//third-party:ureq

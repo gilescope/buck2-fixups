@@ -1,7 +1,7 @@
 # MIT / Apache-2.0 https://github.com/crates-pro/crates-pro-infra/tree/main/third-party/fixups
 cargo_env = true
 
+# Vendored openssl (feature set in the rig manifest): hermetic, no system
+# OPENSSL_* paths. OPT_LEVEL is for cc-rs compiling the vendored tree.
 [buildscript.run.env]
-OPENSSL_LIB_DIR = "/usr/local/lib64"
-OPENSSL_INCLUDE_DIR = "/usr/include"
 OPT_LEVEL = "3"

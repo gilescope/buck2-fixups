@@ -1,4 +1,16 @@
 2026-06-12
+Graveyard excavation: ~70 commented-out crates revived (crypto matrix moved
+from stale pre-release pins to the now-stabilised RustCrypto 0.11/0.2 line;
+vendored openssl 3.5 with DEP_OPENSSL_VERSION_NUMBER cfg pairing; bundled
+rusqlite; git2 sans ssh/https; zstd/lzma/libgit2/libssh2/rdkafka fixups had
+stale full-version $(location) refs - reindeer names targets major.minor).
+All 234 platform-neutral transitive-only crates surfaced as direct deps so
+sweeps build them (beware: the manifest's [target] table - new deps must land
+in [dependencies]). Sweep now covers ~1250 crates per platform. Still buried,
+with reasons inline: sqlx (links clash, #36), test-fuzz family, rdrand,
+dwrote, gloo-timers, wit-bindgen.
+
+2026-06-12
 CI extended to windows-x86_64 and windows-aarch64 (native buck2 msvc
 binaries under Git Bash; reindeer x86_64-emulated on arm) plus a
 windows-x86_64 weekly sweep. Crate builds skipped on windows-arm: the
