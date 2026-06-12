@@ -53,7 +53,7 @@ jobs:
 
       - name: Build changed fixups
         run: |
-          crates=$(git diff --name-only origin/main...HEAD | grep '^fixups/' | cut -d/ -f2 | sort -u | sed 's|^|//third-party:|' | tr '\n' ' ')
+          crates=$(git diff --name-only origin/main...HEAD | grep '^fixups/' | cut -d/ -f2 | sort -u | tr '\n' ' ')
           if [ -n "$crates" ]; then
             earthly +build-crates --crates="$crates"
           else

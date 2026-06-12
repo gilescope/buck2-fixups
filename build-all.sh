@@ -15,8 +15,16 @@ trap 'rm -f "$report"' EXIT
 targets=$(buck2 uquery "kind('^alias\$', //third-party:)" 2>/dev/null)
 echo "Building $(echo "$targets" | wc -l | tr -d ' ') crates for ${platform}..."
 
+buildlog=$(mktemp)
 # shellcheck disable=SC2086
-buck2 build --keep-going --build-report "$report" $targets || true
+buck2 build --keep-going --build-report "$report" $targets 2>&1 | tee "$buildlog" || true
+# A concurrent buck2 command or a BUCK rewrite mid-build cancels DICE keys;
+# the report then marks unbuilt targets as failures. Don't diff bogus data.
+if grep -q "evaluation of this key was cancelled" "$buildlog"; then
+  echo "✗ build was cancelled mid-flight (concurrent buck2/buckify?) — rerun on a quiescent tree"
+  rm -f "$buildlog"; exit 2
+fi
+rm -f "$buildlog"
 
 failed=$(python3 - "$report" <<'EOF'
 import json, sys

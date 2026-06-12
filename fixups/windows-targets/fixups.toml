@@ -4,6 +4,11 @@
 # LICENSE-MIT file in the root directory of this source tree and the Apache
 # License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 # of this source tree.
+#
+# Unlike the facebook/buck2 shim we don't enable windows_raw_dylib on linux:
+# raw-dylib is unstable on ELF with stable rustc (rust-lang/rust#135694).
 
-['cfg(all(version = ">=0.48.0", any(target_os = "windows", target_os = "linux")))']
+# (--cfg is a no-op for pre-0.48 versions that never test it, so no version
+# predicate is needed.)
+['cfg(target_os = "windows")']
 cfgs = ["windows_raw_dylib"]
