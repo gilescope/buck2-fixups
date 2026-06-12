@@ -1,7 +1,11 @@
 2026-06-12
 CI extended to windows-x86_64 and windows-aarch64 (native buck2 msvc
-binaries under Git Bash; reindeer x86_64-emulated on arm) plus windows
-weekly sweeps. test-cell.sh copies via
+binaries under Git Bash; reindeer x86_64-emulated on arm) plus a
+windows-x86_64 weekly sweep. Crate builds skipped on windows-arm: the
+prelude's msvc discovery hardcodes x64 lib paths so aarch64 links fail.
+Fixed two latent windows breaks from main: unix-only absolute compiler
+paths in toolchains/BUCK (now select()ed per OS) and missing vcruntime.lib
+(__CxxFrameHandler3) on msvc targets. test-cell.sh copies via
 git ls-files | tar (no rsync on windows runners); .gitattributes forces LF.
 
 2026-06-12

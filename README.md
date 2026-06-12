@@ -5,7 +5,9 @@
 411 and counting... (please feel free to contribute!)
 
 CI-tested on linux-x86_64, linux-aarch64, macos-aarch64, windows-x86_64
-and windows-aarch64: `reindeer
+and windows-aarch64 (buckify + cell consumption only on windows-arm:
+buck2's prelude msvc discovery is x64-only, so aarch64 links fail —
+see issue #42): `reindeer
 buckify` must be warning-free, the committed `third-party/BUCK` must be
 up to date, changed fixups must `buck2 build`, and cell consumption is
 verified (`test-cell.sh`). A weekly sweep builds **every** crate

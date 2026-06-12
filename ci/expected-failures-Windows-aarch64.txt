@@ -1,3 +1,0 @@
-# Crates known to fail on this platform (one fixups//third-party:NAME per line).
-# Canonical environment: GitHub windows-11-arm runners. build-all.sh fails CI
-# on new failures and stale entries.

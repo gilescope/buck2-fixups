@@ -109,15 +109,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # The prelude's msvc discovery (vswhere.py) hardcodes x64 lib/bin paths;
-      # with VCINSTALLDIR set it trusts PATH/LIB/INCLUDE instead, so vcvars
-      # arm64 is the only way to link ARM64 (else LNK4272 x64-vs-ARM64).
-      - name: MSVC arm64 environment
-        if: matrix.arch == 'aarch64'
-        uses: ilammy/msvc-dev-cmd@a102174a2b586eec2ea151a69e6fd14404a8ce7c # v1.13.0
-        with:
-          arch: arm64
-
       # reindeer ships no windows-arm build; the x86_64 binary runs under
       # Windows 11 x64 emulation.
       - name: Install buck2 + reindeer
@@ -132,6 +123,11 @@ jobs:
           "$HOME/bin/buck2.exe" --version
 
       - name: Run tests
+        # No crate builds on arm: the prelude's msvc discovery (vswhere.py)
+        # hardcodes x64 lib paths, so aarch64 links fail (see issue tracker).
+        # buckify + cell consumption still verify there.
+        env:
+          SKIP_CRATE_BUILDS: ${{ matrix.arch == 'aarch64' && '1' || '' }}
         run: ./test.sh
 
   sweep-linux:
@@ -191,18 +187,12 @@ jobs:
       - name: Build all crates
         run: ./build-all.sh
 
+  # x86_64 only: the prelude's msvc discovery can't link aarch64 yet (x64
+  # lib paths hardcoded in vswhere.py), so an arm sweep would be ~all noise.
   sweep-windows:
-    name: sweep windows ${{ matrix.arch }}
+    name: sweep windows x86_64
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: windows-latest
-            arch: x86_64
-          - runner: windows-11-arm
-            arch: aarch64
-    runs-on: ${{ matrix.runner }}
+    runs-on: windows-latest
     timeout-minutes: 300
     permissions:
       contents: read
@@ -221,23 +211,10 @@ jobs:
         with:
           python-version: '3.13'
 
-      # The prelude's msvc discovery (vswhere.py) hardcodes x64 lib/bin paths;
-      # with VCINSTALLDIR set it trusts PATH/LIB/INCLUDE instead, so vcvars
-      # arm64 is the only way to link ARM64 (else LNK4272 x64-vs-ARM64).
-      - name: MSVC arm64 environment
-        if: matrix.arch == 'aarch64'
-        uses: ilammy/msvc-dev-cmd@a102174a2b586eec2ea151a69e6fd14404a8ce7c # v1.13.0
-        with:
-          arch: arm64
-
-      # reindeer ships no windows-arm build; the x86_64 binary runs under
-      # Windows 11 x64 emulation.
       - name: Install buck2 + reindeer
         run: |
-          # windows-11-arm images don't ship zstd (windows-latest does).
-          command -v zstd >/dev/null || choco install -y zstandard --no-progress
           mkdir -p "$HOME/bin"
-          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-${{ matrix.arch }}-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
           curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/reindeer.exe"
           echo "$HOME/bin" >> "$GITHUB_PATH"
 
