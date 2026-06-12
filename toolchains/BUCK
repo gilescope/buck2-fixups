@@ -13,6 +13,13 @@ system_genrule_toolchain(
 system_rust_toolchain(
     name = "rust",
     default_edition = "2021",
+    # aarch64-pc-windows-msvc unwinding needs the C++ EH personality
+    # (__CxxFrameHandler3) from vcruntime.lib, which the explicit native-lib
+    # list omits; x86_64 uses SEH and doesn't. Harmless where unneeded.
+    rustc_flags = select({
+        "config//os:windows": ["-Clink-arg=vcruntime.lib"],
+        "DEFAULT": [],
+    }),
     visibility = ["PUBLIC"],
 )
 
@@ -21,11 +28,24 @@ system_cxx_toolchain(
     # Absolute path: the prelude's buildscript cc shim execs the compiler
     # via os.execl, which does no PATH lookup - a bare "clang" fails with
     # FileNotFoundError (prelude/rust/tools/from_any_dir.py). Absolute paths
-    # sidestep it.
-    compiler = "/usr/bin/clang",
-    cxx_compiler = "/usr/bin/clang++",
-    linker = "/usr/bin/clang++",
-    archiver = "/usr/bin/ar",
+    # sidestep it. On Windows these unix paths don't exist and break every
+    # link step; None/"cl.exe" sentinels keep the prelude's MSVC discovery.
+    compiler = select({
+        "config//os:windows": "cl.exe",
+        "DEFAULT": "/usr/bin/clang",
+    }),
+    cxx_compiler = select({
+        "config//os:windows": "cl.exe",
+        "DEFAULT": "/usr/bin/clang++",
+    }),
+    linker = select({
+        "config//os:windows": "link.exe",
+        "DEFAULT": "/usr/bin/clang++",
+    }),
+    archiver = select({
+        "config//os:windows": None,
+        "DEFAULT": "/usr/bin/ar",
+    }),
     visibility = ["PUBLIC"],
 )
 

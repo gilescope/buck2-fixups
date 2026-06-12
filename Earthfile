@@ -39,6 +39,14 @@ buckify-check:
         if [ $rc -ne 0 ] || [ -n "$output" ]; then echo "buckify (exit $rc):"; echo "$output"; exit 1; fi; \
         diff -u /tmp/BUCK.committed third-party/BUCK || { echo "committed third-party/BUCK is stale — re-run reindeer buckify"; exit 1; }
 
+# Regenerate third-party/BUCK and write it back to the host. Used by the
+# dependabot-helper workflow to fix bot PRs that bump third-party deps
+# without re-running reindeer; also handy locally.
+buckify:
+    FROM +src
+    RUN reindeer buckify
+    SAVE ARTIFACT third-party/BUCK AS LOCAL third-party/BUCK
+
 # Prove the repo works as a buck2 cell named `fixups` (README contract).
 test-cell:
     FROM +src
@@ -46,15 +54,18 @@ test-cell:
 
 # Build specific crates by bare name, e.g. the ones whose fixups changed:
 #   earthly +build-crates --crates="serde ring"
-# Names without a top-level rig target are skipped (a fixup can exist for a
-# crate the test rig doesn't depend on).
+# Skipped: names without a top-level rig target (a fixup can exist for a
+# crate the rig doesn't depend on) and entries in the platform's
+# expected-failures list (known-broken; the sweep tracks those).
 build-crates:
     FROM +src
     ARG --required crates
     RUN available=$(buck2 uquery "kind('^alias\$', //third-party:)" | sed 's|.*:||'); \
+        expected=$(sed '/^#/d;/^$/d;s|.*:||' "ci/expected-failures-$(uname -s)-$(uname -m).txt" 2>/dev/null || true); \
         to_build=""; \
         for c in $crates; do \
-          if echo "$available" | grep -qx "$c"; then to_build="$to_build //third-party:$c"; \
+          if echo "$expected" | grep -qx "$c"; then echo "skipping $c - expected failure on this platform"; \
+          elif echo "$available" | grep -qx "$c"; then to_build="$to_build //third-party:$c"; \
           else echo "skipping $c - no rig target"; fi; \
         done; \
         if [ -n "$to_build" ]; then buck2 build $to_build; else echo "nothing to build"; fi
