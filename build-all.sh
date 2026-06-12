@@ -6,7 +6,20 @@ set -e
 # list in ci/expected-failures-<os>-<arch>.txt. Fails on NEW failures and on
 # stale entries (crates that started passing), so the lists stay honest.
 
-platform="$(uname -s)-$(uname -m)"
+# Git Bash reports e.g. MINGW64_NT-10.0-20348; fold to a stable name.
+os="$(uname -s)"
+case "$os" in MINGW*|MSYS*|CYGWIN*) os=Windows ;; esac
+arch="$(uname -m)"
+if [ "$os" = Windows ]; then
+  # Git Bash may itself run x64-emulated on arm64, making uname -m lie
+  # (and PROCESSOR_ARCHITEW6432 is WOW64-32-only, so it lies too).
+  # RUNNER_ARCH is GitHub's job-level truth.
+  case "${RUNNER_ARCH:-}" in
+    ARM64) arch=aarch64 ;;
+    X64) arch=x86_64 ;;
+  esac
+fi
+platform="${os}-${arch}"
 expected="ci/expected-failures-${platform}.txt"
 report=$(mktemp)
 trap 'rm -f "$report"' EXIT
@@ -26,7 +39,9 @@ if grep -q "evaluation of this key was cancelled" "$buildlog"; then
 fi
 rm -f "$buildlog"
 
-failed=$(python3 - "$report" <<'EOF'
+# Windows runners ship `python`, not `python3`.
+python="$(command -v python3 || command -v python)"
+failed=$("$python" - "$report" <<'EOF'
 import json, sys
 report = json.load(open(sys.argv[1]))
 for label, result in sorted(report.get("results", {}).items()):

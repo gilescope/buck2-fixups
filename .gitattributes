@@ -1,0 +1,3 @@
+# Force LF everywhere: Windows runners default core.autocrlf=true, and CRLF
+# breaks bash scripts under Git Bash and makes buckify output nondeterministic.
+* text=auto eol=lf
