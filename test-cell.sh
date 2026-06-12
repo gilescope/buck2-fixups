@@ -11,8 +11,16 @@ trap 'buck2 killall 2>/dev/null || true; rm -rf "$scratch"' EXIT
 
 consumer="$scratch/consumer"
 mkdir -p "$consumer/fixups-src"
-rsync -a --exclude buck-out --exclude buck-out-docker --exclude .git \
-      --exclude target --exclude '.cargo' ./ "$consumer/fixups-src/"
+# Tracked files only (skips buck-out, target, .git, .cargo). tar instead of
+# rsync: Git Bash on Windows runners has no rsync. Earthly containers get the
+# repo without .git, so fall back to find there.
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git ls-files -z
+else
+  find . \( -name buck-out -o -name buck-out-docker -o -name .git \
+            -o -name target -o -name .cargo \) -prune \
+         -o \( -type f -o -type l \) -print0
+fi | tar -cf - --null -T - | tar -xf - -C "$consumer/fixups-src"
 
 cd "$consumer"
 touch .buckroot BUCK
