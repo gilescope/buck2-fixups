@@ -4,8 +4,8 @@
 
 411 and counting... (please feel free to contribute!)
 
-CI-tested on linux-x86_64, linux-aarch64, macos-aarch64 and
-windows-x86_64: `reindeer
+CI-tested on linux-x86_64, linux-aarch64, macos-aarch64, windows-x86_64
+and windows-aarch64: `reindeer
 buckify` must be warning-free, the committed `third-party/BUCK` must be
 up to date, changed fixups must `buck2 build`, and cell consumption is
 verified (`test-cell.sh`). A weekly sweep builds **every** crate

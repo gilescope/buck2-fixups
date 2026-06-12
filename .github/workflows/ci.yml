@@ -85,9 +85,17 @@ jobs:
         run: ./test.sh
 
   windows:
-    name: windows x86_64
+    name: windows ${{ matrix.arch }}
     if: github.event_name == 'push' || github.event_name == 'pull_request'
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: x86_64
+          - runner: windows-11-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     env:
@@ -101,12 +109,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      # reindeer ships no windows-arm build; the x86_64 binary runs under
+      # Windows 11 x64 emulation.
       - name: Install buck2 + reindeer
         run: |
           mkdir -p "$HOME/bin"
-          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-${{ matrix.arch }}-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
           curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/reindeer.exe"
           echo "$HOME/bin" >> "$GITHUB_PATH"
+          uname -sm
           "$HOME/bin/buck2.exe" --version
 
       - name: Run tests
@@ -170,9 +181,17 @@ jobs:
         run: ./build-all.sh
 
   sweep-windows:
-    name: sweep windows x86_64
+    name: sweep windows ${{ matrix.arch }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-latest
+            arch: x86_64
+          - runner: windows-11-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     permissions:
       contents: read
@@ -191,10 +210,12 @@ jobs:
         with:
           python-version: '3.13'
 
+      # reindeer ships no windows-arm build; the x86_64 binary runs under
+      # Windows 11 x64 emulation.
       - name: Install buck2 + reindeer
         run: |
           mkdir -p "$HOME/bin"
-          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-${{ matrix.arch }}-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
           curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/reindeer.exe"
           echo "$HOME/bin" >> "$GITHUB_PATH"
 

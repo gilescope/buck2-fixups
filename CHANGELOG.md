@@ -1,6 +1,7 @@
 2026-06-12
-CI extended to windows-x86_64 (native buck2/reindeer msvc binaries under
-Git Bash) plus a windows weekly sweep. test-cell.sh copies via
+CI extended to windows-x86_64 and windows-aarch64 (native buck2 msvc
+binaries under Git Bash; reindeer x86_64-emulated on arm) plus windows
+weekly sweeps. test-cell.sh copies via
 git ls-files | tar (no rsync on windows runners); .gitattributes forces LF.
 
 2026-06-11
