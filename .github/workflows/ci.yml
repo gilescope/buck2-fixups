@@ -113,6 +113,8 @@ jobs:
       # Windows 11 x64 emulation.
       - name: Install buck2 + reindeer
         run: |
+          # windows-11-arm images don't ship zstd (windows-latest does).
+          command -v zstd >/dev/null || choco install -y zstandard --no-progress
           mkdir -p "$HOME/bin"
           curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-${{ matrix.arch }}-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
           curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/reindeer.exe"
@@ -214,6 +216,8 @@ jobs:
       # Windows 11 x64 emulation.
       - name: Install buck2 + reindeer
         run: |
+          # windows-11-arm images don't ship zstd (windows-latest does).
+          command -v zstd >/dev/null || choco install -y zstandard --no-progress
           mkdir -p "$HOME/bin"
           curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-${{ matrix.arch }}-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
           curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/reindeer.exe"
