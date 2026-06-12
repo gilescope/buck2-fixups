@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -e -x
 
+# Git Bash/MSYS rewrites args that look like POSIX paths, mangling buck2
+# target patterns (//third-party:foo -> /third-party:foo). Disable it.
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;; esac
+
 # Test:
 output=$(reindeer buckify 2>&1)
 if [[ -n "$output" ]]; then
