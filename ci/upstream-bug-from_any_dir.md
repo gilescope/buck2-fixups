@@ -67,3 +67,15 @@ TypeError: PurePath.relative_to() got an unexpected keyword argument 'walk_up'
 
 Either document a python >= 3.12 requirement for the prelude or implement
 the walk-up manually (os.path.relpath has no such restriction).
+
+## Related: windows buildscript failures
+
+On windows runners every cc-rs-using buildscript under buck fails with:
+
+```text
+error occurred in cc-rs: Could not copy or create a hard-link to the generated lib file.
+```
+
+(cc-rs hard-links its output into OUT_DIR; across buck-out artifact dirs on
+the runners' filesystem layout this fails.) Tracked via
+ci/expected-failures-Windows-x86_64.txt rather than worked around for now.

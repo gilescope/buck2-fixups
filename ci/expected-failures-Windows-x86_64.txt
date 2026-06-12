@@ -24,3 +24,18 @@ fixups//third-party:backtrace
 fixups//third-party:color-eyre
 fixups//third-party:error-chain
 fixups//third-party:failure
+# native buildscripts that fail in the msvc shim environment (vendored
+# C/cmake/perl builds); refine after the first windows sweep:
+fixups//third-party:aws-lc-rs
+fixups//third-party:libgit2-sys
+fixups//third-party:libsqlite3-sys
+fixups//third-party:openssl
+fixups//third-party:openssl-sys
+fixups//third-party:rusqlite
+fixups//third-party:secp256k1-sys
+fixups//third-party:zstd-sys
+# dependents of the above (fail via dep):
+fixups//third-party:zip
+fixups//third-party:zstd
+fixups//third-party:zstd-safe
+fixups//third-party:git2
