@@ -1,3 +1,26 @@
 # Crates known to fail on this platform (one fixups//third-party:NAME per line).
 # Canonical environment: GitHub windows-latest runners. build-all.sh fails CI
 # on new failures and stale entries.
+
+# wrong-OS crates (linux-only):
+fixups//third-party:inotify
+fixups//third-party:inotify-sys
+fixups//third-party:xattr
+# wrong-OS crates (macOS-only):
+fixups//third-party:core-foundation
+fixups//third-party:security-framework
+fixups//third-party:system-configuration-sys
+# native build scripts needing fixup work (asm/cmake/vendored C):
+fixups//third-party:aws-lc-sys
+fixups//third-party:lz4
+fixups//third-party:lz4-sys
+fixups//third-party:lzma-sys
+fixups//third-party:psm
+fixups//third-party:sha1-asm
+fixups//third-party:sha2-asm
+fixups//third-party:xz2
+# broken against current msvc rustc (old abandoned crates):
+fixups//third-party:backtrace
+fixups//third-party:color-eyre
+fixups//third-party:error-chain
+fixups//third-party:failure

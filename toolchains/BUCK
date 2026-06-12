@@ -13,6 +13,13 @@ system_genrule_toolchain(
 system_rust_toolchain(
     name = "rust",
     default_edition = "2021",
+    # aarch64-pc-windows-msvc unwinding needs the C++ EH personality
+    # (__CxxFrameHandler3) from vcruntime.lib, which the explicit native-lib
+    # list omits; x86_64 uses SEH and doesn't. Harmless where unneeded.
+    rustc_flags = select({
+        "config//os:windows": ["-Clink-arg=vcruntime.lib"],
+        "DEFAULT": [],
+    }),
     visibility = ["PUBLIC"],
 )
 
