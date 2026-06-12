@@ -38446,23 +38446,23 @@ alias(
 )
 
 http_archive(
-    name = "zerocopy-0.8.25.crate",
-    sha256 = "a1702d9583232ddb9174e01bb7c15a2ab8fb1bc6f227aa1233858c351a3ba0cb",
-    strip_prefix = "zerocopy-0.8.25",
-    urls = ["https://static.crates.io/crates/zerocopy/0.8.25/download"],
+    name = "zerocopy-0.8.50.crate",
+    sha256 = "3b065d4f0e55f82fae73202e189638116a87c55ab6b8e6c2721e13dd9d854ad1",
+    strip_prefix = "zerocopy-0.8.50",
+    urls = ["https://static.crates.io/crates/zerocopy/0.8.50/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "zerocopy-0.8",
-    srcs = [":zerocopy-0.8.25.crate"],
+    srcs = [":zerocopy-0.8.50.crate"],
     crate = "zerocopy",
-    crate_root = "zerocopy-0.8.25.crate/src/lib.rs",
+    crate_root = "zerocopy-0.8.50.crate/src/lib.rs",
     edition = "2021",
     env = {
         "CARGO_BIN_NAME": "zerocopy",
         "CARGO_CRATE_NAME": "zerocopy",
-        "CARGO_MANIFEST_DIR": "zerocopy-0.8.25.crate",
+        "CARGO_MANIFEST_DIR": "zerocopy-0.8.50.crate",
         "CARGO_PKG_AUTHORS": "Joshua Liebow-Feeser <joshlf@google.com>:Jack Wrenn <jswrenn@amazon.com>",
         "CARGO_PKG_DESCRIPTION": "Zerocopy makes zero-cost memory manipulation effortless. We write \"unsafe\" so you don't have to.",
         "CARGO_PKG_HOMEPAGE": "",
@@ -38470,10 +38470,10 @@ cargo.rust_library(
         "CARGO_PKG_README": "README.md",
         "CARGO_PKG_REPOSITORY": "https://github.com/google/zerocopy",
         "CARGO_PKG_RUST_VERSION": "1.56.0",
-        "CARGO_PKG_VERSION": "0.8.25",
+        "CARGO_PKG_VERSION": "0.8.50",
         "CARGO_PKG_VERSION_MAJOR": "0",
         "CARGO_PKG_VERSION_MINOR": "8",
-        "CARGO_PKG_VERSION_PATCH": "25",
+        "CARGO_PKG_VERSION_PATCH": "50",
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = ["simd"],
@@ -38487,18 +38487,18 @@ alias(
 )
 
 http_archive(
-    name = "zerocopy-derive-0.8.25.crate",
-    sha256 = "28a6e20d751156648aa063f3800b706ee209a32c0b4d9f24be3d980b01be55ef",
-    strip_prefix = "zerocopy-derive-0.8.25",
-    urls = ["https://static.crates.io/crates/zerocopy-derive/0.8.25/download"],
+    name = "zerocopy-derive-0.8.50.crate",
+    sha256 = "0b631b19d36a892ab55420c92dbc83ccd79274f25be714855d3074aa71cab639",
+    strip_prefix = "zerocopy-derive-0.8.50",
+    urls = ["https://static.crates.io/crates/zerocopy-derive/0.8.50/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "zerocopy-derive-0.8",
-    srcs = [":zerocopy-derive-0.8.25.crate"],
+    srcs = [":zerocopy-derive-0.8.50.crate"],
     crate = "zerocopy_derive",
-    crate_root = "zerocopy-derive-0.8.25.crate/src/lib.rs",
+    crate_root = "zerocopy-derive-0.8.50.crate/src/lib.rs",
     edition = "2021",
     proc_macro = True,
     visibility = [],
