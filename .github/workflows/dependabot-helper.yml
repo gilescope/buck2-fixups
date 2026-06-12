@@ -1,0 +1,105 @@
+# Dependabot bumps third-party/Cargo.{toml,lock} but can't run `reindeer
+# buckify`, so its PRs always fail the buckify-check. This workflow
+# regenerates third-party/BUCK on dependabot's PR branch, pushes the fix,
+# and re-dispatches CI (a GITHUB_TOKEN push doesn't retrigger pull_request
+# workflows; workflow_dispatch is exempt from that recursion guard).
+name: Dependabot helper
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['third-party/**']
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: 'Dependabot PR number to regenerate'
+        type: number
+        required: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  regenerate-buck:
+    # Same-repo dependabot branches only — never run PR code from forks or
+    # other authors with a write token. Gate on the PR author, not the event
+    # actor: "Update branch" / manual pushes by maintainers fire synchronize
+    # with the human as actor, and the helper should still heal those.
+    # workflow_dispatch needs write access to fire; the resolve step below
+    # re-validates the branch.
+    if: >-
+      github.event_name == 'workflow_dispatch' || (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        startsWith(github.head_ref, 'dependabot/') &&
+        github.event.pull_request.user.login == 'dependabot[bot]'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # push the regenerated BUCK to the PR branch
+      actions: write   # re-dispatch ci.yml after the push
+    env:
+      FORCE_COLOR: 1
+    steps:
+      # On dispatch, resolve the PR number to its branch and re-apply the
+      # pull_request gate (same-repo, dependabot/* prefix) before any
+      # checkout happens.
+      - name: Resolve PR branch
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_REF: ${{ github.head_ref }}
+          PR: ${{ inputs.pr }}
+        run: |
+          if [ -n "$EVENT_REF" ]; then
+            ref="$EVENT_REF"
+          else
+            ref=$(gh pr view "$PR" -R "$GITHUB_REPOSITORY" \
+                  --json headRefName,isCrossRepository \
+                  --jq 'if .isCrossRepository then error("cross-repo PR") else .headRefName end')
+          fi
+          case "$ref" in
+            dependabot/*) ;;
+            *) echo "::error::not a dependabot branch: $ref"; exit 1 ;;
+          esac
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ steps.pr.outputs.ref }}
+
+      - name: Install earthly
+        uses: earthly/actions-setup@43211c7a0eae5344d6d79fb4aaf209c8f8866203 # v1.0.13
+        with:
+          version: v0.8.15
+
+      # Dependabot branches fork from an older main and may predate the
+      # +buckify target (or carry a stale recipe). Always build with main's
+      # Earthfile — it's also the trusted copy, not branch content. Worktree
+      # only (not staged), so the commit below only carries third-party/BUCK.
+      - name: Use Earthfile from main
+        run: |
+          git fetch --depth=1 origin main
+          git show FETCH_HEAD:Earthfile > Earthfile
+
+      - name: Regenerate third-party/BUCK
+        run: earthly +buckify
+
+      - name: Commit, push, re-dispatch CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ steps.pr.outputs.ref }}
+        run: |
+          git add third-party/BUCK
+          if git diff --staged --quiet; then
+            echo "third-party/BUCK already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "ci: regenerate third-party/BUCK"
+          git push origin "HEAD:$HEAD_REF"
+          gh workflow run ci.yml --ref "$HEAD_REF" -f sweep=false
