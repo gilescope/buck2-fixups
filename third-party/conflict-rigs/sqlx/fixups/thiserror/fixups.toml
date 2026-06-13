@@ -1,0 +1,8 @@
+# Rig override (not a symlink to root): thiserror >=2.0.13 generates
+# `$OUT_DIR/private.rs` from its build script and `include!`s it, so the build
+# script must run. The root fixup pins `buildscript.run = false`, correct for
+# the main rig's 2.0.12 (which predates the generated file) but wrong here
+# (this rig resolves 2.0.18 via sqlx). Its build script also reads
+# CARGO_PKG_VERSION_PATCH, so cargo_env must feed the run rule.
+buildscript.run = true
+cargo_env = true

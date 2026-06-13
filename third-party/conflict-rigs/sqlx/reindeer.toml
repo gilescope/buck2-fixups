@@ -1,0 +1,5 @@
+# Conflict rig: reuse the repo's own fixups/ via shared_fixups (searched after
+# this rig's local fixups/), so only crates whose build needs differ from the
+# main rig (different resolved versions) carry a local override here. Requires a
+# reindeer with shared_fixups support (facebookincubator/reindeer#107).
+shared_fixups = ["../../../fixups"]

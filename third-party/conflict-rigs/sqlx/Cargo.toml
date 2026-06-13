@@ -1,0 +1,30 @@
+# Conflict rig: sqlx-sqlite pulls libsqlite3-sys ^0.30, which clashes
+# (links = "sqlite3") with rusqlite's libsqlite3-sys ^0.33 in the main rig.
+# Cargo permits one claimant per `links` key per graph, so this side lives
+# in its own rig. Fixups are shared with the main rig (../../../fixups);
+# libsqlite3-sys's fixup is version-gated so the same file serves both.
+# See ../../../README.md "Conflicting crates".
+#
+# [workspace] pins this as its own workspace root so cargo never walks up
+# into the main rig's manifest.
+[workspace]
+
+[package]
+name = "rust-third-party-sqlx"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+# Dummy target to keep Cargo happy
+[[bin]]
+name = "top"
+path = "top/main.rs"
+
+[dependencies]
+sqlx = { version = "0.8.5", default-features = false, features = ["sqlite", "mysql", "runtime-tokio"] }
+sqlx-sqlite = "0.8.5"
+sqlx-mysql = "0.8.5"
+# Direct dep so the bare `:tracing` alias exists: the shared tokio fixup adds
+# `extra_deps = [":tracing"]` (tokio_unstable enables tracing), which only
+# resolves when tracing is a public target, as it is in the main rig.
+tracing = "0.1"
