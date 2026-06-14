@@ -11,7 +11,7 @@ case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_
 
 # Rather than build all targets with `buck2 build //...`, build only each
 # crate whose fixup changed. A changed root fixup (fixups/<crate>) is shared
-# by every rig that symlinks it; a changed rig override
+# by every rig via shared_fixups; a changed rig override
 # (third-party/conflict-rigs/<rig>/fixups/<crate>) affects just that rig.
 # Either way we build the matching alias in every rig that has it, skipping
 # crates with no rig target and known platform failures (the sweep +

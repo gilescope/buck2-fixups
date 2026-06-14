@@ -1,4 +1,4 @@
-# Rig override (not a symlink to root): libsqlite3-sys 0.30 is pulled by
+# Rig-local override (not from shared_fixups): libsqlite3-sys 0.30 is pulled by
 # sqlx-sqlite. Same bundled build as the root fixup (compile the shipped
 # sqlite3.c, link its static lib from the buildscript out_dir) but the
 # buildscript target carries this rig's version. The root fixup pins 0.33

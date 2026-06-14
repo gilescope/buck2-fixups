@@ -1,4 +1,4 @@
-# Rig override (not a symlink to root): quote >=1.0.41 ships a build script
+# Rig-local override (not from shared_fixups): quote >=1.0.41 ships a build script
 # that only probes the rustc version to set `no_diagnostic_namespace` (for
 # rustc <1.78). It's a no-op on this rig's toolchain, so skip it. The main
 # rig pins quote 1.0.40 (no build script), so the root fixup stays empty and

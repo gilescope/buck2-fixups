@@ -1,4 +1,4 @@
-# Rig override (not a symlink to root): thiserror >=2.0.13 generates
+# Rig-local override (not from shared_fixups): thiserror >=2.0.13 generates
 # `$OUT_DIR/private.rs` from its build script and `include!`s it, so the build
 # script must run. The root fixup pins `buildscript.run = false`, correct for
 # the main rig's 2.0.12 (which predates the generated file) but wrong here
