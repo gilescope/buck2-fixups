@@ -39,6 +39,11 @@ fixups//third-party:zip
 fixups//third-party:zstd
 fixups//third-party:zstd-safe
 fixups//third-party:git2
+# sqlx conflict rig: its libsqlite3-sys 0.30 fails to build the bundled
+# sqlite3.c here, same as the main rig's libsqlite3-sys above. sqlx-mysql and
+# tracing (no sqlite dep) still build.
+fixups//third-party/conflict-rigs/sqlx:sqlx
+fixups//third-party/conflict-rigs/sqlx:sqlx-sqlite
 # rustls/aws-lc blast radius (same as linux: feature unification re-enables
 # rustls' aws-lc-rs provider; aws-lc-sys fails on the cc-rs hardlink issue):
 fixups//third-party:aws-config
