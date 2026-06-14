@@ -67,6 +67,8 @@ build-crates:
     FROM +src
     ARG crates
     ARG rigs
+    # NB: Earthly RUN executes under /bin/sh, so this stays POSIX (no process
+    # substitution or bash parameter-expansion tricks).
     RUN available=$(buck2 uquery "kind('^alias\$', //third-party/...)" | sort -u); \
         expected=$(sed '/^#/d;/^$/d' "ci/expected-failures-$(uname -s)-$(uname -m).txt" 2>/dev/null | sort -u || true); \
         want=""; \
@@ -76,8 +78,9 @@ build-crates:
           want="$want $hits"; \
         done; \
         for r in $rigs; do want="$want $(echo "$available" | grep -E "^fixups//${r}:" || true)"; done; \
-        to_build=$(echo "$want" | tr ' ' '\n' | sed '/^$/d' | sort -u | comm -23 - <(echo "$expected") | tr '\n' ' '); \
-        if [ -n "${to_build// /}" ]; then buck2 build $to_build; else echo "nothing to build"; fi
+        want=$(echo "$want" | tr ' ' '\n' | sed '/^$/d' | sort -u); \
+        if [ -n "$expected" ]; then to_build=$(printf '%s\n' "$want" | grep -vxF "$expected" || true); else to_build="$want"; fi; \
+        if [ -n "$to_build" ]; then buck2 build $to_build; else echo "nothing to build"; fi
 
 # Sweep every crate; failure set must match ci/expected-failures-<platform>.txt
 build-all:
