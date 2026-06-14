@@ -1,0 +1,14 @@
+# Rig override (not a symlink to root): libsqlite3-sys 0.30 is pulled by
+# sqlx-sqlite. Same bundled build as the root fixup (compile the shipped
+# sqlite3.c, link its static lib from the buildscript out_dir) but the
+# buildscript target carries this rig's version. The root fixup pins 0.33
+# (rusqlite's version), and reindeer keys the target name by version, so the
+# two can't share one file.
+cargo_env = true
+rustc_flags = [
+    "-Lnative=$(location :libsqlite3-sys-0.30-build-script-run[out_dir])",
+    "-lstatic=sqlite3",
+]
+
+[buildscript.run.env]
+OPT_LEVEL = "3"

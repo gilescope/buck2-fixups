@@ -24,8 +24,12 @@ expected="ci/expected-failures-${platform}.txt"
 report=$(mktemp)
 trap 'rm -f "$report"' EXIT
 
-# Every top-level crate alias reindeer generated (one per Cargo.toml dep).
-targets=$(buck2 uquery "kind('^alias\$', //third-party:)" 2>/dev/null)
+# Every top-level crate alias reindeer generated (one per Cargo.toml dep),
+# across the main rig and every conflict rig (third-party/conflict-rigs/*).
+# The recursive `...` pattern sweeps them all; rig failures carry their full
+# label (fixups//third-party/conflict-rigs/<name>:X) in the same
+# expected-failures file, so the label disambiguates without extra lists.
+targets=$(buck2 uquery "kind('^alias\$', //third-party/...)" 2>/dev/null)
 echo "Building $(echo "$targets" | wc -l | tr -d ' ') crates for ${platform}..."
 
 buildlog=$(mktemp)

@@ -78,12 +78,57 @@ reason). `./test-cell.sh` proves cell consumption works in CI.
 ## Repo layout
 
 ```text
-fixups/        the product - one dir per crate
-win/           shared targets fixups reference (Windows SDK import libs)
-third-party/   CI test rig (Cargo.toml + generated BUCK; fixups -> ../fixups)
+fixups/                      the product - one dir per crate
+win/                         shared targets fixups reference (Windows SDK import libs)
+third-party/                 main CI test rig (Cargo.toml + generated BUCK; fixups -> ../fixups)
+third-party/conflict-rigs/   extra rigs for crates that can't share one graph (see below)
 ```
 
 The root is kept clean because a git external cell mounts the whole repo.
+
+## Conflicting crates
+
+Cargo permits only one claimant of a given `links = "..."` key per dependency
+graph, so two crates that bind the same native library at incompatible
+versions can't both live in the main rig — e.g. `rusqlite` (libsqlite3-sys
+^0.33) and `sqlx-sqlite` (libsqlite3-sys ^0.30) both declare
+`links = "sqlite3"`. The same trap awaits any `links` pair (openssl vs aws-lc,
+jemalloc flavours, zstd majors).
+
+Each losing side gets its own **conflict rig** under
+`third-party/conflict-rigs/<name>/` — a tiny manifest holding one side of the
+clash, swept alongside the main rig. Not separate branches (drift) and not
+Cargo features (features add deps, they can't drop a conflicting `links`
+crate).
+
+Fixups stay shared via reindeer's `shared_fixups` (see
+[facebookincubator/reindeer#107][pr107]): the rig's `reindeer.toml` points at
+the repo's own `fixups/`, so the rig only carries a local override for the few
+crates whose resolved version needs a different build than the main rig's
+(reindeer keys buildscript directives by version) — see the comments in
+`third-party/conflict-rigs/sqlx/fixups/{quote,thiserror,libsqlite3-sys}`:
+
+```toml
+# third-party/conflict-rigs/<name>/reindeer.toml
+shared_fixups = ["../../../fixups"]
+```
+
+[pr107]: https://github.com/facebookincubator/reindeer/pull/107
+
+Regenerate a rig after bumping its deps:
+
+```sh
+reindeer --third-party-dir third-party/conflict-rigs/<name> buckify
+```
+
+`./buckify-all.sh --check` (run by CI) buckifies the main rig and every
+conflict rig and fails on any warning or BUCK drift. The sweep
+(`./build-all.sh`) covers all rigs via the recursive `//third-party/...`
+target pattern; rig failures appear in the per-platform expected-failures
+files under their full label (`fixups//third-party/conflict-rigs/<name>:X`).
+
+Until #107 ships in a reindeer release, CI builds reindeer from the PR branch
+(pinned by commit).
 
 ## Windows
 
