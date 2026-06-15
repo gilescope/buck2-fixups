@@ -1,0 +1,5 @@
+# thiserror-impl >=2.0.13 expands `env!("CARGO_PKG_VERSION_PATCH")` at compile
+# time, so rustc needs Cargo's package env vars set. Harmless for older
+# versions that don't read them. (Surfaced by the sqlx conflict rig, which
+# resolves 2.0.18; the main rig's 2.0.12 predates the requirement.)
+cargo_env = true

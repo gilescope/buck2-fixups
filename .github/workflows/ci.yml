@@ -18,7 +18,11 @@ env:
   # Keep in sync with Earthfile ARG defaults. buck2 bundles its prelude, so
   # the binary and prelude can't drift.
   BUCK2_VERSION: 2026-06-01
-  REINDEER_VERSION: v2026.04.27.00
+  # reindeer built from the shared_fixups PR branch
+  # (facebookincubator/reindeer#107) until it ships in a release; pinned by
+  # commit. Keep in sync with Earthfile + ci.sh.
+  REINDEER_GIT: https://github.com/gilescope/reindeer
+  REINDEER_REV: a5a9f711abbdeafcd1e5750fb577d62d88a71edf
 
 jobs:
   linux:
@@ -56,9 +60,18 @@ jobs:
 
       - name: Build changed fixups
         run: |
-          crates=$(git diff --name-only origin/main...HEAD | grep '^fixups/' | cut -d/ -f2 | sort -u | tr '\n' ' ')
-          if [ -n "$crates" ]; then
-            earthly +build-crates --crates="$crates"
+          # Root fixups (fixups/<crate>) and conflict-rig overrides
+          # (third-party/conflict-rigs/<rig>/fixups/<crate>) both map to a
+          # crate name; +build-crates builds it in every rig that has it.
+          diff=$(git diff --name-only origin/main...HEAD)
+          crates=$( { echo "$diff" | sed -n 's#^fixups/\([^/]*\)/.*#\1#p'; \
+                      echo "$diff" | sed -n 's#^third-party/conflict-rigs/[^/]*/fixups/\([^/]*\)/.*#\1#p'; } \
+                    | sort -u | tr '\n' ' ')
+          # A rig override may target a crate that's only transitive there, so
+          # also build the whole rig when any of its own fixups change.
+          rigs=$(echo "$diff" | sed -n 's#^\(third-party/conflict-rigs/[^/]*\)/fixups/.*#\1#p' | sort -u | tr '\n' ' ')
+          if [ -n "${crates// /}" ] || [ -n "${rigs// /}" ]; then
+            earthly +build-crates --crates="$crates" --rigs="$rigs"
           else
             echo "No fixups changed"
           fi
@@ -80,9 +93,9 @@ jobs:
       - name: Install buck2 + reindeer
         run: |
           curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/buck2
-          curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/reindeer
-          chmod +x /usr/local/bin/buck2 /usr/local/bin/reindeer
+          chmod +x /usr/local/bin/buck2
           buck2 --version
+          cargo install --locked --git "$REINDEER_GIT" --rev "$REINDEER_REV" reindeer
 
       - name: Run tests
         run: ./test.sh
@@ -112,16 +125,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      # reindeer ships no windows-arm build; the x86_64 binary runs under
-      # Windows 11 x64 emulation.
       - name: Install buck2 + reindeer
         run: |
           # windows-11-arm images don't ship zstd (windows-latest does).
           command -v zstd >/dev/null || choco install -y zstandard --no-progress
           mkdir -p "$HOME/bin"
           curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-${{ matrix.arch }}-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
-          curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/reindeer.exe"
           echo "$HOME/bin" >> "$GITHUB_PATH"
+          # reindeer built from source (no prebuilt windows-arm binary anyway);
+          # cargo installs it to ~/.cargo/bin, already on PATH.
+          cargo install --locked --git "$REINDEER_GIT" --rev "$REINDEER_REV" reindeer
           uname -sm
           "$HOME/bin/buck2.exe" --version
 
@@ -184,8 +197,8 @@ jobs:
       - name: Install buck2 + reindeer
         run: |
           curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/buck2
-          curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-aarch64-apple-darwin.zst" | zstd -d > /usr/local/bin/reindeer
-          chmod +x /usr/local/bin/buck2 /usr/local/bin/reindeer
+          chmod +x /usr/local/bin/buck2
+          cargo install --locked --git "$REINDEER_GIT" --rev "$REINDEER_REV" reindeer
 
       - name: Build all crates
         run: ./build-all.sh
@@ -218,8 +231,8 @@ jobs:
         run: |
           mkdir -p "$HOME/bin"
           curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
-          curl -fsSL "https://github.com/facebookincubator/reindeer/releases/download/${REINDEER_VERSION}/reindeer-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/reindeer.exe"
           echo "$HOME/bin" >> "$GITHUB_PATH"
+          cargo install --locked --git "$REINDEER_GIT" --rev "$REINDEER_REV" reindeer
 
       - name: Build all crates
         run: ./build-all.sh
