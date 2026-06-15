@@ -1,0 +1,8 @@
+# The bare `polkavm` crate embeds a prebuilt zygote ELF via
+# `include_bytes!("./polkavm-zygote")` (sandbox/linux.rs) — reindeer doesn't
+# track it as a source, so add it explicitly. The same file also references
+# `env!("CARGO_MANIFEST_DIR")` under `#[cfg(debug_assertions)]`, which buck's
+# rustc doesn't set; `cargo_env` supplies it (value only needs to exist — the
+# path is used at runtime only under `polkavm_dev_debug_zygote`, which is off).
+cargo_env = true
+extra_srcs = ["src/sandbox/polkavm-zygote"]
