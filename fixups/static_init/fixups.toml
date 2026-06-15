@@ -1,0 +1,2 @@
+# build.rs emits target-family cfgs (elf/mach_o/coff) that the crate requires.
+buildscript.run = true

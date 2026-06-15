@@ -1,0 +1,2 @@
+# build.rs writes a generated .rs into OUT_DIR that the crate include!s.
+buildscript.run = true

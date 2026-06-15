@@ -1,1 +1,7 @@
+# semver 1.0.0..=1.0.26 ships a build.rs (rustc-version probe); 1.0.27 dropped
+# it and the 0.x line never had one. Gate run=false to that exact range so the
+# fixup still serves consumers pinned to an older semver, while reindeer's
+# unused-buildscript check skips it when this rig resolves a newer semver
+# (a version-only cfg that matches no resolved version is exempt).
+['cfg(version = ">=1.0.0, <1.0.27")']
 buildscript.run = false
