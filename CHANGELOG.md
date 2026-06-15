@@ -1,3 +1,27 @@
+2026-06-15
+Substrate-lock import: 250 non-substrate crates.io deps from polkadot-sdk's
+Cargo.lock surfaced as direct deps (pinned to latest, matching the rest of the
+rig), e.g. the alloy/ruint/ethabi EVM stack, scale-* codec family, libp2p,
+trie-db, jsonrpsee, multiaddr. New buildscript fixups: arrayvec/erased-serde/
+quote/parity-util-mem/static_init/thiserror-core/zmij (run=false probes),
+ssz_rs (run=true, include!s OUT_DIR), static_init (run=true for elf/mach_o/coff
+cfgs). The bulk add transitively bumped shared crates and broke their fixups:
+thiserror 2.0.12->2.0.18 now include!s OUT_DIR/private.rs keyed on
+CARGO_PKG_VERSION_PATCH, so fixups/thiserror needs cargo_env + buildscript.run
+(was run=false). semver's buildscript fixup went unused once the rig moved past
+1.0.26 (semver dropped build.rs at 1.0.27) - now version-gated to
+'cfg(version = ">=1.0.0, <1.0.27")' so it keeps serving consumers pinned to
+older semver while reindeer's unused-buildscript check skips a version-only cfg
+that matches no resolved version. quinn (build.rs / cfg_aliases) left the tree
+with libp2p-quic/smoldot; its run=true is kept for consumers (reindeer skips
+fixups for absent crates). aquamarine's doc/js glob lost its leading-slash
+match. 59 crates deferred with reasons inline: the wasmtime+cranelift+wasmi
+native/codegen toolchain, wasm-opt, isahc/curl, subxt, kube/k8s-openapi,
+keccak-asm/sha3-asm, reed-solomon-novelpoly, network-interface, pyroscope
+(all need cxx_library/codegen fixups - follow-up); plus 9 links/feature
+conflicts (smoldot{,-light} libsqlite3-sys clash, libp2p-quic/tls, gloo-*,
+jemalloc - re-enable if resolvable).
+
 2026-06-12
 Graveyard excavation: ~70 commented-out crates revived (crypto matrix moved
 from stale pre-release pins to the now-stabilised RustCrypto 0.11/0.2 line;
