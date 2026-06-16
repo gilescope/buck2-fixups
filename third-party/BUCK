@@ -14188,7 +14188,7 @@ cargo.rust_library(
     visibility = [],
     deps = [
         ":data-encoding-2",
-        ":syn-1",
+        ":syn-2",
     ],
 )
 
@@ -28154,10 +28154,10 @@ cargo.rust_library(
             deps = [":cfg-if-1"],
         ),
         "windows-gnu": dict(
-            deps = [":windows-targets-0.52"],
+            deps = [":windows-targets-0.53"],
         ),
         "windows-msvc": dict(
-            deps = [":windows-targets-0.52"],
+            deps = [":windows-targets-0.53"],
         ),
     },
     visibility = [],
@@ -50491,68 +50491,84 @@ cargo.rust_library(
     ],
 )
 
-alias(
-    name = "signal-hook-mio",
-    actual = ":signal-hook-mio-0.2",
-    visibility = ["PUBLIC"],
+http_archive(
+    name = "signal-hook-0.4.4.crate",
+    sha256 = "b2a0c28ca5908dbdbcd52e6fdaa00358ab88637f8ab33e1f188dd510eb44b53d",
+    strip_prefix = "signal-hook-0.4.4",
+    urls = ["https://static.crates.io/crates/signal-hook/0.4.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "signal-hook-0.4",
+    srcs = [":signal-hook-0.4.4.crate"],
+    crate = "signal_hook",
+    crate_root = "signal-hook-0.4.4.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "channel",
+        "default",
+        "iterator",
+    ],
+    visibility = [],
+    deps = [
+        ":libc-0.2",
+        ":signal-hook-registry-1",
+    ],
 )
 
 http_archive(
-    name = "signal-hook-mio-0.2.4.crate",
-    sha256 = "34db1a06d485c9142248b7a054f034b349b212551f3dfd19c94d45a754a217cd",
-    strip_prefix = "signal-hook-mio-0.2.4",
-    urls = ["https://static.crates.io/crates/signal-hook-mio/0.2.4/download"],
+    name = "signal-hook-mio-0.2.5.crate",
+    sha256 = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc",
+    strip_prefix = "signal-hook-mio-0.2.5",
+    urls = ["https://static.crates.io/crates/signal-hook-mio/0.2.5/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "signal-hook-mio-0.2",
-    srcs = [":signal-hook-mio-0.2.4.crate"],
+    srcs = [":signal-hook-mio-0.2.5.crate"],
     crate = "signal_hook_mio",
-    crate_root = "signal-hook-mio-0.2.4.crate/src/lib.rs",
+    crate_root = "signal-hook-mio-0.2.5.crate/src/lib.rs",
     edition = "2018",
-    platform = {
-        "linux-arm64": dict(
-            features = [
-                "mio-1_0",
-                "support-v1_0",
-            ],
-            named_deps = {
-                "mio_1_0": ":mio-1",
-            },
-        ),
-        "linux-x86_64": dict(
-            features = [
-                "mio-1_0",
-                "support-v1_0",
-            ],
-            named_deps = {
-                "mio_1_0": ":mio-1",
-            },
-        ),
-        "macos-arm64": dict(
-            features = [
-                "mio-1_0",
-                "support-v1_0",
-            ],
-            named_deps = {
-                "mio_1_0": ":mio-1",
-            },
-        ),
-        "macos-x86_64": dict(
-            features = [
-                "mio-1_0",
-                "support-v1_0",
-            ],
-            named_deps = {
-                "mio_1_0": ":mio-1",
-            },
-        ),
+    features = [
+        "mio-1_0",
+        "support-v1_0",
+    ],
+    named_deps = {
+        "mio_1_0": ":mio-1",
     },
     visibility = [],
     deps = [
         ":libc-0.2",
         ":signal-hook-0.3",
+    ],
+)
+
+alias(
+    name = "signal-hook-mio",
+    actual = ":signal-hook-mio-0.3",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "signal-hook-mio-0.3.0.crate",
+    sha256 = "c3c965b71730d01c671d7a7f6b2c4f5729acc8fba1acb65a36576f9181076dfa",
+    strip_prefix = "signal-hook-mio-0.3.0",
+    urls = ["https://static.crates.io/crates/signal-hook-mio/0.3.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "signal-hook-mio-0.3",
+    srcs = [":signal-hook-mio-0.3.0.crate"],
+    crate = "signal_hook_mio",
+    crate_root = "signal-hook-mio-0.3.0.crate/src/lib.rs",
+    edition = "2018",
+    visibility = [],
+    deps = [
+        ":libc-0.2",
+        ":signal-hook-0.4",
     ],
 )
 
