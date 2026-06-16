@@ -14188,7 +14188,7 @@ cargo.rust_library(
     visibility = [],
     deps = [
         ":data-encoding-2",
-        ":syn-1",
+        ":syn-2",
     ],
 )
 
@@ -28154,10 +28154,10 @@ cargo.rust_library(
             deps = [":cfg-if-1"],
         ),
         "windows-gnu": dict(
-            deps = [":windows-targets-0.52"],
+            deps = [":windows-targets-0.53"],
         ),
         "windows-msvc": dict(
-            deps = [":windows-targets-0.52"],
+            deps = [":windows-targets-0.53"],
         ),
     },
     visibility = [],
@@ -57554,12 +57554,6 @@ cargo.rust_library(
     ],
 )
 
-alias(
-    name = "tungstenite",
-    actual = ":tungstenite-0.26",
-    visibility = ["PUBLIC"],
-)
-
 http_archive(
     name = "tungstenite-0.26.2.crate",
     sha256 = "4793cb5e56680ecbb1d843515b23b6de9a75eb04b66643e256a396d43be33c13",
@@ -57573,6 +57567,47 @@ cargo.rust_library(
     srcs = [":tungstenite-0.26.2.crate"],
     crate = "tungstenite",
     crate_root = "tungstenite-0.26.2.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "data-encoding",
+        "handshake",
+        "http",
+        "httparse",
+        "sha1",
+    ],
+    visibility = [],
+    deps = [
+        ":bytes-1",
+        ":data-encoding-2",
+        ":http-1",
+        ":httparse-1",
+        ":log-0.4",
+        ":rand-0.9",
+        ":sha1-0.10",
+        ":thiserror-2",
+        ":utf-8-0.7",
+    ],
+)
+
+alias(
+    name = "tungstenite",
+    actual = ":tungstenite-0.29",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "tungstenite-0.29.0.crate",
+    sha256 = "6c01152af293afb9c7c2a57e4b559c5620b421f6d133261c60dd2d0cdb38e6b8",
+    strip_prefix = "tungstenite-0.29.0",
+    urls = ["https://static.crates.io/crates/tungstenite/0.29.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "tungstenite-0.29",
+    srcs = [":tungstenite-0.29.0.crate"],
+    crate = "tungstenite",
+    crate_root = "tungstenite-0.29.0.crate/src/lib.rs",
     edition = "2021",
     features = [
         "data-encoding",
@@ -57592,7 +57627,6 @@ cargo.rust_library(
         ":rand-0.9",
         ":sha1-0.10",
         ":thiserror-2",
-        ":utf-8-0.7",
     ],
 )
 
