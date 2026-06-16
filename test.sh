@@ -13,9 +13,11 @@ case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_
 # crate whose fixup changed. A changed root fixup (fixups/<crate>) is shared
 # by every rig via shared_fixups; a changed rig override
 # (third-party/conflict-rigs/<rig>/fixups/<crate>) affects just that rig.
-# Either way we build the matching alias in every rig that has it, skipping
-# crates with no rig target and known platform failures (the sweep +
-# expected-failures lists track those).
+# Either way we build the crate in every rig that has it — matching both the
+# bare alias (direct deps) and the versioned rust_library `:crate-<ver>`
+# (crates that are only transitive in a rig, e.g. snapshots/conflict rigs,
+# get no bare alias), skipping crates with no rig target and known platform
+# failures (the sweep + expected-failures lists track those).
 # SKIP_CRATE_BUILDS=1 skips this where the prelude can't link (windows-arm:
 # its msvc discovery is x64-only).
 if [ -z "${SKIP_CRATE_BUILDS:-}" ]; then
@@ -35,9 +37,13 @@ if [ -n "$changed" ] || [ -n "$changed_rigs" ]; then
   if [ "$os" = Windows ]; then case "${RUNNER_ARCH:-}" in ARM64) arch=aarch64 ;; X64) arch=x86_64 ;; esac; fi
   # Full labels (across all rigs) so a crate present in several rigs builds in
   # each; expected-failures carries full labels too, so the match is exact.
-  available=$(buck2 uquery "kind('^alias\$', //third-party/...)" | sort -u)
+  # alias|rust_library + the `(-<ver>)?` suffix catch a crate whether it's a
+  # direct dep (bare `:crate` alias) or only transitive in a rig (`:crate-<ver>`
+  # library, e.g. typenum in the dated snapshots) — the `-[0-9]` guard stops
+  # `:serde` matching `:serde_derive`/`:serde-json`.
+  available=$(buck2 uquery "kind('^(alias|rust_library)\$', //third-party/...)" | sort -u)
   expected=$(sed '/^#/d;/^$/d' "ci/expected-failures-${os}-${arch}.txt" 2>/dev/null | sort -u || true)
-  want=$(for c in $changed; do echo "$available" | grep -E ":${c}\$" || true; done
+  want=$(for c in $changed; do echo "$available" | grep -E ":${c}(-[0-9][0-9.]*)?\$" || true; done
          for r in $changed_rigs; do echo "$available" | grep -E "^fixups//${r}:" || true; done)
   crates=$(echo "$want" | sed '/^$/d' | sort -u | comm -23 - <(echo "$expected") | tr '\n' ' ')
   # shellcheck disable=SC2086

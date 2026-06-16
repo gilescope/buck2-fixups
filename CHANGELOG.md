@@ -1,3 +1,32 @@
+2026-06-16
+Dated snapshot rigs (issue #45): third-party/snapshots/<yyyy-mm>/ mirror the
+main rig's WHOLE dep set at a point in time so version-gated fixups get
+exercised against the versions older consumers still resolve, not just the main
+rig's latest. Four slots on the NixOS YY.05/YY.11 cadence: 2024-11, 2025-05,
+2025-11, 2026-05 (~1837-2064 crates each). New mint-snapshot.sh era-resolver:
+*-izes the main-rig deps, prunes crates absent/unsatisfiable at the slot's
+frozen index until consistent (logging drops), writes the rig + lock, buckifies.
+Slots straddle the semver 1.0.27 build.rs-drop boundary (1.0.23 vs 1.0.27), so
+the semver <1.0.27 gate is tested both sides. The wide mirror surfaced ~17
+silent build-script gaps now version-gated (typenum <1.20, backtrace <0.3.74,
+libloading <0.6, moka <0.12.12, schemafy >=0.6, html5ever/markup5ever codegen,
+wit-bindgen, crc32fast, async-io, ...) - each matching nothing in the main rig's
+version, so main stays clean. librocksdb-sys can't be shared (its overlay of
+vendored C++ won't path-normalize at snapshot depth -> buck2 won't parse the
+rig), so each slot stubs it locally (run=false); it then fails to build and is
+tracked in expected-failures. The weekly sweep is now a MATRIX: a base leg
+(main + conflict rigs) + one leg per slot, so the wide rigs build in parallel;
+build-all.sh takes a target pattern and scopes its failure-diff to the leg. The
+PR-time changed-fixup build (test.sh + Earthfile build-crates) matches kind
+alias|rust_library and a :crate-<ver> suffix, so a changed fixup is tested in
+every rig that has the crate at any version - including transitive-only crates
+in snapshots. Because each slot is ~1900 crates, the full per-platform failure
+set is populated by the matrix sweep (pre-seeded: librocksdb-sys cascade +
+windows-sys <0.60 raw-dylib-on-non-Windows). Locks minted via a registry time
+machine - gilescope/crates.io-index carries snapshot-<yyyy-mm> branches (the
+index frozen that month, reconstructed from abandoned forks after upstream
+squashed its history) and slot-<yyyy-mm> tags. See README "Dated snapshots".
+
 2026-06-15
 Substrate-lock import: 250 non-substrate crates.io deps from polkadot-sdk's
 Cargo.lock surfaced as direct deps (pinned to latest, matching the rest of the

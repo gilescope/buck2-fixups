@@ -147,16 +147,26 @@ jobs:
         run: ./test.sh
 
   sweep-linux:
-    name: sweep linux ${{ matrix.arch }}
+    name: sweep linux ${{ matrix.arch }} ${{ matrix.leg.id }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
     strategy:
       fail-fast: false
       matrix:
+        # arch × leg: each dated-snapshot rig (~main-rig sized) builds as its own
+        # parallel leg so it doesn't serialize the sweep past the timeout. "base"
+        # covers the main rig + conflict rigs; one leg per snapshot slot.
+        arch: [x86_64, aarch64]
+        leg:
+          - { id: base, pattern: "//third-party: //third-party/conflict-rigs/..." }
+          - { id: snap-2024-11, pattern: "//third-party/snapshots/2024-11/..." }
+          - { id: snap-2025-05, pattern: "//third-party/snapshots/2025-05/..." }
+          - { id: snap-2025-11, pattern: "//third-party/snapshots/2025-11/..." }
+          - { id: snap-2026-05, pattern: "//third-party/snapshots/2026-05/..." }
         include:
-          - runner: ubuntu-latest
-            arch: x86_64
-          - runner: ubuntu-24.04-arm
-            arch: aarch64
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 300
     permissions:
@@ -173,11 +183,20 @@ jobs:
           version: v0.8.15
 
       - name: Build all crates
-        run: earthly +build-all
+        run: earthly +build-all --pattern="${{ matrix.leg.pattern }}"
 
   sweep-macos:
-    name: sweep macos aarch64
+    name: sweep macos aarch64 ${{ matrix.leg.id }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
+    strategy:
+      fail-fast: false
+      matrix:
+        leg:
+          - { id: base, pattern: "//third-party: //third-party/conflict-rigs/..." }
+          - { id: snap-2024-11, pattern: "//third-party/snapshots/2024-11/..." }
+          - { id: snap-2025-05, pattern: "//third-party/snapshots/2025-05/..." }
+          - { id: snap-2025-11, pattern: "//third-party/snapshots/2025-11/..." }
+          - { id: snap-2026-05, pattern: "//third-party/snapshots/2026-05/..." }
     runs-on: macos-latest
     timeout-minutes: 300
     permissions:
@@ -201,13 +220,27 @@ jobs:
           cargo install --locked --git "$REINDEER_GIT" --rev "$REINDEER_REV" reindeer
 
       - name: Build all crates
-        run: ./build-all.sh
+        env:
+          LEG_PATTERN: ${{ matrix.leg.pattern }}
+        run: |
+          # word-split intentional: the base leg holds two space-separated patterns
+          # shellcheck disable=SC2086
+          ./build-all.sh $LEG_PATTERN
 
   # x86_64 only: the prelude's msvc discovery can't link aarch64 yet (x64
   # lib paths hardcoded in vswhere.py), so an arm sweep would be ~all noise.
   sweep-windows:
-    name: sweep windows x86_64
+    name: sweep windows x86_64 ${{ matrix.leg.id }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
+    strategy:
+      fail-fast: false
+      matrix:
+        leg:
+          - { id: base, pattern: "//third-party: //third-party/conflict-rigs/..." }
+          - { id: snap-2024-11, pattern: "//third-party/snapshots/2024-11/..." }
+          - { id: snap-2025-05, pattern: "//third-party/snapshots/2025-05/..." }
+          - { id: snap-2025-11, pattern: "//third-party/snapshots/2025-11/..." }
+          - { id: snap-2026-05, pattern: "//third-party/snapshots/2026-05/..." }
     runs-on: windows-latest
     timeout-minutes: 300
     permissions:
@@ -235,4 +268,9 @@ jobs:
           cargo install --locked --git "$REINDEER_GIT" --rev "$REINDEER_REV" reindeer
 
       - name: Build all crates
-        run: ./build-all.sh
+        env:
+          LEG_PATTERN: ${{ matrix.leg.pattern }}
+        run: |
+          # word-split intentional: the base leg holds two space-separated patterns
+          # shellcheck disable=SC2086
+          ./build-all.sh $LEG_PATTERN

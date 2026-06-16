@@ -82,6 +82,7 @@ fixups/                      the product - one dir per crate
 win/                         shared targets fixups reference (Windows SDK import libs)
 third-party/                 main CI test rig (Cargo.toml + generated BUCK; fixups -> ../fixups)
 third-party/conflict-rigs/   extra rigs for crates that can't share one graph (see below)
+third-party/snapshots/       dated rigs pinning OLDER version constellations (see below)
 ```
 
 The root is kept clean because a git external cell mounts the whole repo.
@@ -129,6 +130,80 @@ files under their full label (`fixups//third-party/conflict-rigs/<name>:X`).
 
 Until #107 ships in a reindeer release, CI builds reindeer from the PR branch
 (pinned by commit).
+
+## Dated snapshots
+
+The main rig pins each crate to one version, so reindeer resolves exactly **one**
+constellation. A version-gated fixup that only fires on an *older* version is
+therefore never exercised — it silently rots until that single resolution
+happens to move. Consumers pinned to older locks (e.g. a polkadot-sdk release)
+get fixups we never test (issue [#45]).
+
+**Dated snapshot rigs** fix this. Each `third-party/snapshots/<yyyy-mm>/` is a
+rig like a conflict rig, but it **mirrors the main rig's whole dependency set at
+a point in time**: the same crate names, floated to `*`, resolved against the
+crates.io index **as it stood that month** (~1900 crates per slot). Each slot
+finds its *own* consistent era pin-set — crates not yet published (or
+unsatisfiable) at that date are pruned, since an era consumer wouldn't have had
+them either. They straddle real boundaries: `semver` resolves `1.0.23` (build
+script present) in older slots and `1.0.27` (dropped) in newer, so the `semver`
+`cfg(version = "<1.0.27")` fixup is exercised on both sides.
+
+Current slots follow the NixOS `YY.05`/`YY.11` cadence: **`2024-11`, `2025-05`,
+`2025-11`, `2026-05`**.
+
+Fixups stay shared (`shared_fixups`); the older versions resurface build scripts
+the shared fixup is silent about — **version-gate** them
+(`['cfg(version = ">=X, <Y")']` with `buildscript.run`) so one fixup serves the
+main rig *and* every snapshot (a version cfg matching no resolved version is
+exempt). Wiring the wide mirror surfaced and fixed ~17 such gaps (typenum,
+backtrace, libloading, moka, schemafy, …) — that drift is exactly what #45
+hunts. One crate can't be shared: `librocksdb-sys` uses an `overlay` of vendored
+C++ whose path can't normalize at the snapshot's depth, so each slot stubs it
+locally (`fixups/librocksdb-sys/`, `run=false`) — it then fails to build and is
+tracked in expected-failures.
+
+### Minting / re-minting a snapshot (the registry time machine)
+
+`crates.io-index` squashes its git history, so you can't `git checkout` an old
+index directly. Instead, [`gilescope/crates.io-index`][idx] carries
+`snapshot-<yyyy-mm>` branches (the index frozen that month, reconstructed from
+the object stores of abandoned forks) and `slot-<yyyy-mm>` tags (the May/Nov
+grid → closest faithful index). `mint-snapshot.sh` does the rest — flatten the
+frozen index into a local registry, `*`-ize the main-rig deps, prune to a
+consistent era set, write the rig + lock, buckify:
+
+```sh
+./mint-snapshot.sh 2025-11 snapshot-2025-10   # <slot> <index-branch>
+```
+
+The committed `Cargo.lock` is the durable artifact (crates.io sources +
+checksums; tarballs are immutable), so **buckify and CI never touch the index
+fork** — only re-minting does. Deps stay `*`; the lock is the pin. Going
+forward, mint a new slot from the *live* index each cadence step (it stays
+reachable ~6 weeks before the next squash).
+
+### CI
+
+`./buckify-all.sh --check` covers every snapshot (warning-free + no drift) on
+each PR. At **PR time**, the changed-fixup build also reaches every snapshot
+containing the crate — matching the bare `:crate` alias (direct deps) *and* the
+versioned `:crate-<ver>` library (crates only transitive in a snapshot, which
+get no bare alias) — so a fixup change is tested against the older
+constellations immediately. The weekly **sweep is a matrix**: a `base` leg
+(main + conflict rigs) plus one leg per snapshot slot, so the wide rigs build in
+parallel rather than serially blowing the timeout (`build-all.sh` takes a target
+pattern and scopes its failure-diff to that leg). Failures carry the label
+`fixups//third-party/snapshots/<yyyy-mm>:X`.
+
+Because each slot is ~1900 crates, the **complete** per-platform failure set is
+populated by the matrix sweep, not by hand: run it (`workflow_dispatch`), then
+add the new failures to `ci/expected-failures-<platform>.txt`. The lists ship
+pre-seeded with the confident, platform-class failures (the `librocksdb-sys`
+stub cascade and the `windows-sys <0.60` `raw-dylib`-on-non-Windows class).
+
+[#45]: https://github.com/gilescope/buck2-fixups/issues/45
+[idx]: https://github.com/gilescope/crates.io-index
 
 ## Windows
 

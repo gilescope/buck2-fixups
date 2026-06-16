@@ -24,13 +24,32 @@ expected="ci/expected-failures-${platform}.txt"
 report=$(mktemp)
 trap 'rm -f "$report"' EXIT
 
-# Every top-level crate alias reindeer generated (one per Cargo.toml dep),
-# across the main rig and every conflict rig (third-party/conflict-rigs/*).
-# The recursive `...` pattern sweeps them all; rig failures carry their full
-# label (fixups//third-party/conflict-rigs/<name>:X) in the same
-# expected-failures file, so the label disambiguates without extra lists.
-targets=$(buck2 uquery "kind('^alias\$', //third-party/...)" 2>/dev/null)
-echo "Building $(echo "$targets" | wc -l | tr -d ' ') crates for ${platform}..."
+# Build the top-level crate aliases reindeer generated (one per Cargo.toml dep)
+# under the given buck2 target pattern(s). Default = the whole tree (main rig +
+# conflict rigs + snapshots). The sweep CI passes a pattern per matrix leg so the
+# big dated-snapshot rigs build in parallel rather than serially blowing the
+# job timeout, e.g.:
+#   ./build-all.sh //third-party: //third-party/conflict-rigs/...   # main + conflict
+#   ./build-all.sh //third-party/snapshots/2025-11/...              # one snapshot
+# Failures carry their full label (fixups//<path>:X) in the per-platform
+# expected-failures file; the diff below is scoped to the built pattern(s) so a
+# per-leg build doesn't flag every other rig's crates as "stale".
+patterns=("$@"); [ ${#patterns[@]} -eq 0 ] && patterns=("//third-party/...")
+# Label-prefix ERE matching the built pattern(s): `//PKG:` -> `^fixups//PKG:`,
+# `//PATH/...` -> `^fixups//PATH[/:]`. The diff keeps only expected entries in scope.
+scope_re=""; universe=""
+for p in "${patterns[@]}"; do
+  lbl="fixups//${p#//}"
+  case "$lbl" in
+    */...) re="^${lbl%/...}[/:]" ;;     # recursive: matches `path:` and `path/sub:`
+    *:)    re="^${lbl}" ;;               # explicit package: match `pkg:`
+    *)     re="^${lbl}[/:]" ;;
+  esac
+  scope_re="${scope_re:+$scope_re|}${re}"
+  universe="${universe:+$universe + }${p}"   # buck2 query union operator
+done
+targets=$(buck2 uquery "kind('^alias\$', ${universe})" 2>/dev/null)
+echo "Building $(echo "$targets" | grep -c .) crates for ${platform} (scope: ${patterns[*]})..."
 
 buildlog=$(mktemp)
 # shellcheck disable=SC2086
@@ -56,7 +75,10 @@ EOF
 failed=$(echo "$failed" | sed '/^$/d' | sort -u)
 
 expected_content=""
-[ -f "$expected" ] && expected_content=$(sed '/^#/d;/^$/d' "$expected" | sort -u)
+# Scope expected entries to the built pattern(s) so a per-leg build only
+# reconciles its own rig's known failures (else every other rig's entries look
+# "stale"). grep -E on the derived label-prefix regex.
+[ -f "$expected" ] && expected_content=$(sed '/^#/d;/^$/d' "$expected" | grep -E "$scope_re" | sort -u)
 
 new_failures=$(comm -23 <(echo "$failed") <(echo "$expected_content"))
 fixed=$(comm -13 <(echo "$failed") <(echo "$expected_content"))
