@@ -186,15 +186,18 @@ reachable ~6 weeks before the next squash).
 ### CI
 
 `./buckify-all.sh --check` covers every snapshot (warning-free + no drift) on
-each PR. At **PR time**, the changed-fixup build also reaches every snapshot
-containing the crate — matching the bare `:crate` alias (direct deps) *and* the
-versioned `:crate-<ver>` library (crates only transitive in a snapshot, which
-get no bare alias) — so a fixup change is tested against the older
-constellations immediately. The weekly **sweep is a matrix**: a `base` leg
-(main + conflict rigs) plus one leg per snapshot slot, so the wide rigs build in
-parallel rather than serially blowing the timeout (`build-all.sh` takes a target
-pattern and scopes its failure-diff to that leg). Failures carry the label
-`fixups//third-party/snapshots/<yyyy-mm>:X`.
+each PR — that's the PR-time snapshot gate (a changed fixup that breaks a
+snapshot's *buckify* is caught immediately). Snapshots are **not built** at PR
+time: each is a ~1900-crate era mirror in which many crates don't build
+standalone (featureless transitive deps, old build scripts, native-lib stubs),
+and those failures are only knowable — and catalogued — by the sweep. The
+PR-time changed-fixup *build* therefore covers the main rig + conflict rigs
+only (matching the bare `:crate` alias and the versioned `:crate-<ver>` library
+so transitive crates are still reached there). Snapshot *builds* run in the
+weekly **matrix sweep**: a `base` leg (main + conflict rigs) plus one leg per
+snapshot slot, so the wide rigs build in parallel rather than serially blowing
+the timeout (`build-all.sh` takes a target pattern and scopes its failure-diff
+to that leg). Failures carry the label `fixups//third-party/snapshots/<yyyy-mm>:X`.
 
 Because each slot is ~1900 crates, the **complete** per-platform failure set is
 populated by the matrix sweep, not by hand: run it (`workflow_dispatch`), then

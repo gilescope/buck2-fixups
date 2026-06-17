@@ -74,7 +74,10 @@ build-crates:
     # substitution or bash parameter-expansion tricks).
     # The `(-[0-9]…)?` suffix matches transitive `:crate-<ver>` libraries while
     # the `-[0-9]` guard stops `:serde` catching `:serde_derive`/`:serde-json`.
-    RUN available=$(buck2 uquery "kind('^(alias|rust_library)\$', //third-party/...)" | sort -u); \
+    # Universe is main rig + conflict rigs only: snapshots are sweep-only (their
+    # ~1900-crate era mirrors have many standalone-build failures that only the
+    # matrix sweep catalogs; at PR time buckify-all --check still covers them).
+    RUN available=$(buck2 uquery "kind('^(alias|rust_library)\$', //third-party: + //third-party/conflict-rigs/...)" | sort -u); \
         expected=$(sed '/^#/d;/^$/d' "ci/expected-failures-$(uname -s)-$(uname -m).txt" 2>/dev/null | sort -u || true); \
         want=""; \
         for c in $crates; do \

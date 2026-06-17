@@ -18,9 +18,12 @@ tracked in expected-failures. The weekly sweep is now a MATRIX: a base leg
 (main + conflict rigs) + one leg per slot, so the wide rigs build in parallel;
 build-all.sh takes a target pattern and scopes its failure-diff to the leg. The
 PR-time changed-fixup build (test.sh + Earthfile build-crates) matches kind
-alias|rust_library and a :crate-<ver> suffix, so a changed fixup is tested in
-every rig that has the crate at any version - including transitive-only crates
-in snapshots. Because each slot is ~1900 crates, the full per-platform failure
+alias|rust_library and a :crate-<ver> suffix so transitive-only crates are
+reached, but its universe is main rig + conflict rigs ONLY - snapshots are
+sweep-only at build time (a ~1900-crate era mirror has many crates that don't
+build standalone; only the sweep catalogs them). At PR time snapshots are still
+gated by buckify-all --check (BUCK freshness + warning-free). Because each slot
+is ~1900 crates, the full per-platform build-failure
 set is populated by the matrix sweep (pre-seeded: librocksdb-sys cascade +
 windows-sys <0.60 raw-dylib-on-non-Windows). Locks minted via a registry time
 machine - gilescope/crates.io-index carries snapshot-<yyyy-mm> branches (the

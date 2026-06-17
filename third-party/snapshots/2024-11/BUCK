@@ -19775,23 +19775,6 @@ cargo.rust_library(
 )
 
 http_archive(
-    name = "gcc-0.3.55.crate",
-    sha256 = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2",
-    strip_prefix = "gcc-0.3.55",
-    urls = ["https://static.crates.io/crates/gcc/0.3.55/download"],
-    visibility = [],
-)
-
-cargo.rust_library(
-    name = "gcc-0.3",
-    srcs = [":gcc-0.3.55.crate"],
-    crate = "gcc",
-    crate_root = "gcc-0.3.55.crate/src/lib.rs",
-    edition = "2015",
-    visibility = [],
-)
-
-http_archive(
     name = "generic-array-0.12.4.crate",
     sha256 = "ffdf9f34f1447443d37393cc6c2b8313aebddcd96906caf34e54c68d8e57d7bd",
     strip_prefix = "generic-array-0.12.4",
@@ -41880,10 +41863,6 @@ cargo.rust_library(
     crate = "crypto",
     crate_root = "rust-crypto-0.2.36.crate/src/lib.rs",
     edition = "2015",
-    env = {
-        "OUT_DIR": "$(location :rust-crypto-0.2-build-script-run[out_dir])",
-    },
-    rustc_flags = ["@$(location :rust-crypto-0.2-build-script-run[rustc_flags])"],
     visibility = [],
     deps = [
         ":libc-0.2",
@@ -41891,23 +41870,6 @@ cargo.rust_library(
         ":rustc-serialize-0.3",
         ":time-0.1",
     ],
-)
-
-cargo.rust_binary(
-    name = "rust-crypto-0.2-build-script-build",
-    srcs = [":rust-crypto-0.2.36.crate"],
-    crate = "build_script_build",
-    crate_root = "rust-crypto-0.2.36.crate/build.rs",
-    edition = "2015",
-    visibility = [],
-    deps = [":gcc-0.3"],
-)
-
-buildscript_run(
-    name = "rust-crypto-0.2-build-script-run",
-    package_name = "rust-crypto",
-    buildscript_rule = ":rust-crypto-0.2-build-script-build",
-    version = "0.2.36",
 )
 
 alias(

@@ -14,10 +14,16 @@ case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_
 # by every rig via shared_fixups; a changed rig override
 # (third-party/conflict-rigs/<rig>/fixups/<crate>) affects just that rig.
 # Either way we build the crate in every rig that has it — matching both the
-# bare alias (direct deps) and the versioned rust_library `:crate-<ver>`
-# (crates that are only transitive in a rig, e.g. snapshots/conflict rigs,
-# get no bare alias), skipping crates with no rig target and known platform
-# failures (the sweep + expected-failures lists track those).
+# bare alias (direct deps) and the versioned rust_library `:crate-<ver>` (crates
+# only transitive in a rig, e.g. conflict rigs, get no bare alias), skipping
+# crates with no rig target and known platform failures (the sweep +
+# expected-failures lists track those).
+# Snapshots are deliberately OUT of scope here: a dated snapshot is a ~1900-crate
+# era mirror in which many crates don't build standalone (featureless transitive
+# deps, old build scripts, native-lib stubs); those failures are only knowable —
+# and catalogued in expected-failures — by the weekly matrix sweep, not at PR
+# time. At PR time snapshots are still validated by buckify-all --check (BUCK
+# freshness + warning-free). So the universe below is main rig + conflict rigs.
 # SKIP_CRATE_BUILDS=1 skips this where the prelude can't link (windows-arm:
 # its msvc discovery is x64-only).
 if [ -z "${SKIP_CRATE_BUILDS:-}" ]; then
@@ -35,13 +41,13 @@ if [ -n "$changed" ] || [ -n "$changed_rigs" ]; then
   os="$(uname -s)"; case "$os" in MINGW*|MSYS*|CYGWIN*) os=Windows ;; esac
   arch="$(uname -m)"
   if [ "$os" = Windows ]; then case "${RUNNER_ARCH:-}" in ARM64) arch=aarch64 ;; X64) arch=x86_64 ;; esac; fi
-  # Full labels (across all rigs) so a crate present in several rigs builds in
-  # each; expected-failures carries full labels too, so the match is exact.
-  # alias|rust_library + the `(-<ver>)?` suffix catch a crate whether it's a
-  # direct dep (bare `:crate` alias) or only transitive in a rig (`:crate-<ver>`
-  # library, e.g. typenum in the dated snapshots) — the `-[0-9]` guard stops
-  # `:serde` matching `:serde_derive`/`:serde-json`.
-  available=$(buck2 uquery "kind('^(alias|rust_library)\$', //third-party/...)" | sort -u)
+  # Full labels (across main + conflict rigs) so a crate present in several rigs
+  # builds in each; expected-failures carries full labels too, so the match is
+  # exact. alias|rust_library + the `(-<ver>)?` suffix catch a crate whether it's
+  # a direct dep (bare `:crate` alias) or only transitive in a rig (`:crate-<ver>`
+  # library) — the `-[0-9]` guard stops `:serde` matching `:serde_derive`. The
+  # universe excludes snapshots (sweep-only — see above).
+  available=$(buck2 uquery "kind('^(alias|rust_library)\$', //third-party: + //third-party/conflict-rigs/...)" | sort -u)
   expected=$(sed '/^#/d;/^$/d' "ci/expected-failures-${os}-${arch}.txt" 2>/dev/null | sort -u || true)
   want=$(for c in $changed; do echo "$available" | grep -E ":${c}(-[0-9][0-9.]*)?\$" || true; done
          for r in $changed_rigs; do echo "$available" | grep -E "^fixups//${r}:" || true; done)
