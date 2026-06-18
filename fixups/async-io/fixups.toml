@@ -1,1 +1,8 @@
 # Apache 2.0 from https://github.com/suiwombat/sui/tree/buck_sui_up_rc1
+
+# async-io's build script (cfg probe) is present in the 2.5.0..<3.0.0 versions
+# the dated snapshots resolve, but gone/absent in the main rig's version.
+# Gate so reindeer wires it only where it exists (a version cfg matching no
+# resolved version is exempt). Surfaced by the snapshot rigs; see issue #45.
+['cfg(version = ">=2.5.0, <3.0.0")']
+buildscript.run = false

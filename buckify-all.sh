@@ -22,9 +22,13 @@ check=0
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;; esac
 
 # Main rig first (reads root reindeer.toml -> third_party_dir = third-party),
-# then each conflict rig (override third_party_dir at the rig).
+# then each conflict rig and dated snapshot rig (override third_party_dir at
+# the rig). Conflict rigs isolate `links=` collisions; snapshot rigs pin an
+# OLDER version constellation (third-party/snapshots/<yyyy-mm>/, lock minted
+# from a frozen crates.io index) so version-gated fixups get exercised against
+# the versions older consumers still resolve. See README "Dated snapshots" / #45.
 rigs=("")  # empty arg = main rig
-for d in third-party/conflict-rigs/*/; do
+for d in third-party/conflict-rigs/*/ third-party/snapshots/*/; do
   [ -f "$d/Cargo.toml" ] && rigs+=("$d")
 done
 

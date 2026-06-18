@@ -1,0 +1,9 @@
+# rust-crypto 0.2.x ships a build script, but it only assembles helpers on
+# windows-msvc — it's a no-op on every other target. Running it (run=true) would
+# force-compile its ancient `extern crate gcc` build-dependency, which fails in
+# buck; run=false skips it, and non-msvc builds need nothing from it anyway.
+# (On windows-msvc rust-crypto wants the asm symbols and is an expected-failure.)
+# Gone/absent in the main rig's version; gated to the snapshot range (a version
+# cfg matching no resolved version is exempt). See issue #45.
+['cfg(version = ">=0.2.0, <0.3.0")']
+buildscript.run = false

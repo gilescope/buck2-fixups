@@ -56,9 +56,12 @@ test-cell:
 
 # Build specific crates by bare name, e.g. the ones whose fixups changed:
 #   earthly +build-crates --crates="serde ring"
-# Builds the matching alias in every rig that has it (main + conflict rigs).
-# --rigs additionally builds every alias of the named conflict rig(s), for
-# when a rig override targets a crate that's only transitive there:
+# Builds the crate in every rig that has it (main + conflict + snapshot rigs),
+# matching both the bare `:crate` alias (direct deps) and the versioned
+# `:crate-<ver>` rust_library (crates that are only transitive in a rig, e.g.
+# typenum in the dated snapshots, get no bare alias).
+# --rigs additionally builds every alias of the named rig(s), for when a rig
+# override targets a crate that's only transitive there:
 #   earthly +build-crates --crates="quote" --rigs="third-party/conflict-rigs/sqlx"
 # Skipped: names with no rig target anywhere (a fixup can exist for a crate no
 # rig depends on) and full labels in the platform's expected-failures list
@@ -69,23 +72,36 @@ build-crates:
     ARG rigs
     # NB: Earthly RUN executes under /bin/sh, so this stays POSIX (no process
     # substitution or bash parameter-expansion tricks).
-    RUN available=$(buck2 uquery "kind('^alias\$', //third-party/...)" | sort -u); \
+    # The `(-[0-9]…)?` suffix matches transitive `:crate-<ver>` libraries while
+    # the `-[0-9]` guard stops `:serde` catching `:serde_derive`/`:serde-json`.
+    # Universe is main rig + conflict rigs only: snapshots are sweep-only (their
+    # ~1900-crate era mirrors have many standalone-build failures that only the
+    # matrix sweep catalogs; at PR time buckify-all --check still covers them).
+    RUN available=$(buck2 uquery "kind('^(alias|rust_library)\$', //third-party: + //third-party/conflict-rigs/...)" | sort -u); \
         expected=$(sed '/^#/d;/^$/d' "ci/expected-failures-$(uname -s)-$(uname -m).txt" 2>/dev/null | sort -u || true); \
         want=""; \
         for c in $crates; do \
-          hits=$(echo "$available" | grep -E ":${c}\$" || true); \
+          hits=$(echo "$available" | grep -E ":${c}(-[0-9][0-9.]*)?\$" || true); \
           [ -z "$hits" ] && { echo "skipping $c - no rig target"; continue; }; \
           want="$want $hits"; \
         done; \
         for r in $rigs; do want="$want $(echo "$available" | grep -E "^fixups//${r}:" || true)"; done; \
         want=$(echo "$want" | tr ' ' '\n' | sed '/^$/d' | sort -u); \
-        if [ -n "$expected" ]; then to_build=$(printf '%s\n' "$want" | grep -vxF "$expected" || true); else to_build="$want"; fi; \
+        exp_stems=$(printf '%s\n' "$expected" | sed -E 's/-[0-9][0-9.]*$//' | sort -u); \
+        if [ -n "$expected" ]; then to_build=$( { printf '%s\n' "$exp_stems" | sed 's/^/E /'; printf '%s\n' "$want" | sed 's/^/W /'; } | awk '$1=="E"{bad[$2]=1;next} {s=$2;sub(/-[0-9][0-9.]*$/,"",s);if(!(s in bad))print $2}'); else to_build="$want"; fi; \
         if [ -n "$to_build" ]; then buck2 build $to_build; else echo "nothing to build"; fi
 
-# Sweep every crate; failure set must match ci/expected-failures-<platform>.txt
+# Sweep crates under --pattern (default: whole tree); failure set must match the
+# in-scope entries of ci/expected-failures-<platform>.txt. The sweep CI passes a
+# pattern per matrix leg so the big dated-snapshot rigs build in parallel:
+#   earthly +build-all --pattern="//third-party/snapshots/2025-11/..."
 build-all:
     FROM +src
-    RUN ./build-all.sh
+    ARG pattern="//third-party/..."
+    # word-split intentional: --pattern may hold several space-separated patterns
+    # (e.g. main + conflict rigs). /bin/sh splits $pattern into argv for build-all.sh.
+    # shellcheck disable=SC2086
+    RUN ./build-all.sh $pattern
 
 ci:
     BUILD +buckify-check
