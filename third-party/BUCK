@@ -33248,12 +33248,6 @@ cargo.rust_library(
     ],
 )
 
-alias(
-    name = "msvc-demangler",
-    actual = ":msvc-demangler-0.10",
-    visibility = ["PUBLIC"],
-)
-
 http_archive(
     name = "msvc-demangler-0.10.1.crate",
     sha256 = "c4c25a3bb7d880e8eceab4822f3141ad0700d20f025991c1f03bd3d00219a5fc",
@@ -33270,6 +33264,33 @@ cargo.rust_library(
     edition = "2015",
     visibility = [],
     deps = [":bitflags-2"],
+)
+
+alias(
+    name = "msvc-demangler",
+    actual = ":msvc-demangler-0.11",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "msvc-demangler-0.11.0.crate",
+    sha256 = "fbeff6bd154a309b2ada5639b2661ca6ae4599b34e8487dc276d2cd637da2d76",
+    strip_prefix = "msvc-demangler-0.11.0",
+    urls = ["https://static.crates.io/crates/msvc-demangler/0.11.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "msvc-demangler-0.11",
+    srcs = [":msvc-demangler-0.11.0.crate"],
+    crate = "msvc_demangler",
+    crate_root = "msvc-demangler-0.11.0.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+    deps = [
+        ":bitflags-2",
+        ":itoa-1",
+    ],
 )
 
 http_archive(

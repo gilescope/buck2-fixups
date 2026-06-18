@@ -11015,6 +11015,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "msvc-demangler"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbeff6bd154a309b2ada5639b2661ca6ae4599b34e8487dc276d2cd637da2d76"
+dependencies = [
+ "bitflags 2.13.0",
+ "itoa",
+]
+
+[[package]]
 name = "multer"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -15729,7 +15739,7 @@ dependencies = [
  "mockall_derive",
  "moka",
  "moxcms 0.7.11",
- "msvc-demangler",
+ "msvc-demangler 0.11.0",
  "multer 3.1.0",
  "multiaddr",
  "multibase 0.9.2",
@@ -18745,7 +18755,7 @@ checksum = "9f66537def48fbc704a92e4fdaab7833bc7cb2255faca8182592fb5fa617eb82"
 dependencies = [
  "cc",
  "cpp_demangle",
- "msvc-demangler",
+ "msvc-demangler 0.10.1",
  "rustc-demangle",
  "symbolic-common",
 ]
