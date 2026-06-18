@@ -1,8 +1,0 @@
-# Local override (searched before shared_fixups): the shared librocksdb-sys
-# fixup maps an `overlay` of vendored rocksdb C++ sources by path, which can't
-# normalize for buck2 at the snapshot's directory depth (reindeer emits
-# `../../../fixups/...`, which buck2 rejects as an un-normalized source path).
-# Stub it here (run=false, no overlay) so the rig PARSES; librocksdb-sys then
-# fails to build and is recorded in expected-failures. Snapshots don't exercise
-# the rocksdb C++ stack. See README "Dated snapshots" / issue #45.
-buildscript.run = false

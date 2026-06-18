@@ -1,3 +1,15 @@
+2026-06-18
+Snapshot librocksdb-sys uses its real overlay (replaces the stub). A shared
+`overlay` fixup's files live outside the rig, so reindeer would emit a
+`../../../fixups/...` source path that buck2 refuses to parse. Fixed in reindeer
+(gilescope/reindeer, shared_fixups branch): external overlays are emitted
+through a fixed `.shared-fixups` in-rig anchor; each snapshot carries a
+`.shared-fixups -> ../../../fixups` symlink (deliberately NOT named `fixups` —
+that would land in reindeer's local fixup search and trip the unused-fixup check
+that shared_fixups exempts). librocksdb-sys now builds on Linux exactly like the
+main rig instead of being stubbed (run=false). REINDEER_REV bumped to pick up
+the fix. mint-snapshot.sh creates the anchor symlink.
+
 2026-06-16
 Dated snapshot rigs (issue #45): third-party/snapshots/<yyyy-mm>/ mirror the
 main rig's WHOLE dep set at a point in time so version-gated fixups get
