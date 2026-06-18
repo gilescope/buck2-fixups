@@ -1313,7 +1313,7 @@ dependencies = [
  "digest 0.10.7",
  "rand_chacha 0.3.1",
  "sha2 0.10.9",
- "w3f-ring-proof",
+ "w3f-ring-proof 0.0.2",
  "zeroize",
 ]
 
@@ -16343,9 +16343,9 @@ dependencies = [
  "vsimd",
  "vte",
  "w3f-bls",
- "w3f-pcs",
- "w3f-plonk-common",
- "w3f-ring-proof",
+ "w3f-pcs 0.0.2",
+ "w3f-plonk-common 0.0.2",
+ "w3f-ring-proof 0.0.8",
  "wait-timeout",
  "waker-fn",
  "walkdir",
@@ -20558,6 +20558,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "w3f-pcs"
+version = "0.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ea1046a1deb6d26c34ba2d1f1bab4222d695d126502ee765f80b021753cb674"
+dependencies = [
+ "ark-ec 0.5.0",
+ "ark-ff 0.5.0",
+ "ark-poly 0.5.0",
+ "ark-serialize 0.5.0",
+ "ark-std 0.5.0",
+ "merlin",
+]
+
+[[package]]
 name = "w3f-plonk-common"
 version = "0.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -20570,7 +20584,23 @@ dependencies = [
  "ark-std 0.5.0",
  "getrandom_or_panic",
  "rand_core 0.6.4",
- "w3f-pcs",
+ "w3f-pcs 0.0.2",
+]
+
+[[package]]
+name = "w3f-plonk-common"
+version = "0.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30408cda37b81bd7257319942584c794c5784d00d749757bc664656749a1472a"
+dependencies = [
+ "ark-ec 0.5.0",
+ "ark-ff 0.5.0",
+ "ark-poly 0.5.0",
+ "ark-serialize 0.5.0",
+ "ark-std 0.5.0",
+ "getrandom_or_panic",
+ "rand_core 0.6.4",
+ "w3f-pcs 0.0.5",
 ]
 
 [[package]]
@@ -20585,8 +20615,24 @@ dependencies = [
  "ark-serialize 0.5.0",
  "ark-std 0.5.0",
  "ark-transcript",
- "w3f-pcs",
- "w3f-plonk-common",
+ "w3f-pcs 0.0.2",
+ "w3f-plonk-common 0.0.2",
+]
+
+[[package]]
+name = "w3f-ring-proof"
+version = "0.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cbfc4cb881a934e6f33c25927bf955d0cb18e52b94528bbc5fa28dddedb4cd1"
+dependencies = [
+ "ark-ec 0.5.0",
+ "ark-ff 0.5.0",
+ "ark-poly 0.5.0",
+ "ark-serialize 0.5.0",
+ "ark-std 0.5.0",
+ "ark-transcript",
+ "w3f-pcs 0.0.5",
+ "w3f-plonk-common 0.0.7",
 ]
 
 [[package]]
