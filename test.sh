@@ -51,7 +51,18 @@ if [ -n "$changed" ] || [ -n "$changed_rigs" ]; then
   expected=$(sed '/^#/d;/^$/d' "ci/expected-failures-${os}-${arch}.txt" 2>/dev/null | sort -u || true)
   want=$(for c in $changed; do echo "$available" | grep -E ":${c}(-[0-9][0-9.]*)?\$" || true; done
          for r in $changed_rigs; do echo "$available" | grep -E "^fixups//${r}:" || true; done)
-  crates=$(echo "$want" | sed '/^$/d' | sort -u | comm -23 - <(echo "$expected") | tr '\n' ' ')
+  # Drop known failures by CRATE STEM (label minus trailing -<ver>): expected
+  # lists the bare alias (e.g. :backtrace) but lever-1's matcher may build the
+  # versioned library (:backtrace-0.3) of the same crate — an exact-match filter
+  # would miss it and try to build a known-broken crate. Stem-strip both sides.
+  exp_stems=$(echo "$expected" | sed -E 's/-[0-9][0-9.]*$//' | sort -u)
+  # Tag expected stems (E) and candidates (W), feed both to one awk: bad[] from
+  # E lines, then keep W labels whose stem isn't bad. (awk -v can't carry the
+  # newline-separated list; concatenation avoids it and stays POSIX for the
+  # Earthfile copy of this logic.)
+  crates=$( { printf '%s\n' "$exp_stems" | sed 's/^/E /'; \
+              echo "$want" | sed '/^$/d' | sort -u | sed 's/^/W /'; } \
+    | awk '$1=="E"{bad[$2]=1;next} {s=$2;sub(/-[0-9][0-9.]*$/,"",s);if(!(s in bad))print $2}' | tr '\n' ' ')
   # shellcheck disable=SC2086
   if [ -n "${crates// /}" ]; then buck2 build $crates; else echo "no changed fixups with rig targets"; fi
 fi

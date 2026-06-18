@@ -87,7 +87,8 @@ build-crates:
         done; \
         for r in $rigs; do want="$want $(echo "$available" | grep -E "^fixups//${r}:" || true)"; done; \
         want=$(echo "$want" | tr ' ' '\n' | sed '/^$/d' | sort -u); \
-        if [ -n "$expected" ]; then to_build=$(printf '%s\n' "$want" | grep -vxF "$expected" || true); else to_build="$want"; fi; \
+        exp_stems=$(printf '%s\n' "$expected" | sed -E 's/-[0-9][0-9.]*$//' | sort -u); \
+        if [ -n "$expected" ]; then to_build=$( { printf '%s\n' "$exp_stems" | sed 's/^/E /'; printf '%s\n' "$want" | sed 's/^/W /'; } | awk '$1=="E"{bad[$2]=1;next} {s=$2;sub(/-[0-9][0-9.]*$/,"",s);if(!(s in bad))print $2}'); else to_build="$want"; fi; \
         if [ -n "$to_build" ]; then buck2 build $to_build; else echo "nothing to build"; fi
 
 # Sweep crates under --pattern (default: whole tree); failure set must match the
