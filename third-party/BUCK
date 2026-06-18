@@ -17334,18 +17334,18 @@ alias(
 )
 
 http_archive(
-    name = "errno-0.3.11.crate",
-    sha256 = "976dd42dc7e85965fe702eb8164f21f450704bdde31faefd6471dba214cb594e",
-    strip_prefix = "errno-0.3.11",
-    urls = ["https://static.crates.io/crates/errno/0.3.11/download"],
+    name = "errno-0.3.14.crate",
+    sha256 = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb",
+    strip_prefix = "errno-0.3.14",
+    urls = ["https://static.crates.io/crates/errno/0.3.14/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "errno-0.3",
-    srcs = [":errno-0.3.11.crate"],
+    srcs = [":errno-0.3.14.crate"],
     crate = "errno",
-    crate_root = "errno-0.3.11.crate/src/lib.rs",
+    crate_root = "errno-0.3.14.crate/src/lib.rs",
     edition = "2018",
     features = [
         "default",
@@ -17365,10 +17365,10 @@ cargo.rust_library(
             deps = [":libc-0.2"],
         ),
         "windows-gnu": dict(
-            deps = [":windows-sys-0.59"],
+            deps = [":windows-sys-0.61"],
         ),
         "windows-msvc": dict(
-            deps = [":windows-sys-0.59"],
+            deps = [":windows-sys-0.61"],
         ),
     },
     visibility = [],
@@ -50491,68 +50491,84 @@ cargo.rust_library(
     ],
 )
 
-alias(
-    name = "signal-hook-mio",
-    actual = ":signal-hook-mio-0.2",
-    visibility = ["PUBLIC"],
+http_archive(
+    name = "signal-hook-0.4.4.crate",
+    sha256 = "b2a0c28ca5908dbdbcd52e6fdaa00358ab88637f8ab33e1f188dd510eb44b53d",
+    strip_prefix = "signal-hook-0.4.4",
+    urls = ["https://static.crates.io/crates/signal-hook/0.4.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "signal-hook-0.4",
+    srcs = [":signal-hook-0.4.4.crate"],
+    crate = "signal_hook",
+    crate_root = "signal-hook-0.4.4.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "channel",
+        "default",
+        "iterator",
+    ],
+    visibility = [],
+    deps = [
+        ":libc-0.2",
+        ":signal-hook-registry-1",
+    ],
 )
 
 http_archive(
-    name = "signal-hook-mio-0.2.4.crate",
-    sha256 = "34db1a06d485c9142248b7a054f034b349b212551f3dfd19c94d45a754a217cd",
-    strip_prefix = "signal-hook-mio-0.2.4",
-    urls = ["https://static.crates.io/crates/signal-hook-mio/0.2.4/download"],
+    name = "signal-hook-mio-0.2.5.crate",
+    sha256 = "b75a19a7a740b25bc7944bdee6172368f988763b744e3d4dfe753f6b4ece40cc",
+    strip_prefix = "signal-hook-mio-0.2.5",
+    urls = ["https://static.crates.io/crates/signal-hook-mio/0.2.5/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "signal-hook-mio-0.2",
-    srcs = [":signal-hook-mio-0.2.4.crate"],
+    srcs = [":signal-hook-mio-0.2.5.crate"],
     crate = "signal_hook_mio",
-    crate_root = "signal-hook-mio-0.2.4.crate/src/lib.rs",
+    crate_root = "signal-hook-mio-0.2.5.crate/src/lib.rs",
     edition = "2018",
-    platform = {
-        "linux-arm64": dict(
-            features = [
-                "mio-1_0",
-                "support-v1_0",
-            ],
-            named_deps = {
-                "mio_1_0": ":mio-1",
-            },
-        ),
-        "linux-x86_64": dict(
-            features = [
-                "mio-1_0",
-                "support-v1_0",
-            ],
-            named_deps = {
-                "mio_1_0": ":mio-1",
-            },
-        ),
-        "macos-arm64": dict(
-            features = [
-                "mio-1_0",
-                "support-v1_0",
-            ],
-            named_deps = {
-                "mio_1_0": ":mio-1",
-            },
-        ),
-        "macos-x86_64": dict(
-            features = [
-                "mio-1_0",
-                "support-v1_0",
-            ],
-            named_deps = {
-                "mio_1_0": ":mio-1",
-            },
-        ),
+    features = [
+        "mio-1_0",
+        "support-v1_0",
+    ],
+    named_deps = {
+        "mio_1_0": ":mio-1",
     },
     visibility = [],
     deps = [
         ":libc-0.2",
         ":signal-hook-0.3",
+    ],
+)
+
+alias(
+    name = "signal-hook-mio",
+    actual = ":signal-hook-mio-0.3",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "signal-hook-mio-0.3.0.crate",
+    sha256 = "c3c965b71730d01c671d7a7f6b2c4f5729acc8fba1acb65a36576f9181076dfa",
+    strip_prefix = "signal-hook-mio-0.3.0",
+    urls = ["https://static.crates.io/crates/signal-hook-mio/0.3.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "signal-hook-mio-0.3",
+    srcs = [":signal-hook-mio-0.3.0.crate"],
+    crate = "signal_hook_mio",
+    crate_root = "signal-hook-mio-0.3.0.crate/src/lib.rs",
+    edition = "2018",
+    visibility = [],
+    deps = [
+        ":libc-0.2",
+        ":signal-hook-0.4",
     ],
 )
 
@@ -62175,8 +62191,6 @@ cargo.rust_library(
                 "Win32_System",
                 "Win32_System_Com",
                 "Win32_System_Console",
-                "Win32_System_Diagnostics",
-                "Win32_System_Diagnostics_Debug",
                 "Win32_System_IO",
                 "Win32_System_LibraryLoader",
                 "Win32_System_Pipes",
@@ -62209,8 +62223,6 @@ cargo.rust_library(
                 "Win32_System",
                 "Win32_System_Com",
                 "Win32_System_Console",
-                "Win32_System_Diagnostics",
-                "Win32_System_Diagnostics_Debug",
                 "Win32_System_IO",
                 "Win32_System_LibraryLoader",
                 "Win32_System_Pipes",
@@ -62295,6 +62307,8 @@ cargo.rust_library(
                 "Win32_Storage_FileSystem",
                 "Win32_System_Com",
                 "Win32_System_Console",
+                "Win32_System_Diagnostics",
+                "Win32_System_Diagnostics_Debug",
                 "Win32_System_IO",
                 "Win32_System_Pipes",
                 "Win32_System_Registry",
@@ -62316,6 +62330,8 @@ cargo.rust_library(
                 "Win32_Storage_FileSystem",
                 "Win32_System_Com",
                 "Win32_System_Console",
+                "Win32_System_Diagnostics",
+                "Win32_System_Diagnostics_Debug",
                 "Win32_System_IO",
                 "Win32_System_Pipes",
                 "Win32_System_Registry",

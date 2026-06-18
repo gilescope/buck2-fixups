@@ -6,3 +6,13 @@
 # of this source tree.
 
 features = ["force_unix_path_separator"]
+
+# typenum <1.20.0 ships a build script (build/main.rs in 1.16–1.17, build.rs in
+# 1.18–1.19) that generates the consts module `lib.rs` include!s, so it must
+# run. 1.20.0 dropped the build script entirely. Gate run=true to the range
+# that has one: the main rig resolves >=1.20 (cfg matches nothing → reindeer's
+# unused-buildscript check skips it), while dated snapshots pinned to an older
+# typenum get the build script wired. Surfaced by the 2024-11/2025-11 snapshot
+# rigs (typenum 1.17.0/1.19.0). See README "Dated snapshots" / issue #45.
+['cfg(version = ">=1.0.0, <1.20.0")']
+buildscript.run = true

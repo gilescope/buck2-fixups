@@ -1,0 +1,7 @@
+
+# backtrace's build script (writes OUT_DIR) is present in the 0.3.0..<0.3.74 versions
+# the dated snapshots resolve, but gone/absent in the main rig's version.
+# Gate so reindeer wires it only where it exists (a version cfg matching no
+# resolved version is exempt). Surfaced by the snapshot rigs; see issue #45.
+['cfg(version = ">=0.3.0, <0.3.74")']
+buildscript.run = true

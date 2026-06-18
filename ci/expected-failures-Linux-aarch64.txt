@@ -23,3 +23,24 @@ fixups//third-party:rustls
 fixups//third-party:rustls-webpki
 fixups//third-party:tokio-rustls
 fixups//third-party:ureq
+
+# ── Dated snapshot rigs (third-party/snapshots/, wide main-rig mirrors per era) ──
+# These rigs resolve ~1900 crates each at point-in-time versions, so the FULL
+# per-platform failure set is populated by the matrix sweep (run it via
+# workflow_dispatch, then add the new failures here). Pre-seeded below are the
+# confident, platform-class failures:
+#
+#  windows-sys 0.52/0.59 + their windows-targets emit `raw-dylib`, only valid
+#  on Windows — they fail on every non-Windows host (fixed in 0.60+).
+fixups//third-party/snapshots/2024-11:windows-sys-0.52
+fixups//third-party/snapshots/2024-11:windows-sys-0.59
+fixups//third-party/snapshots/2025-05:windows-sys-0.52
+fixups//third-party/snapshots/2025-05:windows-sys-0.59
+fixups//third-party/snapshots/2025-11:windows-sys-0.52
+fixups//third-party/snapshots/2025-11:windows-sys-0.59
+fixups//third-party/snapshots/2026-05:windows-sys-0.52
+fixups//third-party/snapshots/2026-05:windows-sys-0.59
+#
+#  librocksdb-sys is stubbed (run=false, no overlay — its shared overlay fixup
+#  cannot normalize at snapshot depth), so it and its dependents (rocksdb, …)
+#  fail to build. The sweep enumerates that cascade; add entries when it runs.

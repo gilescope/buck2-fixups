@@ -1390,7 +1390,7 @@ rstest = "0.25.0"
 rusqlite = { version = "0.35.0", features = ["bundled"] } # bundled: fixup compiles the shipped sqlite3.c, no system sqlite
 secp256k1 = "0.31.0"
 # serde-wasm-bindgen = "0.6.5"
-signal-hook-mio = "0.2.4"
+signal-hook-mio = "0.3.0"
 slotmap = "1.0.7"
 smol_str = "0.3.2"
 sqlx-macros-core = "0.8.5"
