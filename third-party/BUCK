@@ -17334,18 +17334,18 @@ alias(
 )
 
 http_archive(
-    name = "errno-0.3.11.crate",
-    sha256 = "976dd42dc7e85965fe702eb8164f21f450704bdde31faefd6471dba214cb594e",
-    strip_prefix = "errno-0.3.11",
-    urls = ["https://static.crates.io/crates/errno/0.3.11/download"],
+    name = "errno-0.3.14.crate",
+    sha256 = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb",
+    strip_prefix = "errno-0.3.14",
+    urls = ["https://static.crates.io/crates/errno/0.3.14/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "errno-0.3",
-    srcs = [":errno-0.3.11.crate"],
+    srcs = [":errno-0.3.14.crate"],
     crate = "errno",
-    crate_root = "errno-0.3.11.crate/src/lib.rs",
+    crate_root = "errno-0.3.14.crate/src/lib.rs",
     edition = "2018",
     features = [
         "default",
@@ -17365,10 +17365,10 @@ cargo.rust_library(
             deps = [":libc-0.2"],
         ),
         "windows-gnu": dict(
-            deps = [":windows-sys-0.59"],
+            deps = [":windows-sys-0.61"],
         ),
         "windows-msvc": dict(
-            deps = [":windows-sys-0.59"],
+            deps = [":windows-sys-0.61"],
         ),
     },
     visibility = [],
@@ -62157,8 +62157,6 @@ cargo.rust_library(
                 "Win32_System",
                 "Win32_System_Com",
                 "Win32_System_Console",
-                "Win32_System_Diagnostics",
-                "Win32_System_Diagnostics_Debug",
                 "Win32_System_IO",
                 "Win32_System_LibraryLoader",
                 "Win32_System_Pipes",
@@ -62191,8 +62189,6 @@ cargo.rust_library(
                 "Win32_System",
                 "Win32_System_Com",
                 "Win32_System_Console",
-                "Win32_System_Diagnostics",
-                "Win32_System_Diagnostics_Debug",
                 "Win32_System_IO",
                 "Win32_System_LibraryLoader",
                 "Win32_System_Pipes",
@@ -62277,6 +62273,8 @@ cargo.rust_library(
                 "Win32_Storage_FileSystem",
                 "Win32_System_Com",
                 "Win32_System_Console",
+                "Win32_System_Diagnostics",
+                "Win32_System_Diagnostics_Debug",
                 "Win32_System_IO",
                 "Win32_System_Pipes",
                 "Win32_System_Registry",
@@ -62298,6 +62296,8 @@ cargo.rust_library(
                 "Win32_Storage_FileSystem",
                 "Win32_System_Com",
                 "Win32_System_Console",
+                "Win32_System_Diagnostics",
+                "Win32_System_Diagnostics_Debug",
                 "Win32_System_IO",
                 "Win32_System_Pipes",
                 "Win32_System_Registry",

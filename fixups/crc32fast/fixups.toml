@@ -4,3 +4,10 @@
 # LICENSE-MIT file in the root directory of this source tree and the Apache
 # License, Version 2.0 found in the LICENSE-APACHE file in the root directory
 # of this source tree.
+
+# crc32fast's build script (SIMD cfg probe) is present in the 1.5.0..<2.0.0 versions
+# the dated snapshots resolve, but gone/absent in the main rig's version.
+# Gate so reindeer wires it only where it exists (a version cfg matching no
+# resolved version is exempt). Surfaced by the snapshot rigs; see issue #45.
+['cfg(version = ">=1.5.0, <2.0.0")']
+buildscript.run = false
