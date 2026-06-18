@@ -1,0 +1,6 @@
+# html5ever's build script (generates the tokenizer match tables into OUT_DIR) is present in the 0.29.0..<0.30.0 versions
+# the dated snapshots resolve, but gone/absent in the main rig's version.
+# Gate so reindeer wires it only where it exists (a version cfg matching no
+# resolved version is exempt). Surfaced by the snapshot rigs; see issue #45.
+['cfg(version = ">=0.29.0, <0.30.0")']
+buildscript.run = true
