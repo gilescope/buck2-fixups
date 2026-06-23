@@ -19,6 +19,7 @@ fixups//third-party/snapshots/2025-11:windows-sys-0.59
 fixups//third-party/snapshots/2026-05:windows-sys-0.52
 fixups//third-party/snapshots/2026-05:windows-sys-0.59
 #
-#  librocksdb-sys is stubbed (run=false, no overlay — its shared overlay fixup
-#  cannot normalize at snapshot depth), so it and its dependents (rocksdb, …)
-#  fail to build. The sweep enumerates that cascade; add entries when it runs.
+#  librocksdb-sys uses its real shared overlay (reindeer emits it through the
+#  `.shared-fixups` anchor symlink), so it builds on Linux exactly like the
+#  main rig. On macOS/Windows its build mirrors the main rig; the sweep
+#  catalogs any failure there.

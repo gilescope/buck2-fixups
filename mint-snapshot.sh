@@ -67,17 +67,15 @@ cat > "$rig/reindeer.toml" <<'EOF'
 shared_fixups = ["../../../fixups"]
 EOF
 
-# Local overrides for fixups that can't be shared into a snapshot. librocksdb-sys's
-# shared fixup maps an `overlay` of vendored rocksdb C++ by path; at the snapshot's
-# depth reindeer emits `../../../fixups/...`, which buck2 rejects as an un-normalized
-# source path and refuses to PARSE the rig. Stub it (run=false, no overlay) so the
-# rig parses; the crate then fails to build and is tracked in expected-failures.
-mkdir -p "$rig/fixups/librocksdb-sys"
-cat > "$rig/fixups/librocksdb-sys/fixups.toml" <<'EOF'
-# See mint-snapshot.sh: the shared librocksdb-sys overlay can't normalize at this
-# depth, so it's stubbed here. librocksdb-sys then fails to build (expected).
-buildscript.run = false
-EOF
+# In-rig anchor for shared-fixup `overlay`s (e.g. librocksdb-sys's vendored
+# rocksdb C++). A shared fixup's overlay files live outside the rig, so reindeer
+# would emit a `../../../fixups/...` source path that buck2 refuses to parse.
+# Our reindeer emits external overlays through a fixed `.shared-fixups` anchor
+# instead; this symlink points it at the shared fixups root (it is deliberately
+# NOT named `fixups` — that would land in reindeer's local fixup search and make
+# the shared fixups non-external, tripping the unused-fixup check). The crate
+# then builds from its real overlay, exactly as in the main rig.
+ln -sfn ../../../fixups "$rig/.shared-fixups"
 python3 - "$slot" "$branch" > "$rig/Cargo.toml" <<'PYEOF'
 import tomllib, sys
 slot, branch = sys.argv[1], sys.argv[2]
