@@ -13,16 +13,6 @@ set -e
 # reindeer.toml (needs reindeer with facebookincubator/reindeer#107); each rig
 # keeps only the few overrides whose resolved versions differ from the main rig.
 
-# reindeer buckify fans out one thread per (package, target) recursively — ~3000
-# live threads for this rig (buckify.rs `scope.spawn`). At Rust's default 2MB
-# thread stack that's ~6GB of stacks, which exhausts the 7GB macOS CI runner and
-# makes pthread_create fail with EAGAIN ("failed to spawn thread ... WouldBlock").
-# RUST_MIN_STACK sets the stack for std-spawned worker threads (not the main
-# thread, which keeps its 8MB OS stack for the metadata parse); those workers do
-# shallow per-crate work (recursion is across threads, not deep call stacks), so
-# 512KB is safe and cuts stack memory ~4x (~6GB -> ~1.5GB). See #55.
-export RUST_MIN_STACK="${RUST_MIN_STACK:-524288}"
-
 reindeer="${REINDEER:-reindeer}"
 check=0
 [ "${1:-}" = "--check" ] && check=1
