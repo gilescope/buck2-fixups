@@ -158,10 +158,14 @@ the shared fixup is silent about — **version-gate** them
 main rig *and* every snapshot (a version cfg matching no resolved version is
 exempt). Wiring the wide mirror surfaced and fixed ~17 such gaps (typenum,
 backtrace, libloading, moka, schemafy, …) — that drift is exactly what #45
-hunts. One crate can't be shared: `librocksdb-sys` uses an `overlay` of vendored
-C++ whose path can't normalize at the snapshot's depth, so each slot stubs it
-locally (`fixups/librocksdb-sys/`, `run=false`) — it then fails to build and is
-tracked in expected-failures.
+hunts. Shared `overlay` fixups (e.g. `librocksdb-sys`'s vendored rocksdb C++)
+need an in-rig anchor: a shared fixup's overlay files live outside the rig, so a
+relative path would need `..`, which buck2 rejects for sources. Our reindeer
+emits external overlays through a fixed **`.shared-fixups`** anchor, and each
+slot carries a `.shared-fixups -> ../../../fixups` symlink — so `librocksdb-sys`
+uses its real overlay and builds exactly like the main rig (the anchor is
+deliberately not named `fixups`, which would land in reindeer's local fixup
+search and make the shared fixups non-external).
 
 ### Minting / re-minting a snapshot (the registry time machine)
 
@@ -202,8 +206,8 @@ to that leg). Failures carry the label `fixups//third-party/snapshots/<yyyy-mm>:
 Because each slot is ~1900 crates, the **complete** per-platform failure set is
 populated by the matrix sweep, not by hand: run it (`workflow_dispatch`), then
 add the new failures to `ci/expected-failures-<platform>.txt`. The lists ship
-pre-seeded with the confident, platform-class failures (the `librocksdb-sys`
-stub cascade and the `windows-sys <0.60` `raw-dylib`-on-non-Windows class).
+pre-seeded with the confident, platform-class failures (the `windows-sys <0.60`
+`raw-dylib`-on-non-Windows class).
 
 [#45]: https://github.com/gilescope/buck2-fixups/issues/45
 [idx]: https://github.com/gilescope/crates.io-index

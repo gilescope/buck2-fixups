@@ -8,7 +8,7 @@ cargo +nightly-2025-05-09 install --git https://github.com/facebook/buck2.git bu
 # until it ships in a release; pinned by commit. Its `cargo` dependency needs a
 # newer rustc, so build it with a recent stable toolchain.
 rustup toolchain install 1.94.0 --profile minimal
-cargo +1.94.0 install --locked --git https://github.com/gilescope/reindeer --rev bfbf9ca6d1655d3ef185d9310f62c73633bc6a35 reindeer
+cargo +1.94.0 install --locked --git https://github.com/gilescope/reindeer --rev baca1130d34bba20862b71337eac7c024d9be0b0 reindeer
 
 # Test:
 ./test.sh

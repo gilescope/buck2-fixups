@@ -22,7 +22,7 @@ env:
   # (facebookincubator/reindeer#107) until it ships in a release; pinned by
   # commit. Keep in sync with Earthfile + ci.sh.
   REINDEER_GIT: https://github.com/gilescope/reindeer
-  REINDEER_REV: bfbf9ca6d1655d3ef185d9310f62c73633bc6a35
+  REINDEER_REV: baca1130d34bba20862b71337eac7c024d9be0b0
 
 jobs:
   linux:
