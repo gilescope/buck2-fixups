@@ -170,18 +170,18 @@ alias(
 )
 
 http_archive(
-    name = "actix-router-0.5.3.crate",
-    sha256 = "13d324164c51f63867b57e73ba5936ea151b8a41a1d23d1031eeb9f70d0236f8",
-    strip_prefix = "actix-router-0.5.3",
-    urls = ["https://static.crates.io/crates/actix-router/0.5.3/download"],
+    name = "actix-router-0.5.4.crate",
+    sha256 = "14f8c75c51892f18d9c46150c5ac7beb81c95f78c8b83a634d49f4ca32551fe7",
+    strip_prefix = "actix-router-0.5.4",
+    urls = ["https://static.crates.io/crates/actix-router/0.5.4/download"],
     visibility = [],
 )
 
 cargo.rust_library(
     name = "actix-router-0.5",
-    srcs = [":actix-router-0.5.3.crate"],
+    srcs = [":actix-router-0.5.4.crate"],
     crate = "actix_router",
-    crate_root = "actix-router-0.5.3.crate/src/lib.rs",
+    crate_root = "actix-router-0.5.4.crate/src/lib.rs",
     edition = "2021",
     features = [
         "default",
