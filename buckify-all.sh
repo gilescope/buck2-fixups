@@ -13,20 +13,19 @@ set -e
 # reindeer.toml (needs reindeer with facebookincubator/reindeer#107); each rig
 # keeps only the few overrides whose resolved versions differ from the main rig.
 
+# reindeer buckify fans out one thread per (package, target) recursively — ~3000
+# live threads for this rig (buckify.rs `scope.spawn`). At Rust's default 2MB
+# thread stack that's ~6GB of stacks, which exhausts the 7GB macOS CI runner and
+# makes pthread_create fail with EAGAIN ("failed to spawn thread ... WouldBlock").
+# RUST_MIN_STACK sets the stack for std-spawned worker threads (not the main
+# thread, which keeps its 8MB OS stack for the metadata parse); those workers do
+# shallow per-crate work (recursion is across threads, not deep call stacks), so
+# 512KB is safe and cuts stack memory ~4x (~6GB -> ~1.5GB). See #55.
+export RUST_MIN_STACK="${RUST_MIN_STACK:-524288}"
+
 reindeer="${REINDEER:-reindeer}"
 check=0
 [ "${1:-}" = "--check" ] && check=1
-
-# reindeer buckify spawns one scoped thread per crate; with the rig now ~3000
-# crates that exceeds the macOS runner's default process limit (`ulimit -u`),
-# making pthread_create fail with EAGAIN ("failed to spawn thread ... WouldBlock"
-# at buckify.rs). Raise the soft limit to the hard cap (no-op where already high,
-# e.g. Linux containers / dev machines). See PR #55.
-if hard=$(ulimit -Hu 2>/dev/null) && [ "$hard" != "unlimited" ]; then
-  ulimit -Su "$hard" 2>/dev/null || true
-else
-  ulimit -Su unlimited 2>/dev/null || true
-fi
 
 # Git Bash/MSYS mangles buck2 target patterns; harmless for reindeer but the
 # rigs share the tree, so keep it consistent with test.sh.

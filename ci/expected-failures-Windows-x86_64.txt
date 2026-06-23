@@ -61,7 +61,56 @@ fixups//third-party:rustls-webpki
 fixups//third-party:tokio-rustls
 fixups//third-party:ureq
 
-# ── top-2000 wave: changed native/GUI/unix-only crates failing on windows-x86_64
-#    (X11/wayland/GL/native-C — unix or system-lib dependent; pulls backtrace/zstd-sys
-#    which are already listed but built as their deps).
-fixups//third-party:aws-lc-fips-sys glutin_egl_sys glutin_wgl_sys google-cloud-auth libxdo-sys naga onig_sys prost-wkt-types sentry-contexts tree-sitter v8 wayland-sys winit x11-dl
+# ── top-2000 breadth wave: native/GUI/syscall crates + their changed parents
+#    that fail on this platform (system libs absent in CI / unix-only). The Darwin-48
+#    cluster is replicated since these crates fail on every host; platform-specific
+#    leaf failures appended. PR leg builds changed crates + deps, so parents must be listed.
+fixups//third-party:aes-soft
+fixups//third-party:android-activity
+fixups//third-party:aws-lc-fips-sys
+fixups//third-party:calloop-wayland-source
+fixups//third-party:console_log
+fixups//third-party:cookie_store
+fixups//third-party:cpuid-bool
+fixups//third-party:docify
+fixups//third-party:docify_macros
+fixups//third-party:glutin
+fixups//third-party:google-cloud-auth
+fixups//third-party:kvdb-rocksdb
+fixups//third-party:landlock
+fixups//third-party:multipart
+fixups//third-party:naga
+fixups//third-party:ndk
+fixups//third-party:ndk-sys
+fixups//third-party:neli
+fixups//third-party:netlink-proto
+fixups//third-party:netlink-sys
+fixups//third-party:onig
+fixups//third-party:onig_sys
+fixups//third-party:rav1e
+fixups//third-party:ravif
+fixups//third-party:rdkafka
+fixups//third-party:rtnetlink
+fixups//third-party:sctk-adwaita
+fixups//third-party:seccompiler
+fixups//third-party:sentry
+fixups//third-party:sentry-contexts
+fixups//third-party:slog-json
+fixups//third-party:smithay-client-toolkit
+fixups//third-party:smithay-clipboard
+fixups//third-party:sqlx-rt
+fixups//third-party:syntect
+fixups//third-party:tauri-runtime-wry
+fixups//third-party:tokenizers
+fixups//third-party:v8
+fixups//third-party:wayland-client
+fixups//third-party:wayland-cursor
+fixups//third-party:wayland-protocols
+fixups//third-party:wayland-protocols-plasma
+fixups//third-party:wayland-protocols-wlr
+fixups//third-party:web-sys
+fixups//third-party:wgpu-core
+fixups//third-party:wgpu-hal
+fixups//third-party:winit
+fixups//third-party:x11-dl
+fixups//third-party:aws-lc-sys aws-lc-fips-sys glutin_egl_sys glutin_wgl_sys libxdo-sys prost-wkt-types softbuffer tree-sitter wayland-sys
