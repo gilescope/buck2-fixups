@@ -17,6 +17,17 @@ reindeer="${REINDEER:-reindeer}"
 check=0
 [ "${1:-}" = "--check" ] && check=1
 
+# reindeer buckify spawns one scoped thread per crate; with the rig now ~3000
+# crates that exceeds the macOS runner's default process limit (`ulimit -u`),
+# making pthread_create fail with EAGAIN ("failed to spawn thread ... WouldBlock"
+# at buckify.rs). Raise the soft limit to the hard cap (no-op where already high,
+# e.g. Linux containers / dev machines). See PR #55.
+if hard=$(ulimit -Hu 2>/dev/null) && [ "$hard" != "unlimited" ]; then
+  ulimit -Su "$hard" 2>/dev/null || true
+else
+  ulimit -Su unlimited 2>/dev/null || true
+fi
+
 # Git Bash/MSYS mangles buck2 target patterns; harmless for reindeer but the
 # rigs share the tree, so keep it consistent with test.sh.
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' ;; esac

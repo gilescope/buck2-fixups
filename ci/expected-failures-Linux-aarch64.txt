@@ -44,3 +44,7 @@ fixups//third-party/snapshots/2026-05:windows-sys-0.59
 #  librocksdb-sys is stubbed (run=false, no overlay — its shared overlay fixup
 #  cannot normalize at snapshot depth), so it and its dependents (rocksdb, …)
 #  fail to build. The sweep enumerates that cascade; add entries when it runs.
+
+# ── top-2000 wave: native/GUI/windows-only crates that fail on this Linux leg
+#    (no system libs in the earthly container; winreg/windows-future are win-only).
+fixups//third-party:aws-lc-fips-sys glutin_egl_sys google-cloud-auth naga ndk-sys onig_sys prost-wkt-types sentry-contexts v8 wayland-client windows-future winreg x11-dl

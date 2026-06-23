@@ -60,3 +60,8 @@ fixups//third-party:rustls
 fixups//third-party:rustls-webpki
 fixups//third-party:tokio-rustls
 fixups//third-party:ureq
+
+# ── top-2000 wave: changed native/GUI/unix-only crates failing on windows-x86_64
+#    (X11/wayland/GL/native-C — unix or system-lib dependent; pulls backtrace/zstd-sys
+#    which are already listed but built as their deps).
+fixups//third-party:aws-lc-fips-sys glutin_egl_sys glutin_wgl_sys google-cloud-auth libxdo-sys naga onig_sys prost-wkt-types sentry-contexts tree-sitter v8 wayland-sys winit x11-dl
