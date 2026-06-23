@@ -51718,12 +51718,6 @@ cargo.rust_library(
     visibility = [],
 )
 
-alias(
-    name = "spin",
-    actual = ":spin-0.10",
-    visibility = ["PUBLIC"],
-)
-
 http_archive(
     name = "spin-0.10.0.crate",
     sha256 = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591",
@@ -51742,6 +51736,42 @@ cargo.rust_library(
         "barrier",
         "default",
         "lazy",
+        "lock_api",
+        "mutex",
+        "once",
+        "rwlock",
+        "spin_mutex",
+    ],
+    named_deps = {
+        "lock_api_crate": ":lock_api-0.4",
+    },
+    visibility = [],
+)
+
+alias(
+    name = "spin",
+    actual = ":spin-0.12",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "spin-0.12.0.crate",
+    sha256 = "1527984ca054dfca79333baec451042863f485fbee01b7bf6d911de915cac865",
+    strip_prefix = "spin-0.12.0",
+    urls = ["https://static.crates.io/crates/spin/0.12.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "spin-0.12",
+    srcs = [":spin-0.12.0.crate"],
+    crate = "spin",
+    crate_root = "spin-0.12.0.crate/src/lib.rs",
+    edition = "2021",
+    features = [
+        "barrier",
+        "default",
+        "lazylock",
         "lock_api",
         "mutex",
         "once",
