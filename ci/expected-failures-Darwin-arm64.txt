@@ -8,12 +8,16 @@
 # workflow_dispatch, then add the new failures here). Pre-seeded below are the
 # confident, platform-class failures:
 #
-#  windows-sys 0.52/0.59 + their windows-targets emit `raw-dylib`, only valid
-#  on Windows — they fail on every non-Windows host (fixed in 0.60+).
-fixups//third-party/snapshots/2024-11:windows-sys-0.52
-fixups//third-party/snapshots/2024-11:windows-sys-0.59
-fixups//third-party/snapshots/2025-05:windows-sys-0.52
-fixups//third-party/snapshots/2025-05:windows-sys-0.59
+#  windows-sys 0.52/0.59 hit `raw-dylib` (E0455, Windows-only) on mac ONLY in the
+#  2025-11/2026-05 rigs. Root cause: the fixups/windows-targets cfg is gated to
+#  cfg(target_os="windows"), but reindeer can only emit a platform-gated cfg when
+#  the crate already has a per-platform attr (deps) to anchor a platform={} map.
+#  In these two rigs windows-targets-0.52 resolves WITHOUT its per-arch import-lib
+#  deps, so reindeer flattens `--cfg=windows_raw_dylib` to UNCONDITIONAL → the
+#  link! macro emits raw-dylib on mac. The 2024-11/2025-05 rigs (and the main rig)
+#  keep the per-arch deps, so the cfg stays gated and they build fine on mac —
+#  hence not listed (verified 2026-06-22). Real fix is a reindeer-fork change:
+#  don't flatten a strict-subset cfg gate to unconditional. Until then, except:
 fixups//third-party/snapshots/2025-11:windows-sys-0.52
 fixups//third-party/snapshots/2025-11:windows-sys-0.59
 fixups//third-party/snapshots/2026-05:windows-sys-0.52
@@ -22,3 +26,60 @@ fixups//third-party/snapshots/2026-05:windows-sys-0.59
 #  librocksdb-sys is stubbed (run=false, no overlay — its shared overlay fixup
 #  cannot normalize at snapshot depth), so it and its dependents (rocksdb, …)
 #  fail to build. The sweep enumerates that cascade; add entries when it runs.
+
+# ── top-2000 breadth wave (rank 1001-2000, 647 crates added) ──────────────
+# Verified failing on macos-arm64 after the wave. Dominated by native/GUI stacks
+# (wayland/x11/wgpu/winit/tauri/smithay/glutin/naga — need a display/GPU/system
+# libs), native-C wrappers (onig/rdkafka/v8/aws-lc-fips/rocksdb/rav1e), Linux
+# syscall crates (landlock/seccomp/netlink/neli/rtnetlink), and a few version-skew
+# or deprecated crates (aes-soft, cpuid-bool, multipart, slog-json, docify*). Most
+# native ones should build on the Linux sweep where the system libs exist — the
+# matrix populates per-platform lists. See README "weekly sweep".
+fixups//third-party:aes-soft
+fixups//third-party:android-activity
+fixups//third-party:aws-lc-fips-sys
+fixups//third-party:calloop-wayland-source
+fixups//third-party:console_log
+fixups//third-party:cookie_store
+fixups//third-party:cpuid-bool
+fixups//third-party:docify
+fixups//third-party:docify_macros
+fixups//third-party:glutin
+fixups//third-party:google-cloud-auth
+fixups//third-party:kvdb-rocksdb
+fixups//third-party:landlock
+fixups//third-party:multipart
+fixups//third-party:naga
+fixups//third-party:ndk
+fixups//third-party:ndk-sys
+fixups//third-party:neli
+fixups//third-party:netlink-proto
+fixups//third-party:netlink-sys
+fixups//third-party:onig
+fixups//third-party:onig_sys
+fixups//third-party:rav1e
+fixups//third-party:ravif
+fixups//third-party:rdkafka
+fixups//third-party:rtnetlink
+fixups//third-party:sctk-adwaita
+fixups//third-party:seccompiler
+fixups//third-party:sentry
+fixups//third-party:sentry-contexts
+fixups//third-party:slog-json
+fixups//third-party:smithay-client-toolkit
+fixups//third-party:smithay-clipboard
+fixups//third-party:sqlx-rt
+fixups//third-party:syntect
+fixups//third-party:tauri-runtime-wry
+fixups//third-party:tokenizers
+fixups//third-party:v8
+fixups//third-party:wayland-client
+fixups//third-party:wayland-cursor
+fixups//third-party:wayland-protocols
+fixups//third-party:wayland-protocols-plasma
+fixups//third-party:wayland-protocols-wlr
+fixups//third-party:web-sys
+fixups//third-party:wgpu-core
+fixups//third-party:wgpu-hal
+fixups//third-party:winit
+fixups//third-party:x11-dl
