@@ -122,3 +122,11 @@ fixups//third-party:prost-wkt-types
 fixups//third-party:softbuffer
 fixups//third-party:tree-sitter
 fixups//third-party:wayland-sys
+
+# top-2000 wave: changed crates failing on windows — aws-sdk-secretsmanager pulls
+# aws-lc-sys (already listed); wayland-* are unix-only; parquet pulls zstd-sys
+# whose C build fails here. (backtrace failure is a transitive of these.)
+fixups//third-party:aws-sdk-secretsmanager
+fixups//third-party:wayland-sys
+fixups//third-party:wayland-backend
+fixups//third-party:parquet

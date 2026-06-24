@@ -103,3 +103,35 @@ fixups//third-party:glutin_egl_sys
 fixups//third-party:prost-wkt-types
 fixups//third-party:windows-future
 fixups//third-party:winreg
+# top-2000 wave: changed native crates needing system libs absent in the earthly
+# CI container (GTK/glib/webkit/x11/wayland/GL/dbus, swift/vswhom/webview2 = non-linux,
+# aws-sdk-secretsmanager pulls aws-lc-sys whose build-script link fails on ci clang/lld).
+# These are the changed parents that pull the failing wayland-client/x11-dl/aws-lc-sys leaves.
+fixups//third-party:atk-sys
+fixups//third-party:aws-sdk-secretsmanager
+fixups//third-party:cairo-sys-rs
+fixups//third-party:gdk-pixbuf-sys
+fixups//third-party:gdk-sys
+fixups//third-party:gdkx11-sys
+fixups//third-party:gio
+fixups//third-party:gio-sys
+fixups//third-party:glib-sys
+fixups//third-party:glutin_glx_sys
+fixups//third-party:glutin_wgl_sys
+fixups//third-party:gobject-sys
+fixups//third-party:gtk
+fixups//third-party:gtk-sys
+fixups//third-party:javascriptcore-rs-sys
+fixups//third-party:khronos-egl
+fixups//third-party:libdbus-sys
+fixups//third-party:libxdo-sys
+fixups//third-party:pango-sys
+fixups//third-party:soup3-sys
+fixups//third-party:swift-rs
+fixups//third-party:vswhom-sys
+fixups//third-party:wayland-backend
+fixups//third-party:wayland-sys
+fixups//third-party:webkit2gtk-sys
+fixups//third-party:webview2-com-sys
+fixups//third-party:wry
+fixups//third-party:x11

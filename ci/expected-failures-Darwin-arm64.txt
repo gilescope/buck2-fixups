@@ -84,3 +84,6 @@ fixups//third-party:wgpu-core
 fixups//third-party:wgpu-hal
 fixups//third-party:winit
 fixups//third-party:x11-dl
+fixups//third-party:prost-wkt-types
+fixups//third-party:windows-future
+fixups//third-party:winreg
