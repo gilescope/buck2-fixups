@@ -138,3 +138,20 @@ fixups//third-party:metrics-exporter-prometheus
 fixups//third-party:rfd
 fixups//third-party:tauri-runtime
 fixups//third-party:wry
+
+# round 3: rdkafka-sys (changed fixup, vendored build fails); sentry-* pull
+# backtrace; arrow/datafusion-*/vsdb_core pull zstd-sys (already fails on windows).
+fixups//third-party:rdkafka-sys
+fixups//third-party:sentry-backtrace
+fixups//third-party:sentry-panic
+fixups//third-party:sentry-tracing
+fixups//third-party:arrow
+fixups//third-party:datafusion-common
+fixups//third-party:datafusion-execution
+fixups//third-party:datafusion-expr
+fixups//third-party:datafusion-functions
+fixups//third-party:datafusion-optimizer
+fixups//third-party:datafusion-physical-expr
+fixups//third-party:datafusion-physical-plan
+fixups//third-party:datafusion-sql
+fixups//third-party:vsdb_core

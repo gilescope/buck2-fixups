@@ -143,3 +143,6 @@ fixups//third-party:metrics-exporter-prometheus
 fixups//third-party:rfd
 fixups//third-party:tauri-runtime
 fixups//third-party:wry
+
+# round 3: rdkafka-sys now built directly (its fixup changed this PR); vendored librdkafka fails in CI
+fixups//third-party:rdkafka-sys

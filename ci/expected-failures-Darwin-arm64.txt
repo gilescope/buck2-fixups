@@ -95,3 +95,6 @@ fixups//third-party:metrics-exporter-prometheus
 fixups//third-party:rfd
 fixups//third-party:tauri-runtime
 fixups//third-party:wry
+
+# round 3: webview2-com-sys (changed, builds on mac) pulls windows-future
+fixups//third-party:webview2-com-sys
