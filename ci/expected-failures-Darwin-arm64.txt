@@ -87,3 +87,11 @@ fixups//third-party:x11-dl
 fixups//third-party:prost-wkt-types
 fixups//third-party:windows-future
 fixups//third-party:winreg
+# top-2000 wave (round 2): changed parents pulling the wide-blast-radius natives —
+# rfd→wayland-client; elasticsearch/metrics-exporter-prometheus→(rustls)→aws-lc-sys;
+# tauri-runtime/wry→(windows crate)→windows-future. backtrace/zstd-sys drop with these.
+fixups//third-party:elasticsearch
+fixups//third-party:metrics-exporter-prometheus
+fixups//third-party:rfd
+fixups//third-party:tauri-runtime
+fixups//third-party:wry

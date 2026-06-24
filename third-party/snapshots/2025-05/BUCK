@@ -28519,7 +28519,7 @@ cargo.rust_library(
     platform = {
         "linux-arm64": dict(
             mapped_srcs = {
-                ".shared-fixups/librocksdb-sys/aarch64/linux/src/bindings.rs": "librocksdb-sys-6.20.3.crate/src/bindings.rs",
+                "../../../fixups/librocksdb-sys/aarch64/linux/src/bindings.rs": "librocksdb-sys-6.20.3.crate/src/bindings.rs",
             },
             rustc_flags = [
                 "-lstdc++",
@@ -28529,7 +28529,7 @@ cargo.rust_library(
         ),
         "linux-x86_64": dict(
             mapped_srcs = {
-                ".shared-fixups/librocksdb-sys/x86_64/linux/src/bindings.rs": "librocksdb-sys-6.20.3.crate/src/bindings.rs",
+                "../../../fixups/librocksdb-sys/x86_64/linux/src/bindings.rs": "librocksdb-sys-6.20.3.crate/src/bindings.rs",
             },
             rustc_flags = [
                 "-lstdc++",
@@ -28539,7 +28539,7 @@ cargo.rust_library(
         ),
         "macos-arm64": dict(
             mapped_srcs = {
-                ".shared-fixups/librocksdb-sys/aarch64/macos/src/bindings.rs": "librocksdb-sys-6.20.3.crate/src/bindings.rs",
+                "../../../fixups/librocksdb-sys/aarch64/macos/src/bindings.rs": "librocksdb-sys-6.20.3.crate/src/bindings.rs",
             },
             rustc_flags = ["-lc++"],
             deps = [":librocksdb-sys-6-rocksdb-aarch64-macos"],

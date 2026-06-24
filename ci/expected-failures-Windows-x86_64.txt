@@ -130,3 +130,11 @@ fixups//third-party:aws-sdk-secretsmanager
 fixups//third-party:wayland-sys
 fixups//third-party:wayland-backend
 fixups//third-party:parquet
+# top-2000 wave (round 2): changed parents pulling the wide-blast-radius natives —
+# rfd→wayland-client; elasticsearch/metrics-exporter-prometheus→(rustls)→aws-lc-sys;
+# tauri-runtime/wry→(windows crate)→windows-future. backtrace/zstd-sys drop with these.
+fixups//third-party:elasticsearch
+fixups//third-party:metrics-exporter-prometheus
+fixups//third-party:rfd
+fixups//third-party:tauri-runtime
+fixups//third-party:wry
