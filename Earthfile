@@ -15,7 +15,7 @@ tools:
     ARG TARGETARCH
     ARG BUCK2_VERSION=2026-06-01
     ARG REINDEER_GIT=https://github.com/gilescope/reindeer
-    ARG REINDEER_REV=53dfaa818c8dbd8403b084863f02676dec70370e
+    ARG REINDEER_REV=baca1130d34bba20862b71337eac7c024d9be0b0
     RUN apt-get update && apt-get install -y --no-install-recommends \
         clang lld cmake protobuf-compiler zstd rsync python3 pkg-config libssl-dev \
         && rm -rf /var/lib/apt/lists/*

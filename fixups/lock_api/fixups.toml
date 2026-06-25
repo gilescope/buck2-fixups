@@ -1,9 +1,5 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-#
-# This source code is licensed under both the MIT license found in the
-# LICENSE-MIT file in the root directory of this source tree and the Apache
-# License, Version 2.0 found in the LICENSE-APACHE file in the root directory
-# of this source tree.
-
-# the build script for lock_api is a version check for rust 1.61.
-buildscript.run = true
+# lock_api 0.4.0-0.4.12 ships a build.rs (a rustc 1.61 version probe); 0.4.13+
+# dropped it and 0.3.x never had it. Version-gate to that exact band so the
+# directive isn't "unused" against the other lock_api versions the rigs resolve.
+['cfg(version = ">=0.4.0, <0.4.13")']
+buildscript.run = false

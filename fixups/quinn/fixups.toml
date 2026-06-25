@@ -1,4 +1,2 @@
 # Apache 2.0 from https://github.com/systeminit/si/tree/main/third-party/rust
-# quinn ships a build.rs (cfg_aliases). Currently absent from this rig's tree
 # (libp2p-quic/smoldot deferred) so reindeer skips it; kept for consumers.
-buildscript.run = true

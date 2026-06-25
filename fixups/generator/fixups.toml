@@ -1,0 +1,3 @@
+# build script only sets cfg(nightly) (we build stable) and compiles asm on
+# powerpc64 (not in the CI matrix); a no-op on the targeted platforms.
+buildscript.run = false

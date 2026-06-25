@@ -45,3 +45,104 @@ fixups//third-party/snapshots/2026-05:windows-sys-0.59
 #  `.shared-fixups` anchor symlink), so it builds on Linux exactly like the
 #  main rig. On macOS/Windows its build mirrors the main rig; the sweep
 #  catalogs any failure there.
+
+# ── top-2000 breadth wave: native/GUI/syscall crates + their changed parents
+#    that fail on this platform (system libs absent in CI / unix-only). The Darwin-48
+#    cluster is replicated since these crates fail on every host; platform-specific
+#    leaf failures appended. PR leg builds changed crates + deps, so parents must be listed.
+fixups//third-party:aes-soft
+fixups//third-party:android-activity
+fixups//third-party:aws-lc-fips-sys
+fixups//third-party:calloop-wayland-source
+fixups//third-party:console_log
+fixups//third-party:cookie_store
+fixups//third-party:cpuid-bool
+fixups//third-party:docify
+fixups//third-party:docify_macros
+fixups//third-party:glutin
+fixups//third-party:google-cloud-auth
+fixups//third-party:kvdb-rocksdb
+fixups//third-party:landlock
+fixups//third-party:multipart
+fixups//third-party:naga
+fixups//third-party:ndk
+fixups//third-party:ndk-sys
+fixups//third-party:neli
+fixups//third-party:netlink-proto
+fixups//third-party:netlink-sys
+fixups//third-party:onig
+fixups//third-party:onig_sys
+fixups//third-party:rav1e
+fixups//third-party:ravif
+fixups//third-party:rdkafka
+fixups//third-party:rtnetlink
+fixups//third-party:sctk-adwaita
+fixups//third-party:seccompiler
+fixups//third-party:sentry
+fixups//third-party:sentry-contexts
+fixups//third-party:slog-json
+fixups//third-party:smithay-client-toolkit
+fixups//third-party:smithay-clipboard
+fixups//third-party:sqlx-rt
+fixups//third-party:syntect
+fixups//third-party:tauri-runtime-wry
+fixups//third-party:tokenizers
+fixups//third-party:v8
+fixups//third-party:wayland-client
+fixups//third-party:wayland-cursor
+fixups//third-party:wayland-protocols
+fixups//third-party:wayland-protocols-plasma
+fixups//third-party:wayland-protocols-wlr
+fixups//third-party:web-sys
+fixups//third-party:wgpu-core
+fixups//third-party:wgpu-hal
+fixups//third-party:winit
+fixups//third-party:x11-dl
+fixups//third-party:aws-lc-sys
+fixups//third-party:glutin_egl_sys
+fixups//third-party:prost-wkt-types
+fixups//third-party:windows-future
+fixups//third-party:winreg
+# top-2000 wave: changed native crates needing system libs absent in the earthly
+# CI container (GTK/glib/webkit/x11/wayland/GL/dbus, swift/vswhom/webview2 = non-linux,
+# aws-sdk-secretsmanager pulls aws-lc-sys whose build-script link fails on ci clang/lld).
+# These are the changed parents that pull the failing wayland-client/x11-dl/aws-lc-sys leaves.
+fixups//third-party:atk-sys
+fixups//third-party:aws-sdk-secretsmanager
+fixups//third-party:cairo-sys-rs
+fixups//third-party:gdk-pixbuf-sys
+fixups//third-party:gdk-sys
+fixups//third-party:gdkx11-sys
+fixups//third-party:gio
+fixups//third-party:gio-sys
+fixups//third-party:glib-sys
+fixups//third-party:glutin_glx_sys
+fixups//third-party:glutin_wgl_sys
+fixups//third-party:gobject-sys
+fixups//third-party:gtk
+fixups//third-party:gtk-sys
+fixups//third-party:javascriptcore-rs-sys
+fixups//third-party:khronos-egl
+fixups//third-party:libdbus-sys
+fixups//third-party:libxdo-sys
+fixups//third-party:pango-sys
+fixups//third-party:soup3-sys
+fixups//third-party:swift-rs
+fixups//third-party:vswhom-sys
+fixups//third-party:wayland-backend
+fixups//third-party:wayland-sys
+fixups//third-party:webkit2gtk-sys
+fixups//third-party:webview2-com-sys
+fixups//third-party:wry
+fixups//third-party:x11
+# top-2000 wave (round 2): changed parents pulling the wide-blast-radius natives —
+# rfd→wayland-client; elasticsearch/metrics-exporter-prometheus→(rustls)→aws-lc-sys;
+# tauri-runtime/wry→(windows crate)→windows-future. backtrace/zstd-sys drop with these.
+fixups//third-party:elasticsearch
+fixups//third-party:metrics-exporter-prometheus
+fixups//third-party:rfd
+fixups//third-party:tauri-runtime
+fixups//third-party:wry
+
+# round 3: rdkafka-sys now built directly (its fixup changed this PR); vendored librdkafka fails in CI
+fixups//third-party:rdkafka-sys

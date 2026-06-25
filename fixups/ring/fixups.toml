@@ -6,11 +6,118 @@
 # of this source tree.
 
 # Copied from fbsource fixup, modernised to cfg(version) syntax.
-# The RING_CORE_PREFIX symbol prefix embeds the exact crate version, so these
-# sections are pinned to ring 0.17.5 (as is the test rig's Cargo.toml).
-# Other ring versions need their own sections with a matching prefix.
+# ring bakes its crate version into every C/asm symbol, so the fixup is gated by
+# EXACT version (=X.Y.Z, never a range): a crypto crate must build against the
+# precise asm/symbol set we verified, and a future ring should fail loudly (no
+# matching section) rather than silently link mismatched assembly. Three schemes:
+#   =0.16.20  pre-prefix era: unprefixed global symbols, no RING_CORE_PREFIX, no
+#             overlay, windows ships `.obj` (not `.o`); cpu-intel.c is x86-only so
+#             it's excluded on aarch64. Mirrors buck2's original (pre-0.17) fixup.
+#   =0.17.5   legacy prefix: RING_CORE_PREFIX env + a single-underscore overlay in
+#             include/ (ring_core_0_17_5_). NOTE the overlay's fixup_include_paths
+#             can't normalize at snapshot depth, so 0.17.5 builds in the main rig only.
+#   =0.17.14  modern prefix (ring_core_<v>__, double underscore) derived from
+#             CARGO_PKG_* (cargo_env) with the prefix_symbols headers SHIPPED in the
+#             crate's pregenerated/ — no env, no overlay, builds at any rig depth.
+# Uncovered: 0.16.21-0.17.4 and 0.17.6-0.17.13 (no rig resolves them; buck2 upstream
+# also skipped 0.17.6-0.17.11). Add an exact section when a rig first needs one.
+# Main rig pins =0.17.14.
 
 buildscript.run = false
+
+# ring =0.17.14 derives its symbol prefix (`ring_core_<maj>_<min>_<patch>__`)
+# from CARGO_PKG_* at compile time (src/prefixed.rs) and SHIPS the generated
+# `pregenerated/ring_core_generated/prefix_symbols*.h` in the crate, so unlike
+# the 0.17.5 sections below it needs no RING_CORE_PREFIX and no overlay — just
+# cargo_env for the version macros and `pregenerated` on the include path so
+# the C/asm `#include "ring_core_generated/..."` resolves. Generic asm globs
+# pick up the new avx2/aesv8-gcm files added since 0.17.5.
+cargo_env = true
+
+[['cfg(all(version = "=0.17.14", target_arch = "x86_64", target_os = "linux"))'.cxx_library]]
+name = "ring-c-asm-elf-x86_64"
+srcs = [ "crypto/**/*.c", "pregenerated/*x86_64*-elf.S", "third_party/fiat/asm/fiat_curve25519_adx_mul.S", "third_party/fiat/asm/fiat_curve25519_adx_square.S" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "aarch64", target_os = "linux"))'.cxx_library]]
+name = "ring-c-asm-elf-aarch64"
+srcs = [ "crypto/**/*.c", "pregenerated/*armv8*-linux64.S", "pregenerated/*armx*-linux64.S" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "x86_64", target_os = "macos"))'.cxx_library]]
+name = "ring-c-asm-macos-x86_64"
+srcs = [ "crypto/**/*.c", "pregenerated/*x86_64*-macosx.S", "third_party/fiat/asm/fiat_curve25519_adx_mul.S", "third_party/fiat/asm/fiat_curve25519_adx_square.S" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "aarch64", target_os = "macos"))'.cxx_library]]
+name = "ring-c-asm-macos-arm64"
+srcs = [ "crypto/**/*.c", "pregenerated/*armv8*-ios64.S", "pregenerated/*armx*-ios64.S" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "x86_64", target_os = "windows", target_env = "gnu"))'.cxx_library]]
+name = "ring-c-win-x86_64"
+srcs = [ "crypto/**/*.c" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "x86_64", target_os = "windows", target_env = "msvc"))'.cxx_library]]
+name = "ring-c-win-msvc-x86_64"
+srcs = [ "crypto/**/*.c" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "x86_64", target_os = "windows"))'.prebuilt_cxx_library]]
+name = "ring-asm-windows-x86_64"
+static_libs = [ "pregenerated/*x86_64*-nasm.o" ]
+
+# Expanded targets (mirror buck2 upstream): android reuses the linux ELF asm,
+# ios reuses the macos asm (ios-arm64 excludes the 32-bit poly1305_arm.c), and
+# powerpc64 has no pregenerated asm so it builds pure C. Not in this repo's CI
+# matrix — structurally identical to the verified linux/macos sections above.
+[['cfg(all(version = "=0.17.14", target_arch = "x86_64", target_os = "android"))'.cxx_library]]
+name = "ring-c-asm-android-x86_64"
+srcs = [ "crypto/**/*.c", "pregenerated/*x86_64*-elf.S", "third_party/fiat/asm/fiat_curve25519_adx_mul.S", "third_party/fiat/asm/fiat_curve25519_adx_square.S" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "aarch64", target_os = "android"))'.cxx_library]]
+name = "ring-c-asm-android-aarch64"
+srcs = [ "crypto/**/*.c", "pregenerated/*armv8*-linux64.S", "pregenerated/*armx*-linux64.S" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "x86_64", target_os = "ios"))'.cxx_library]]
+name = "ring-c-asm-ios-x86_64"
+srcs = [ "crypto/**/*.c", "pregenerated/*x86_64*-macosx.S", "third_party/fiat/asm/fiat_curve25519_adx_mul.S", "third_party/fiat/asm/fiat_curve25519_adx_square.S" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "aarch64", target_os = "ios"))'.cxx_library]]
+name = "ring-c-asm-ios-arm64"
+srcs = [ "crypto/**/*.c", "pregenerated/*armv8*-ios64.S", "pregenerated/*armx*-ios64.S" ]
+exclude = [ "crypto/poly1305/poly1305_arm.c" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.17.14", target_arch = "powerpc64", target_os = "linux"))'.cxx_library]]
+name = "ring-c-ppc64-linux"
+srcs = [ "crypto/**/*.c" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl", "pregenerated/ring_core_generated/*.h" ]
+include_paths = ["include", "pregenerated"]
+compiler_flags = ["-Wno-error"]
 
 ['cfg(all(version = "=0.17.5", target_arch = "x86_64", target_os = "linux"))'.env]
 RING_CORE_PREFIX = "ring_core_0_17_5_"
@@ -80,3 +187,49 @@ fixup_include_paths = ["include"]
 [['cfg(all(version = "=0.17.5", target_arch = "x86_64", target_os = "windows"))'.prebuilt_cxx_library]]
 name = "ring-asm-windows-x86_84"
 static_libs = [ "pregenerated/*x86_64*-nasm.o" ]
+
+# ring =0.16.20 (pre-prefix era): symbols are global/unprefixed, so no
+# RING_CORE_PREFIX, no cargo_env, no ring_core_generated overlay. Windows ships
+# preassembled `.obj` (not `.o`). cpu-intel.c is x86 CPUID detection, excluded on
+# aarch64. Mirrors buck2's original pre-0.17 fixup. (No fiat/asm dir in 0.16.)
+
+[['cfg(all(version = "=0.16.20", target_arch = "x86_64", target_os = "linux"))'.cxx_library]]
+name = "ring-c-asm-elf-x86_64"
+srcs = [ "crypto/**/*.c", "pregenerated/*x86_64*-elf.S" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl" ]
+include_paths = ["include"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.16.20", target_arch = "aarch64", target_os = "linux"))'.cxx_library]]
+name = "ring-c-asm-elf-aarch64"
+srcs = [ "crypto/**/*.c", "pregenerated/*armv8*-linux64.S", "pregenerated/*armx*-linux64.S" ]
+exclude = [ "crypto/cpu-intel.c" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl" ]
+include_paths = ["include"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.16.20", target_arch = "x86_64", target_os = "macos"))'.cxx_library]]
+name = "ring-c-asm-macos-x86_64"
+srcs = [ "crypto/**/*.c", "pregenerated/*x86_64*-macosx.S" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl" ]
+include_paths = ["include"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.16.20", target_arch = "aarch64", target_os = "macos"))'.cxx_library]]
+name = "ring-c-asm-macos-arm64"
+srcs = [ "crypto/**/*.c", "pregenerated/*armv8*-ios64.S", "pregenerated/*armx*-ios64.S" ]
+exclude = [ "crypto/cpu-intel.c" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl" ]
+include_paths = ["include"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.16.20", target_arch = "x86_64", target_os = "windows"))'.cxx_library]]
+name = "ring-c-win-x86_64"
+srcs = [ "crypto/**/*.c" ]
+headers = [ "include/**/*.h", "crypto/**/*.h", "third_party/**/*.h", "crypto/**/*.inl" ]
+include_paths = ["include"]
+compiler_flags = ["-Wno-error"]
+
+[['cfg(all(version = "=0.16.20", target_arch = "x86_64", target_os = "windows"))'.prebuilt_cxx_library]]
+name = "ring-asm-windows-x86_64"
+static_libs = [ "pregenerated/*x86_64*-nasm.obj" ]

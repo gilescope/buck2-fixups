@@ -6,3 +6,5 @@
 # of this source tree.
 
 cargo_env = true
+
+buildscript.run = false
