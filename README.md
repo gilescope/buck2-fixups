@@ -2,7 +2,7 @@
 
 [Reindeer](https://github.com/facebookincubator/reindeer) fixups for buck2.
 
-448 and counting... (please feel free to contribute!)
+577 and counting... (please feel free to contribute!)
 
 CI-tested on linux-x86_64, linux-aarch64, macos-aarch64, windows-x86_64
 and windows-aarch64 (buckify + cell consumption only on windows-arm:
