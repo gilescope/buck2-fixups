@@ -1,1 +1,3 @@
-buildscript.run = false
+buildscript.run = true
+cargo_env = true
+features = ["egl", "glx", "x11"]

@@ -1,0 +1,3 @@
+# sqlx-rt requires one runtime feature; native-tls uses openssl (avoids the
+# aws-lc-rs prelude-link bug that rustls features would pull in).
+features = ["runtime-tokio-native-tls"]

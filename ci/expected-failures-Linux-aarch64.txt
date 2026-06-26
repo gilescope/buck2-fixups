@@ -46,50 +46,44 @@ fixups//third-party/snapshots/2026-05:windows-sys-0.59
 #  main rig. On macOS/Windows its build mirrors the main rig; the sweep
 #  catalogs any failure there.
 
-# ── top-2000 breadth wave: native/GUI/syscall crates + their changed parents
-#    that fail on this platform (system libs absent in CI / unix-only). The Darwin-48
-#    cluster is replicated since these crates fail on every host; platform-specific
-#    leaf failures appended. PR leg builds changed crates + deps, so parents must be listed.
+# ── top-2000 breadth wave: native crates that genuinely fail to BUILD on Linux,
+#    plus their changed parents. NB the failures here are NOT missing system libs:
+#    the -sys fixups set buildscript.run = false (no link step), so the GTK/glib/
+#    cairo/pango/gdk/gio/gobject -sys cluster, wayland-sys/backend, x11, dbus, etc.
+#    compile as pure FFI and were REMOVED (they build on Linux). What remains fails
+#    for real reasons: vendored-C/prebuilt build scripts whose env reindeer can't fill
+#    (rdkafka vendored librdkafka, kvdb-rocksdb bindings overlay, v8 prebuilt download),
+#    a proc-macro that reads a relative ./protocols/*.xml path (wayland-protocols —
+#    needs CWD=crate dir, which cargo_env can't give), deprecation stubs (aes-soft 0.99,
+#    cpuid-bool 0.99), version skew (naga, slog-json, cookie_store, docify*, mime_guess→
+#    multipart), or wasm/android targets with Linux-incompatible code (ndk, web-sys,
+#    console_log). NB crates merely cfg-gated to another OS (swift-rs, vswhom, webview2,
+#    winreg, windows-future) compile to empty stubs on Linux and build — REMOVED; and
+#    onig*/syntect/tokenizers/rav1e/ravif/sqlx-rt now build (see [buildscript.run.env]
+#    OPT_LEVEL / the `built`-crate env set / a runtime-tls feature) — also REMOVED.
+#    PR leg builds changed crates + deps, so parents must be listed.
 fixups//third-party:aes-soft
 fixups//third-party:android-activity
 fixups//third-party:aws-lc-fips-sys
-fixups//third-party:calloop-wayland-source
 fixups//third-party:console_log
 fixups//third-party:cookie_store
 fixups//third-party:cpuid-bool
 fixups//third-party:docify
 fixups//third-party:docify_macros
-fixups//third-party:glutin
 fixups//third-party:google-cloud-auth
 fixups//third-party:kvdb-rocksdb
-fixups//third-party:landlock
 fixups//third-party:multipart
 fixups//third-party:naga
 fixups//third-party:ndk
 fixups//third-party:ndk-sys
-fixups//third-party:neli
-fixups//third-party:netlink-proto
-fixups//third-party:netlink-sys
-fixups//third-party:onig
-fixups//third-party:onig_sys
-fixups//third-party:rav1e
-fixups//third-party:ravif
 fixups//third-party:rdkafka
-fixups//third-party:rtnetlink
 fixups//third-party:sctk-adwaita
-fixups//third-party:seccompiler
 fixups//third-party:sentry
-fixups//third-party:sentry-contexts
 fixups//third-party:slog-json
 fixups//third-party:smithay-client-toolkit
 fixups//third-party:smithay-clipboard
-fixups//third-party:sqlx-rt
-fixups//third-party:syntect
 fixups//third-party:tauri-runtime-wry
-fixups//third-party:tokenizers
 fixups//third-party:v8
-fixups//third-party:wayland-client
-fixups//third-party:wayland-cursor
 fixups//third-party:wayland-protocols
 fixups//third-party:wayland-protocols-plasma
 fixups//third-party:wayland-protocols-wlr
@@ -97,52 +91,70 @@ fixups//third-party:web-sys
 fixups//third-party:wgpu-core
 fixups//third-party:wgpu-hal
 fixups//third-party:winit
-fixups//third-party:x11-dl
 fixups//third-party:aws-lc-sys
-fixups//third-party:glutin_egl_sys
 fixups//third-party:prost-wkt-types
-fixups//third-party:windows-future
-fixups//third-party:winreg
-# top-2000 wave: changed native crates needing system libs absent in the earthly
-# CI container (GTK/glib/webkit/x11/wayland/GL/dbus, swift/vswhom/webview2 = non-linux,
-# aws-sdk-secretsmanager pulls aws-lc-sys whose build-script link fails on ci clang/lld).
-# These are the changed parents that pull the failing wayland-client/x11-dl/aws-lc-sys leaves.
-fixups//third-party:atk-sys
+# top-2000 wave: changed parents that pull a still-failing native leaf.
+# aws-sdk-secretsmanager → aws-lc-sys (prelude ld-shim bug); wry still fails (more than
+# just webkit2gtk-sys). x11-dl/glutin_egl_sys/glutin_glx_sys now build (buildscript.run
+# = true restored their codegen), which cascaded to gdkx11-sys/javascriptcore-rs-sys/
+# soup3-sys/libxdo-sys/webkit2gtk-sys — all removed.
 fixups//third-party:aws-sdk-secretsmanager
-fixups//third-party:cairo-sys-rs
-fixups//third-party:gdk-pixbuf-sys
-fixups//third-party:gdk-sys
-fixups//third-party:gdkx11-sys
-fixups//third-party:gio
-fixups//third-party:gio-sys
-fixups//third-party:glib-sys
-fixups//third-party:glutin_glx_sys
-fixups//third-party:glutin_wgl_sys
-fixups//third-party:gobject-sys
-fixups//third-party:gtk
-fixups//third-party:gtk-sys
-fixups//third-party:javascriptcore-rs-sys
-fixups//third-party:khronos-egl
-fixups//third-party:libdbus-sys
-fixups//third-party:libxdo-sys
-fixups//third-party:pango-sys
-fixups//third-party:soup3-sys
-fixups//third-party:swift-rs
-fixups//third-party:vswhom-sys
-fixups//third-party:wayland-backend
-fixups//third-party:wayland-sys
-fixups//third-party:webkit2gtk-sys
-fixups//third-party:webview2-com-sys
 fixups//third-party:wry
-fixups//third-party:x11
-# top-2000 wave (round 2): changed parents pulling the wide-blast-radius natives —
-# rfd→wayland-client; elasticsearch/metrics-exporter-prometheus→(rustls)→aws-lc-sys;
-# tauri-runtime/wry→(windows crate)→windows-future. backtrace/zstd-sys drop with these.
+# top-2000 wave (round 2): rfd/winit/smithay-*/sctk-adwaita → wayland-protocols (the
+# relative-path proc-macro above); elasticsearch/metrics-exporter-prometheus →
+# (rustls) → aws-lc-sys. NB wayland-client/wayland-cursor/calloop-wayland-source build
+# (cargo_env sets CARGO_MANIFEST_DIR for their vendored wayland.xml); glutin builds
+# (buildscript.run=true + egl/glx/x11 features); sentry-contexts builds — all removed.
 fixups//third-party:elasticsearch
 fixups//third-party:metrics-exporter-prometheus
 fixups//third-party:rfd
-fixups//third-party:tauri-runtime
 fixups//third-party:wry
 
 # round 3: rdkafka-sys now built directly (its fixup changed this PR); vendored librdkafka fails in CI
 fixups//third-party:rdkafka-sys
+
+# ── reconcile 2026-06-25: failures surfaced by the full +build-all base leg that
+#    pre-dated this PR (drift from the top-500/top-2000 dep-bump merges; the PR leg
+#    only builds changed crates so these went uncaught). Causes verified by build:
+#
+#  aws-lc-sys cluster — TLS crates pull rustls' default aws-lc-rs provider, whose
+#  build-script link hits the prelude ld-shim 'duplicate symbol: __dso_handle' bug
+#  (same root as the block at the top of this file).
+fixups//third-party:async-nats
+fixups//third-party:aws-http
+fixups//third-party:aws-sdk-dynamodb
+fixups//third-party:futures-rustls
+fixups//third-party:hyper-http-proxy
+fixups//third-party:jsonrpsee-client-transport
+fixups//third-party:jsonrpsee-http-client
+fixups//third-party:jsonrpsee-ws-client
+fixups//third-party:jsonschema
+fixups//third-party:libp2p-websocket
+fixups//third-party:oauth2
+fixups//third-party:opentelemetry-http
+fixups//third-party:opentelemetry-otlp
+fixups//third-party:reqwest
+fixups//third-party:reqwest-middleware
+fixups//third-party:reqwest-retry
+fixups//third-party:reqwest-tracing
+fixups//third-party:rustls-platform-verifier
+fixups//third-party:yup-oauth2
+#
+#  Apple-only — objc2/core-graphics-types emit `link kind = "framework"` and mach2
+#  has a compile_error!; all reject non-Apple targets, so they fail on Linux.
+fixups//third-party:cocoa
+fixups//third-party:mach2
+fixups//third-party:metal
+fixups//third-party:objc2-app-kit
+fixups//third-party:objc2-cloud-kit
+fixups//third-party:objc2-core-data
+fixups//third-party:objc2-core-graphics
+fixups//third-party:objc2-core-image
+fixups//third-party:objc2-foundation
+fixups//third-party:objc2-io-surface
+fixups//third-party:objc2-metal
+fixups//third-party:objc2-quartz-core
+fixups//third-party:objc2-ui-kit
+#
+#  v_frame 0.7 — calls Layout::dangling_ptr, absent on the rust 1.94 toolchain.
+fixups//third-party:v_frame
