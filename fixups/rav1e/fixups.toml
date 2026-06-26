@@ -1,2 +1,15 @@
-buildscript.run = true
+# rav1e's build script runs the `built` crate, which expects the full set of
+# cargo-provided env vars; reindeer/cargo_env omits the combined VERSION, NAME,
+# LICENSE, RUSTDOC and NUM_JOBS, so supply them (HOST/TARGET/RUSTC are injected
+# by the prelude at run time).
 cargo_env = true
+
+[buildscript.run.env]
+CARGO_PKG_VERSION = "0.8.1"
+CARGO_PKG_NAME = "rav1e"
+CARGO_PKG_LICENSE = "BSD-2-Clause"
+RUSTDOC = "rustdoc"
+NUM_JOBS = "1"
+PROFILE = "release"
+OPT_LEVEL = "3"
+DEBUG = "false"

@@ -16,8 +16,11 @@ tools:
     ARG BUCK2_VERSION=2026-06-01
     ARG REINDEER_GIT=https://github.com/gilescope/reindeer
     ARG REINDEER_REV=baca1130d34bba20862b71337eac7c024d9be0b0
+    # nasm: rav1e's asm feature shells out to it for x86_64 SIMD (aarch64 uses a
+    # different path). GitHub's windows/macOS runners already ship nasm; the
+    # container didn't, so x86_64 rav1e failed there until now.
     RUN apt-get update && apt-get install -y --no-install-recommends \
-        clang lld cmake protobuf-compiler zstd rsync python3 pkg-config libssl-dev \
+        clang lld cmake protobuf-compiler zstd rsync python3 pkg-config libssl-dev nasm \
         && rm -rf /var/lib/apt/lists/*
     RUN case "$TARGETARCH" in \
           amd64) TRIPLE=x86_64-unknown-linux-gnu ;; \
