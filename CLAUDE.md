@@ -5,6 +5,12 @@ BUCK. Test locally with Earthly (`earthly +ci`, `earthly +build-all`); per-platf
 known failures live in `ci/expected-failures-*.txt`; per-crate fixups live in
 `fixups/<crate>/fixups.toml` (keyed by crate name, not version).
 
+**After changing any fixup, run `./buckify-all.sh` — NOT `reindeer buckify`.** There
+are multiple rigs: the main `third-party/`, `third-party/conflict-rigs/*`, and dated
+`third-party/snapshots/*` (each its own Cargo.lock + BUCK). A fixup touching a crate
+vendored by several rigs (e.g. `const-random-macro`) leaves every other rig's committed
+BUCK stale, and CI's `buckify-check` (`./buckify-all.sh --check`) fails on it.
+
 ## Lesson: non-determinism breaks buck2 rlib pipelining → a bogus E0463
 
 If a **proc-macro consumer** fails with a *bare* `error[E0463]: can't find crate
