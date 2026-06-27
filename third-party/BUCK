@@ -3665,6 +3665,23 @@ cargo.rust_library(
     ],
 )
 
+http_archive(
+    name = "array-bytes-6.2.3.crate",
+    sha256 = "5d5dde061bd34119e902bbb2d9b90c5692635cf59fb91d582c2b68043f1b8293",
+    strip_prefix = "array-bytes-6.2.3",
+    urls = ["https://static.crates.io/crates/array-bytes/6.2.3/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "array-bytes-6",
+    srcs = [":array-bytes-6.2.3.crate"],
+    crate = "array_bytes",
+    crate_root = "array-bytes-6.2.3.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
+)
+
 alias(
     name = "array-bytes",
     actual = ":array-bytes-9",
@@ -9924,6 +9941,51 @@ cargo.rust_library(
 )
 
 http_archive(
+    name = "binary-merkle-tree-16.1.1.crate",
+    sha256 = "a6d867f1ffee8b07e7bee466f4f33a043b91f868f5c7b1d22d8a02f86e92bee8",
+    strip_prefix = "binary-merkle-tree-16.1.1",
+    urls = ["https://static.crates.io/crates/binary-merkle-tree/16.1.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "binary-merkle-tree-16",
+    srcs = [":binary-merkle-tree-16.1.1.crate"],
+    crate = "binary_merkle_tree",
+    crate_root = "binary-merkle-tree-16.1.1.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "binary_merkle_tree",
+        "CARGO_CRATE_NAME": "binary_merkle_tree",
+        "CARGO_MANIFEST_DIR": "binary-merkle-tree-16.1.1.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "A no-std/Substrate compatible library to construct binary merkle tree.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "binary-merkle-tree",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "16.1.1",
+        "CARGO_PKG_VERSION_MAJOR": "16",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "1",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "log",
+        "std",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":hash-db-0.16",
+        ":log-0.4",
+    ],
+)
+
+http_archive(
     name = "bincode-1.3.3.crate",
     sha256 = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad",
     strip_prefix = "bincode-1.3.3",
@@ -10212,14 +10274,21 @@ cargo.rust_library(
     edition = "2018",
     features = [
         "alloc",
+        "crate_rand",
         "default",
+        "rand",
+        "rand_core",
         "serde",
         "std",
         "unicode-normalization",
     ],
+    named_deps = {
+        "crate_rand": ":rand-0.8",
+    },
     visibility = [],
     deps = [
         ":bitcoin_hashes-0.14",
+        ":rand_core-0.6",
         ":serde-1",
         ":unicode-normalization-0.1",
     ],
@@ -20304,7 +20373,7 @@ cargo.rust_library(
     visibility = [],
     deps = [
         ":data-encoding-2",
-        ":syn-1",
+        ":syn-2",
     ],
 )
 
@@ -23199,6 +23268,25 @@ cargo.rust_library(
     visibility = [],
 )
 
+http_archive(
+    name = "docify-0.2.9.crate",
+    sha256 = "a772b62b1837c8f060432ddcc10b17aae1453ef17617a99bc07789252d2a5896",
+    strip_prefix = "docify-0.2.9",
+    urls = ["https://static.crates.io/crates/docify/0.2.9/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "docify-0.2",
+    srcs = [":docify-0.2.9.crate"],
+    crate = "docify",
+    crate_root = "docify-0.2.9.crate/src/lib.rs",
+    edition = "2021",
+    features = ["default"],
+    visibility = [],
+    deps = [":docify_macros-0.2"],
+)
+
 alias(
     name = "docify",
     actual = ":docify-0.4",
@@ -23222,6 +23310,36 @@ cargo.rust_library(
     features = ["default"],
     visibility = [],
     deps = [":docify_macros-0.4"],
+)
+
+http_archive(
+    name = "docify_macros-0.2.9.crate",
+    sha256 = "60e6be249b0a462a14784a99b19bf35a667bb5e09de611738bb7362fa4c95ff7",
+    strip_prefix = "docify_macros-0.2.9",
+    urls = ["https://static.crates.io/crates/docify_macros/0.2.9/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "docify_macros-0.2",
+    srcs = [":docify_macros-0.2.9.crate"],
+    crate = "docify_macros",
+    crate_root = "docify_macros-0.2.9.crate/src/lib.rs",
+    edition = "2021",
+    proc_macro = True,
+    visibility = [],
+    deps = [
+        ":common-path-1",
+        ":derive-syn-parse-0.2",
+        ":once_cell-1",
+        ":proc-macro2-1",
+        ":quote-1",
+        ":regex-1",
+        ":syn-2",
+        ":termcolor-1",
+        ":toml-0.8",
+        ":walkdir-2",
+    ],
 )
 
 alias(
@@ -23997,6 +24115,8 @@ cargo.rust_library(
         "pem",
         "pkcs8",
         "rfc6979",
+        "serde",
+        "serdect",
         "signing",
         "spki",
         "std",
@@ -24008,6 +24128,7 @@ cargo.rust_library(
         ":digest-0.10",
         ":elliptic-curve-0.13",
         ":rfc6979-0.4",
+        ":serdect-0.2",
         ":signature-2",
         ":spki-0.7",
     ],
@@ -24434,6 +24555,7 @@ cargo.rust_library(
         "pem",
         "pkcs8",
         "sec1",
+        "serde",
         "std",
     ],
     visibility = [],
@@ -24449,6 +24571,7 @@ cargo.rust_library(
         ":pkcs8-0.10",
         ":rand_core-0.6",
         ":sec1-0.7",
+        ":serdect-0.2",
         ":subtle-2",
         ":zeroize-1",
     ],
@@ -36186,7 +36309,10 @@ cargo.rust_library(
     crate = "hmac",
     crate_root = "hmac-0.12.1.crate/src/lib.rs",
     edition = "2018",
-    features = ["reset"],
+    features = [
+        "reset",
+        "std",
+    ],
     visibility = [],
     deps = [":digest-0.10"],
 )
@@ -42073,6 +42199,8 @@ cargo.rust_library(
         "pkcs8",
         "precomputed-tables",
         "schnorr",
+        "serde",
+        "serdect",
         "sha2",
         "sha256",
         "signature",
@@ -42086,6 +42214,7 @@ cargo.rust_library(
         ":cfg-if-1",
         ":elliptic-curve-0.13",
         ":once_cell-1",
+        ":serdect-0.2",
         ":sha2-0.10",
         ":signature-2",
     ],
@@ -59215,6 +59344,7 @@ cargo.rust_library(
     crate_root = "parity-scale-codec-3.7.5.crate/src/lib.rs",
     edition = "2021",
     features = [
+        "bytes",
         "chain-error",
         "default",
         "derive",
@@ -59228,6 +59358,7 @@ cargo.rust_library(
     deps = [
         ":arrayvec-0.7",
         ":byte-slice-cast-1",
+        ":bytes-1",
         ":const_format-0.2",
         ":impl-trait-for-tuples-0.2",
         ":parity-scale-codec-derive-3",
@@ -60235,11 +60366,14 @@ cargo.rust_library(
     features = [
         "default",
         "hmac",
+        "password-hash",
+        "std",
     ],
     visibility = [],
     deps = [
         ":digest-0.10",
         ":hmac-0.12",
+        ":password-hash-0.5",
     ],
 )
 
@@ -63444,13 +63578,30 @@ cargo.rust_library(
         "CARGO_PKG_VERSION_PRE": "",
     },
     features = [
+        "byteorder",
+        "codec",
         "default",
+        "impl-codec",
+        "impl-num-traits",
+        "impl-serde",
+        "num-traits",
         "rand",
+        "rustc-hex",
+        "scale-info",
+        "scale-info-crate",
+        "serde",
+        "serde_no_std",
         "std",
     ],
+    named_deps = {
+        "scale_info_crate": ":scale-info-2",
+    },
     visibility = [],
     deps = [
         ":fixed-hash-0.8",
+        ":impl-codec-0.7",
+        ":impl-num-traits-0.2",
+        ":impl-serde-0.5",
         ":uint-0.10",
     ],
 )
@@ -64186,6 +64337,31 @@ cargo.rust_library(
     deps = [
         ":quote-1",
         ":syn-2",
+    ],
+)
+
+http_archive(
+    name = "prometheus-0.13.4.crate",
+    sha256 = "3d33c28a30771f7f96db69893f78b857f7450d7e0237e9c8fc6427a81bae7ed1",
+    strip_prefix = "prometheus-0.13.4",
+    urls = ["https://static.crates.io/crates/prometheus/0.13.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "prometheus-0.13",
+    srcs = [":prometheus-0.13.4.crate"],
+    crate = "prometheus",
+    crate_root = "prometheus-0.13.4.crate/src/lib.rs",
+    edition = "2018",
+    visibility = [],
+    deps = [
+        ":cfg-if-1",
+        ":fnv-1",
+        ":lazy_static-1",
+        ":memchr-2",
+        ":parking_lot-0.12",
+        ":thiserror-1",
     ],
 )
 
@@ -73835,6 +74011,7 @@ cargo.rust_library(
         "alloc",
         "default",
         "getrandom",
+        "preaudit_deprecated",
         "serde_bytes",
         "std",
     ],
@@ -74496,6 +74673,7 @@ cargo.rust_library(
         "pem",
         "pkcs8",
         "point",
+        "serde",
         "std",
         "subtle",
         "zeroize",
@@ -74506,6 +74684,7 @@ cargo.rust_library(
         ":der-0.7",
         ":generic-array-0.14",
         ":pkcs8-0.10",
+        ":serdect-0.2",
         ":subtle-2",
         ":zeroize-1",
     ],
@@ -74535,6 +74714,31 @@ cargo.rust_library(
     deps = [":libc-0.2"],
 )
 
+http_archive(
+    name = "secp256k1-0.28.2.crate",
+    sha256 = "d24b59d129cdadea20aea4fb2352fa053712e5d713eee47d700cd4b2bc002f10",
+    strip_prefix = "secp256k1-0.28.2",
+    urls = ["https://static.crates.io/crates/secp256k1/0.28.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "secp256k1-0.28",
+    srcs = [":secp256k1-0.28.2.crate"],
+    crate = "secp256k1",
+    crate_root = "secp256k1-0.28.2.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "alloc",
+        "default",
+        "global-context",
+        "recovery",
+        "std",
+    ],
+    visibility = [],
+    deps = [":secp256k1-sys-0.9"],
+)
+
 alias(
     name = "secp256k1",
     actual = ":secp256k1-0.31",
@@ -74562,6 +74766,105 @@ cargo.rust_library(
     ],
     visibility = [],
     deps = [":secp256k1-sys-0.11"],
+)
+
+http_archive(
+    name = "secp256k1-sys-0.9.2.crate",
+    sha256 = "e5d1746aae42c19d583c3c1a8c646bfad910498e2051c551a7f2e3c0c9fbb7eb",
+    strip_prefix = "secp256k1-sys-0.9.2",
+    urls = ["https://static.crates.io/crates/secp256k1-sys/0.9.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "secp256k1-sys-0.9",
+    srcs = [":secp256k1-sys-0.9.2.crate"],
+    crate = "secp256k1_sys",
+    crate_root = "secp256k1-sys-0.9.2.crate/src/lib.rs",
+    edition = "2018",
+    env = {
+        "CARGO_BIN_NAME": "secp256k1_sys",
+        "CARGO_CRATE_NAME": "secp256k1_sys",
+        "CARGO_MANIFEST_DIR": "secp256k1-sys-0.9.2.crate",
+        "CARGO_PKG_AUTHORS": "Dawid Ciężarkiewicz <dpc@ucore.info>:Andrew Poelstra <apoelstra@wpsoftware.net>:Steven Roose <steven@stevenroose.org>",
+        "CARGO_PKG_DESCRIPTION": "FFI for Pieter Wuille's `libsecp256k1` library.",
+        "CARGO_PKG_HOMEPAGE": "https://github.com/rust-bitcoin/rust-secp256k1/",
+        "CARGO_PKG_NAME": "secp256k1-sys",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/rust-bitcoin/rust-secp256k1/",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.9.2",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "9",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+        "OUT_DIR": "$(location :secp256k1-sys-0.9-build-script-run[out_dir])",
+    },
+    features = [
+        "alloc",
+        "recovery",
+        "std",
+    ],
+    rustc_flags = ["@$(location :secp256k1-sys-0.9-build-script-run[rustc_flags])"],
+    visibility = [],
+)
+
+cargo.rust_binary(
+    name = "secp256k1-sys-0.9-build-script-build",
+    srcs = [":secp256k1-sys-0.9.2.crate"],
+    crate = "build_script_build",
+    crate_root = "secp256k1-sys-0.9.2.crate/build.rs",
+    edition = "2018",
+    env = {
+        "CARGO_BIN_NAME": "build-script-build",
+        "CARGO_CRATE_NAME": "build_script_build",
+        "CARGO_MANIFEST_DIR": "secp256k1-sys-0.9.2.crate",
+        "CARGO_PKG_AUTHORS": "Dawid Ciężarkiewicz <dpc@ucore.info>:Andrew Poelstra <apoelstra@wpsoftware.net>:Steven Roose <steven@stevenroose.org>",
+        "CARGO_PKG_DESCRIPTION": "FFI for Pieter Wuille's `libsecp256k1` library.",
+        "CARGO_PKG_HOMEPAGE": "https://github.com/rust-bitcoin/rust-secp256k1/",
+        "CARGO_PKG_NAME": "secp256k1-sys",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/rust-bitcoin/rust-secp256k1/",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.9.2",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "9",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "alloc",
+        "recovery",
+        "std",
+    ],
+    visibility = [],
+    deps = [":cc-1"],
+)
+
+buildscript_run(
+    name = "secp256k1-sys-0.9-build-script-run",
+    package_name = "secp256k1-sys",
+    buildscript_rule = ":secp256k1-sys-0.9-build-script-build",
+    env = {
+        "CARGO_MANIFEST_LINKS": "rustsecp256k1_v0_9_2",
+        "CARGO_PKG_AUTHORS": "Dawid Ciężarkiewicz <dpc@ucore.info>:Andrew Poelstra <apoelstra@wpsoftware.net>:Steven Roose <steven@stevenroose.org>",
+        "CARGO_PKG_DESCRIPTION": "FFI for Pieter Wuille's `libsecp256k1` library.",
+        "CARGO_PKG_HOMEPAGE": "https://github.com/rust-bitcoin/rust-secp256k1/",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/rust-bitcoin/rust-secp256k1/",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "9",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+        "OPT_LEVEL": "3",
+    },
+    features = [
+        "alloc",
+        "recovery",
+        "std",
+    ],
+    version = "0.9.2",
 )
 
 alias(
@@ -74667,6 +74970,25 @@ buildscript_run(
         "std",
     ],
     version = "0.11.0",
+)
+
+http_archive(
+    name = "secrecy-0.8.0.crate",
+    sha256 = "9bd1c54ea06cfd2f6b63219704de0b9b4f72dcc2b8fdef820be6cd799780e91e",
+    strip_prefix = "secrecy-0.8.0",
+    urls = ["https://static.crates.io/crates/secrecy/0.8.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "secrecy-0.8",
+    srcs = [":secrecy-0.8.0.crate"],
+    crate = "secrecy",
+    crate_root = "secrecy-0.8.0.crate/src/lib.rs",
+    edition = "2018",
+    features = ["alloc"],
+    visibility = [],
+    deps = [":zeroize-1"],
 )
 
 alias(
@@ -76722,6 +77044,28 @@ cargo.rust_library(
     ],
 )
 
+http_archive(
+    name = "serdect-0.2.0.crate",
+    sha256 = "a84f14a19e9a014bb9f4512488d9829a68e04ecabffb0f9904cd1ace94598177",
+    strip_prefix = "serdect-0.2.0",
+    urls = ["https://static.crates.io/crates/serdect/0.2.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "serdect-0.2",
+    srcs = [":serdect-0.2.0.crate"],
+    crate = "serdect",
+    crate_root = "serdect-0.2.0.crate/src/lib.rs",
+    edition = "2021",
+    features = ["alloc"],
+    visibility = [],
+    deps = [
+        ":base16ct-0.2",
+        ":serde-1",
+    ],
+)
+
 alias(
     name = "serdect",
     actual = ":serdect-0.4",
@@ -78127,6 +78471,23 @@ cargo.rust_library(
     ],
     visibility = [],
     deps = [":bitflags-2"],
+)
+
+http_archive(
+    name = "simple-mermaid-0.1.1.crate",
+    sha256 = "620a1d43d70e142b1d46a929af51d44f383db9c7a2ec122de2cd992ccfcf3c18",
+    strip_prefix = "simple-mermaid-0.1.1",
+    urls = ["https://static.crates.io/crates/simple-mermaid/0.1.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "simple-mermaid-0.1",
+    srcs = [":simple-mermaid-0.1.1.crate"],
+    crate = "simple_mermaid",
+    crate_root = "simple-mermaid-0.1.1.crate/src/lib.rs",
+    edition = "2021",
+    visibility = [],
 )
 
 alias(
@@ -79700,6 +80061,1014 @@ cargo.rust_library(
         ":serde_json-1",
         ":unicode-id-start-1",
         ":url-2",
+    ],
+)
+
+http_archive(
+    name = "sp-application-crypto-46.0.0.crate",
+    sha256 = "fb47c341b52ca668e68929c982c9f4698b467012e1760b71f5be6cf8cf0fb49a",
+    strip_prefix = "sp-application-crypto-46.0.0",
+    urls = ["https://static.crates.io/crates/sp-application-crypto/46.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-application-crypto-46",
+    srcs = [":sp-application-crypto-46.0.0.crate"],
+    crate = "sp_application_crypto",
+    crate_root = "sp-application-crypto-46.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_application_crypto",
+        "CARGO_CRATE_NAME": "sp_application_crypto",
+        "CARGO_MANIFEST_DIR": "sp-application-crypto-46.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Provides facilities for generating application specific crypto wrapper types.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-application-crypto",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "46.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "46",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "full_crypto",
+        "serde",
+        "std",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":scale-info-2",
+        ":serde-1",
+        ":sp-core-41",
+        ":sp-io-46",
+    ],
+)
+
+http_archive(
+    name = "sp-arithmetic-28.0.1.crate",
+    sha256 = "4e06588d1c43f60b9bb7f989785689842cc4cc8ce0e19d1c47686b1ff5fe9548",
+    strip_prefix = "sp-arithmetic-28.0.1",
+    urls = ["https://static.crates.io/crates/sp-arithmetic/28.0.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-arithmetic-28",
+    srcs = [":sp-arithmetic-28.0.1.crate"],
+    crate = "sp_arithmetic",
+    crate_root = "sp-arithmetic-28.0.1.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_arithmetic",
+        "CARGO_CRATE_NAME": "sp_arithmetic",
+        "CARGO_MANIFEST_DIR": "sp-arithmetic-28.0.1.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Minimal fixed point arithmetic primitives and types for runtime.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-arithmetic",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "28.0.1",
+        "CARGO_PKG_VERSION_MAJOR": "28",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "1",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "serde",
+        "std",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":docify-0.2",
+        ":integer-sqrt-0.1",
+        ":num-traits-0.2",
+        ":scale-info-2",
+        ":serde-1",
+        ":static_assertions-1",
+    ],
+)
+
+alias(
+    name = "sp-core",
+    actual = ":sp-core-41",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "sp-core-41.0.0.crate",
+    sha256 = "571e6da2db8de83fa2a6f9fab2a86befdcd004c90cfa19c641b072d3f322a60d",
+    strip_prefix = "sp-core-41.0.0",
+    urls = ["https://static.crates.io/crates/sp-core/41.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-core-41",
+    srcs = [":sp-core-41.0.0.crate"],
+    crate = "sp_core",
+    crate_root = "sp-core-41.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_core",
+        "CARGO_CRATE_NAME": "sp_core",
+        "CARGO_MANIFEST_DIR": "sp-core-41.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Shareable Substrate types.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-core",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "41.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "41",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "blake2",
+        "bs58",
+        "default",
+        "full_crypto",
+        "futures",
+        "impl-serde",
+        "itertools",
+        "parking_lot",
+        "rand",
+        "secp256k1",
+        "serde",
+        "sp-externalities",
+        "std",
+        "thiserror",
+        "tracing",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":array-bytes-6",
+        ":bip39-2",
+        ":bitflags-1",
+        ":blake2-0.10",
+        ":bounded-collections-0.3",
+        ":bs58-0.5",
+        ":dyn-clone-1",
+        ":ed25519-zebra-4",
+        ":futures-0.3",
+        ":hash-db-0.16",
+        ":hash256-std-hasher-0.15",
+        ":impl-serde-0.5",
+        ":itertools-0.11",
+        ":k256-0.13",
+        ":libsecp256k1-0.7",
+        ":log-0.4",
+        ":merlin-3",
+        ":parking_lot-0.12",
+        ":paste-1",
+        ":primitive-types-0.13",
+        ":rand-0.8",
+        ":scale-info-2",
+        ":schnorrkel-0.11",
+        ":secp256k1-0.28",
+        ":secrecy-0.8",
+        ":serde-1",
+        ":sp-crypto-hashing-0.1",
+        ":sp-debug-derive-15",
+        ":sp-externalities-0.32",
+        ":sp-std-14",
+        ":sp-storage-23",
+        ":ss58-registry-1",
+        ":substrate-bip39-0.6",
+        ":thiserror-1",
+        ":tracing-0.1",
+        ":zeroize-1",
+    ],
+)
+
+http_archive(
+    name = "sp-crypto-hashing-0.1.0.crate",
+    sha256 = "bc9927a7f81334ed5b8a98a4a978c81324d12bd9713ec76b5c68fd410174c5eb",
+    strip_prefix = "sp-crypto-hashing-0.1.0",
+    urls = ["https://static.crates.io/crates/sp-crypto-hashing/0.1.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-crypto-hashing-0.1",
+    srcs = [":sp-crypto-hashing-0.1.0.crate"],
+    crate = "sp_crypto_hashing",
+    crate_root = "sp-crypto-hashing-0.1.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_crypto_hashing",
+        "CARGO_CRATE_NAME": "sp_crypto_hashing",
+        "CARGO_MANIFEST_DIR": "sp-crypto-hashing-0.1.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Hashing primitives.",
+        "CARGO_PKG_HOMEPAGE": "https://substrate.io",
+        "CARGO_PKG_NAME": "sp-crypto-hashing",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.1.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "1",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["std"],
+    visibility = [],
+    deps = [
+        ":blake2b_simd-1",
+        ":byteorder-1",
+        ":digest-0.10",
+        ":sha2-0.10",
+        ":sha3-0.10",
+        ":twox-hash-1",
+    ],
+)
+
+http_archive(
+    name = "sp-debug-derive-15.0.0.crate",
+    sha256 = "d61809bf52be994e4d0a0485bb18a78509ed185e1418736c1ff9011bd1528999",
+    strip_prefix = "sp-debug-derive-15.0.0",
+    urls = ["https://static.crates.io/crates/sp-debug-derive/15.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-debug-derive-15",
+    srcs = [":sp-debug-derive-15.0.0.crate"],
+    crate = "sp_debug_derive",
+    crate_root = "sp-debug-derive-15.0.0.crate/src/lib.rs",
+    edition = "2021",
+    features = ["std"],
+    proc_macro = True,
+    visibility = [],
+    deps = [
+        ":proc-macro-warning-1",
+        ":proc-macro2-1",
+        ":quote-1",
+        ":syn-2",
+    ],
+)
+
+http_archive(
+    name = "sp-externalities-0.32.0.crate",
+    sha256 = "ccab635fdf03594e8bec6213457df38389ad54ac15ce12fea22e9a88ba039c2f",
+    strip_prefix = "sp-externalities-0.32.0",
+    urls = ["https://static.crates.io/crates/sp-externalities/0.32.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-externalities-0.32",
+    srcs = [":sp-externalities-0.32.0.crate"],
+    crate = "sp_externalities",
+    crate_root = "sp-externalities-0.32.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_externalities",
+        "CARGO_CRATE_NAME": "sp_externalities",
+        "CARGO_MANIFEST_DIR": "sp-externalities-0.32.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Substrate externalities abstraction",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-externalities",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.32.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "32",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["std"],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":environmental-1",
+        ":sp-storage-23",
+    ],
+)
+
+alias(
+    name = "sp-io",
+    actual = ":sp-io-46",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "sp-io-46.0.0.crate",
+    sha256 = "cc8f8415b05edacb24866790c540e29ff967250faffda9996709c2d48f0f6ca4",
+    strip_prefix = "sp-io-46.0.0",
+    urls = ["https://static.crates.io/crates/sp-io/46.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-io-46",
+    srcs = [":sp-io-46.0.0.crate"],
+    crate = "sp_io",
+    crate_root = "sp-io-46.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_io",
+        "CARGO_CRATE_NAME": "sp_io",
+        "CARGO_MANIFEST_DIR": "sp-io-46.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "I/O for Substrate runtimes",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-io",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "46.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "46",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "default",
+        "disable_oom",
+        "disable_panic_handler",
+        "secp256k1",
+        "sp-keystore",
+        "sp-state-machine",
+        "sp-trie",
+        "std",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":bytes-1",
+        ":docify-0.2",
+        ":ed25519-dalek-2",
+        ":libsecp256k1-0.7",
+        ":log-0.4",
+        ":secp256k1-0.28",
+        ":sp-core-41",
+        ":sp-crypto-hashing-0.1",
+        ":sp-externalities-0.32",
+        ":sp-keystore-0.47",
+        ":sp-runtime-interface-35",
+        ":sp-state-machine-0.51",
+        ":sp-tracing-19",
+        ":sp-trie-44",
+        ":tracing-0.1",
+        ":tracing-core-0.1",
+    ],
+)
+
+alias(
+    name = "sp-keyring",
+    actual = ":sp-keyring-47",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "sp-keyring-47.0.0.crate",
+    sha256 = "813e9b9aa49e55c76eb1c759f4f13d70f98f4882b204145c357149c2744042a5",
+    strip_prefix = "sp-keyring-47.0.0",
+    urls = ["https://static.crates.io/crates/sp-keyring/47.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-keyring-47",
+    srcs = [":sp-keyring-47.0.0.crate"],
+    crate = "sp_keyring",
+    crate_root = "sp-keyring-47.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_keyring",
+        "CARGO_CRATE_NAME": "sp_keyring",
+        "CARGO_MANIFEST_DIR": "sp-keyring-47.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Keyring support code for the runtime. A set of test accounts.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-keyring",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "47.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "47",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "default",
+        "std",
+    ],
+    visibility = [],
+    deps = [
+        ":sp-core-41",
+        ":sp-runtime-47",
+        ":strum-0.26",
+    ],
+)
+
+http_archive(
+    name = "sp-keystore-0.47.0.crate",
+    sha256 = "74fead48d67f4374903b78624bca25fbf15f95a79d8dbefdecd407bb01544c3d",
+    strip_prefix = "sp-keystore-0.47.0",
+    urls = ["https://static.crates.io/crates/sp-keystore/0.47.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-keystore-0.47",
+    srcs = [":sp-keystore-0.47.0.crate"],
+    crate = "sp_keystore",
+    crate_root = "sp-keystore-0.47.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_keystore",
+        "CARGO_CRATE_NAME": "sp_keystore",
+        "CARGO_MANIFEST_DIR": "sp-keystore-0.47.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Keystore primitives.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-keystore",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.47.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "47",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["std"],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":parking_lot-0.12",
+        ":sp-core-41",
+        ":sp-externalities-0.32",
+    ],
+)
+
+http_archive(
+    name = "sp-panic-handler-13.0.2.crate",
+    sha256 = "c8b52e69a577cbfdea62bfaf16f59eb884422ce98f78b5cd8d9bf668776bced1",
+    strip_prefix = "sp-panic-handler-13.0.2",
+    urls = ["https://static.crates.io/crates/sp-panic-handler/13.0.2/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-panic-handler-13",
+    srcs = [":sp-panic-handler-13.0.2.crate"],
+    crate = "sp_panic_handler",
+    crate_root = "sp-panic-handler-13.0.2.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_panic_handler",
+        "CARGO_CRATE_NAME": "sp_panic_handler",
+        "CARGO_MANIFEST_DIR": "sp-panic-handler-13.0.2.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Custom panic hook with bug report link",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-panic-handler",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "13.0.2",
+        "CARGO_PKG_VERSION_MAJOR": "13",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "2",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+    deps = [
+        ":backtrace-0.3",
+        ":regex-1",
+    ],
+)
+
+alias(
+    name = "sp-runtime",
+    actual = ":sp-runtime-47",
+    visibility = ["PUBLIC"],
+)
+
+http_archive(
+    name = "sp-runtime-47.0.0.crate",
+    sha256 = "00f3c9491215e9d640c05ea651723f6834699f1088aa53043dc9badeb6177935",
+    strip_prefix = "sp-runtime-47.0.0",
+    urls = ["https://static.crates.io/crates/sp-runtime/47.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-runtime-47",
+    srcs = [":sp-runtime-47.0.0.crate"],
+    crate = "sp_runtime",
+    crate_root = "sp-runtime-47.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_runtime",
+        "CARGO_CRATE_NAME": "sp_runtime",
+        "CARGO_MANIFEST_DIR": "sp-runtime-47.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Runtime Modules shared primitive types.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-runtime",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "47.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "47",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "default",
+        "rand",
+        "serde",
+        "simple-mermaid",
+        "std",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":binary-merkle-tree-16",
+        ":bytes-1",
+        ":docify-0.2",
+        ":either-1",
+        ":hash256-std-hasher-0.15",
+        ":impl-trait-for-tuples-0.2",
+        ":log-0.4",
+        ":num-traits-0.2",
+        ":paste-1",
+        ":rand-0.8",
+        ":scale-info-2",
+        ":serde-1",
+        ":simple-mermaid-0.1",
+        ":sp-application-crypto-46",
+        ":sp-arithmetic-28",
+        ":sp-core-41",
+        ":sp-io-46",
+        ":sp-std-14",
+        ":sp-trie-44",
+        ":sp-weights-34",
+        ":strum-0.26",
+        ":tracing-0.1",
+        ":tuplex-0.1",
+    ],
+)
+
+http_archive(
+    name = "sp-runtime-interface-35.0.0.crate",
+    sha256 = "1263162adb7ffe06c762467495dca536794667abe24567c7a00d5edd2b3e727c",
+    strip_prefix = "sp-runtime-interface-35.0.0",
+    urls = ["https://static.crates.io/crates/sp-runtime-interface/35.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-runtime-interface-35",
+    srcs = [":sp-runtime-interface-35.0.0.crate"],
+    crate = "sp_runtime_interface",
+    crate_root = "sp-runtime-interface-35.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_runtime_interface",
+        "CARGO_CRATE_NAME": "sp_runtime_interface",
+        "CARGO_MANIFEST_DIR": "sp-runtime-interface-35.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Substrate runtime interface",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-runtime-interface",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "35.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "35",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["std"],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":bytes-1",
+        ":impl-trait-for-tuples-0.2",
+        ":sp-externalities-0.32",
+        ":sp-runtime-interface-proc-macro-21",
+        ":sp-std-14",
+        ":sp-storage-23",
+        ":sp-tracing-19",
+        ":sp-wasm-interface-25",
+        ":static_assertions-1",
+    ],
+)
+
+http_archive(
+    name = "sp-runtime-interface-proc-macro-21.0.0.crate",
+    sha256 = "c7d9650b5186fd32bf5198adfe08d8fecc76f2ebe8a8927f28aaf2a537d75b2e",
+    strip_prefix = "sp-runtime-interface-proc-macro-21.0.0",
+    urls = ["https://static.crates.io/crates/sp-runtime-interface-proc-macro/21.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-runtime-interface-proc-macro-21",
+    srcs = [":sp-runtime-interface-proc-macro-21.0.0.crate"],
+    crate = "sp_runtime_interface_proc_macro",
+    crate_root = "sp-runtime-interface-proc-macro-21.0.0.crate/src/lib.rs",
+    edition = "2021",
+    proc_macro = True,
+    visibility = [],
+    deps = [
+        ":Inflector-0.11",
+        ":expander-2",
+        ":proc-macro-crate-3",
+        ":proc-macro2-1",
+        ":quote-1",
+        ":syn-2",
+    ],
+)
+
+http_archive(
+    name = "sp-state-machine-0.51.0.crate",
+    sha256 = "3789d2895faa6e5d0a88c34c19b8ca7f3fdd9823729bde83743fd13668aaf08a",
+    strip_prefix = "sp-state-machine-0.51.0",
+    urls = ["https://static.crates.io/crates/sp-state-machine/0.51.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-state-machine-0.51",
+    srcs = [":sp-state-machine-0.51.0.crate"],
+    crate = "sp_state_machine",
+    crate_root = "sp-state-machine-0.51.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_state_machine",
+        "CARGO_CRATE_NAME": "sp_state_machine",
+        "CARGO_MANIFEST_DIR": "sp-state-machine-0.51.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Substrate State Machine",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-state-machine",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.51.0",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "51",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "parking_lot",
+        "rand",
+        "sp-panic-handler",
+        "std",
+        "thiserror",
+        "tracing",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":hash-db-0.16",
+        ":log-0.4",
+        ":parking_lot-0.12",
+        ":rand-0.8",
+        ":smallvec-1",
+        ":sp-core-41",
+        ":sp-externalities-0.32",
+        ":sp-panic-handler-13",
+        ":sp-trie-44",
+        ":thiserror-1",
+        ":tracing-0.1",
+        ":trie-db-0.31",
+    ],
+)
+
+http_archive(
+    name = "sp-std-14.0.0.crate",
+    sha256 = "12f8ee986414b0a9ad741776762f4083cd3a5128449b982a3919c4df36874834",
+    strip_prefix = "sp-std-14.0.0",
+    urls = ["https://static.crates.io/crates/sp-std/14.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-std-14",
+    srcs = [":sp-std-14.0.0.crate"],
+    crate = "sp_std",
+    crate_root = "sp-std-14.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_std",
+        "CARGO_CRATE_NAME": "sp_std",
+        "CARGO_MANIFEST_DIR": "sp-std-14.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Lowest-abstraction level for the Substrate runtime: just exports useful primitives from std or client/alloc to be used with any code that depends on the runtime.",
+        "CARGO_PKG_HOMEPAGE": "https://substrate.io",
+        "CARGO_PKG_NAME": "sp-std",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "14.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "14",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["std"],
+    visibility = [],
+)
+
+http_archive(
+    name = "sp-storage-23.0.0.crate",
+    sha256 = "e5e5c9fb0016b49765f89d23e4869ee616e1317de8f75b59babb721ccc27d2af",
+    strip_prefix = "sp-storage-23.0.0",
+    urls = ["https://static.crates.io/crates/sp-storage/23.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-storage-23",
+    srcs = [":sp-storage-23.0.0.crate"],
+    crate = "sp_storage",
+    crate_root = "sp-storage-23.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_storage",
+        "CARGO_CRATE_NAME": "sp_storage",
+        "CARGO_MANIFEST_DIR": "sp-storage-23.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Storage related primitives",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-storage",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "23.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "23",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "impl-serde",
+        "serde",
+        "std",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":impl-serde-0.5",
+        ":ref-cast-1",
+        ":serde-1",
+        ":sp-debug-derive-15",
+    ],
+)
+
+http_archive(
+    name = "sp-tracing-19.0.0.crate",
+    sha256 = "f2c7372456c39cc81e15befe54d0caab8378f2b30fd34d1bcb5f0f56631c6b6e",
+    strip_prefix = "sp-tracing-19.0.0",
+    urls = ["https://static.crates.io/crates/sp-tracing/19.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-tracing-19",
+    srcs = [":sp-tracing-19.0.0.crate"],
+    crate = "sp_tracing",
+    crate_root = "sp-tracing-19.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_tracing",
+        "CARGO_CRATE_NAME": "sp_tracing",
+        "CARGO_MANIFEST_DIR": "sp-tracing-19.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Instrumentation primitives and macros for Substrate.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-tracing",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "19.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "19",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "regex",
+        "std",
+        "tracing-subscriber",
+        "with-tracing",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":regex-1",
+        ":tracing-0.1",
+        ":tracing-core-0.1",
+        ":tracing-subscriber-0.3",
+    ],
+)
+
+http_archive(
+    name = "sp-trie-44.0.0.crate",
+    sha256 = "1f4d4aa0fec3c80f98762cae84ad7dda64c16dcd37f1b97c34c9d3402023119f",
+    strip_prefix = "sp-trie-44.0.0",
+    urls = ["https://static.crates.io/crates/sp-trie/44.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-trie-44",
+    srcs = [":sp-trie-44.0.0.crate"],
+    crate = "sp_trie",
+    crate_root = "sp-trie-44.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_trie",
+        "CARGO_CRATE_NAME": "sp_trie",
+        "CARGO_MANIFEST_DIR": "sp-trie-44.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Patricia trie stuff using a parity-scale-codec node format",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-trie",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "44.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "44",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "ahash",
+        "nohash-hasher",
+        "parking_lot",
+        "prometheus-endpoint",
+        "rand",
+        "schnellru",
+        "std",
+        "thiserror",
+        "tracing",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+        "prometheus_endpoint": ":substrate-prometheus-endpoint-0.17",
+    },
+    visibility = [],
+    deps = [
+        ":ahash-0.8",
+        ":foldhash-0.1",
+        ":hash-db-0.16",
+        ":hashbrown-0.15",
+        ":memory-db-0.34",
+        ":nohash-hasher-0.2",
+        ":parking_lot-0.12",
+        ":rand-0.8",
+        ":scale-info-2",
+        ":schnellru-0.2",
+        ":sp-core-41",
+        ":sp-externalities-0.32",
+        ":thiserror-1",
+        ":tracing-0.1",
+        ":trie-db-0.31",
+        ":trie-root-0.18",
+    ],
+)
+
+http_archive(
+    name = "sp-wasm-interface-25.0.0.crate",
+    sha256 = "7d29d5c802dbb12ce5efe240f1284842d285249b87530bb7729ddae2647c6b18",
+    strip_prefix = "sp-wasm-interface-25.0.0",
+    urls = ["https://static.crates.io/crates/sp-wasm-interface/25.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-wasm-interface-25",
+    srcs = [":sp-wasm-interface-25.0.0.crate"],
+    crate = "sp_wasm_interface",
+    crate_root = "sp-wasm-interface-25.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_wasm_interface",
+        "CARGO_CRATE_NAME": "sp_wasm_interface",
+        "CARGO_MANIFEST_DIR": "sp-wasm-interface-25.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Types and traits for interfacing between the host and the wasm runtime.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-wasm-interface",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "25.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "25",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "log",
+        "std",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":impl-trait-for-tuples-0.2",
+        ":log-0.4",
+    ],
+)
+
+http_archive(
+    name = "sp-weights-34.0.0.crate",
+    sha256 = "364f93051b3b243c6221e51965e2bef465605f1de169a2ebd126fba2576dc3d9",
+    strip_prefix = "sp-weights-34.0.0",
+    urls = ["https://static.crates.io/crates/sp-weights/34.0.0/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "sp-weights-34",
+    srcs = [":sp-weights-34.0.0.crate"],
+    crate = "sp_weights",
+    crate_root = "sp-weights-34.0.0.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "sp_weights",
+        "CARGO_CRATE_NAME": "sp_weights",
+        "CARGO_MANIFEST_DIR": "sp-weights-34.0.0.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Types and traits for interfacing between the host and the wasm runtime.",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "sp-weights",
+        "CARGO_PKG_README": "",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "34.0.0",
+        "CARGO_PKG_VERSION_MAJOR": "34",
+        "CARGO_PKG_VERSION_MINOR": "0",
+        "CARGO_PKG_VERSION_PATCH": "0",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = [
+        "serde",
+        "std",
+    ],
+    named_deps = {
+        "codec": ":parity-scale-codec-3",
+    },
+    visibility = [],
+    deps = [
+        ":bounded-collections-0.3",
+        ":scale-info-2",
+        ":serde-1",
+        ":smallvec-1",
+        ":sp-arithmetic-28",
+        ":sp-debug-derive-15",
     ],
 )
 
@@ -81747,6 +83116,29 @@ cargo.rust_library(
     deps = [":strum_macros-0.24"],
 )
 
+http_archive(
+    name = "strum-0.26.3.crate",
+    sha256 = "8fec0f0aef304996cf250b31b5a10dee7980c85da9d759361292b8bca5a18f06",
+    strip_prefix = "strum-0.26.3",
+    urls = ["https://static.crates.io/crates/strum/0.26.3/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "strum-0.26",
+    srcs = [":strum-0.26.3.crate"],
+    crate = "strum",
+    crate_root = "strum-0.26.3.crate/src/lib.rs",
+    edition = "2018",
+    features = [
+        "derive",
+        "std",
+        "strum_macros",
+    ],
+    visibility = [],
+    deps = [":strum_macros-0.26"],
+)
+
 alias(
     name = "strum",
     actual = ":strum-0.27",
@@ -81850,6 +83242,31 @@ cargo.rust_library(
     ],
 )
 
+http_archive(
+    name = "strum_macros-0.26.4.crate",
+    sha256 = "4c6bee85a5a24955dc440386795aa378cd9cf82acd5f764469152d2270e581be",
+    strip_prefix = "strum_macros-0.26.4",
+    urls = ["https://static.crates.io/crates/strum_macros/0.26.4/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "strum_macros-0.26",
+    srcs = [":strum_macros-0.26.4.crate"],
+    crate = "strum_macros",
+    crate_root = "strum_macros-0.26.4.crate/src/lib.rs",
+    edition = "2018",
+    proc_macro = True,
+    visibility = [],
+    deps = [
+        ":heck-0.5",
+        ":proc-macro2-1",
+        ":quote-1",
+        ":rustversion-1",
+        ":syn-2",
+    ],
+)
+
 alias(
     name = "strum_macros",
     actual = ":strum_macros-0.27",
@@ -81929,6 +83346,91 @@ cargo.rust_library(
         ":affix-0.1",
         ":serde-1",
         ":serde_json-1",
+    ],
+)
+
+http_archive(
+    name = "substrate-bip39-0.6.1.crate",
+    sha256 = "d93affb0135879b1b67cbcf6370a256e1772f9eaaece3899ec20966d67ad0492",
+    strip_prefix = "substrate-bip39-0.6.1",
+    urls = ["https://static.crates.io/crates/substrate-bip39/0.6.1/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "substrate-bip39-0.6",
+    srcs = [":substrate-bip39-0.6.1.crate"],
+    crate = "substrate_bip39",
+    crate_root = "substrate-bip39-0.6.1.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "substrate_bip39",
+        "CARGO_CRATE_NAME": "substrate_bip39",
+        "CARGO_MANIFEST_DIR": "substrate-bip39-0.6.1.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Converting BIP39 entropy to valid Substrate (sr25519) SecretKeys",
+        "CARGO_PKG_HOMEPAGE": "",
+        "CARGO_PKG_NAME": "substrate-bip39",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.6.1",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "6",
+        "CARGO_PKG_VERSION_PATCH": "1",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    features = ["std"],
+    visibility = [],
+    deps = [
+        ":hmac-0.12",
+        ":pbkdf2-0.12",
+        ":schnorrkel-0.11",
+        ":sha2-0.10",
+        ":zeroize-1",
+    ],
+)
+
+http_archive(
+    name = "substrate-prometheus-endpoint-0.17.7.crate",
+    sha256 = "d23e4bc8e910a312820d589047ab683928b761242dbe31dee081fbdb37cbe0be",
+    strip_prefix = "substrate-prometheus-endpoint-0.17.7",
+    urls = ["https://static.crates.io/crates/substrate-prometheus-endpoint/0.17.7/download"],
+    visibility = [],
+)
+
+cargo.rust_library(
+    name = "substrate-prometheus-endpoint-0.17",
+    srcs = [":substrate-prometheus-endpoint-0.17.7.crate"],
+    crate = "substrate_prometheus_endpoint",
+    crate_root = "substrate-prometheus-endpoint-0.17.7.crate/src/lib.rs",
+    edition = "2021",
+    env = {
+        "CARGO_BIN_NAME": "substrate_prometheus_endpoint",
+        "CARGO_CRATE_NAME": "substrate_prometheus_endpoint",
+        "CARGO_MANIFEST_DIR": "substrate-prometheus-endpoint-0.17.7.crate",
+        "CARGO_PKG_AUTHORS": "Parity Technologies <admin@parity.io>",
+        "CARGO_PKG_DESCRIPTION": "Endpoint to expose Prometheus metrics",
+        "CARGO_PKG_HOMEPAGE": "https://paritytech.github.io/polkadot-sdk/",
+        "CARGO_PKG_NAME": "substrate-prometheus-endpoint",
+        "CARGO_PKG_README": "README.md",
+        "CARGO_PKG_REPOSITORY": "https://github.com/paritytech/polkadot-sdk.git",
+        "CARGO_PKG_RUST_VERSION": "",
+        "CARGO_PKG_VERSION": "0.17.7",
+        "CARGO_PKG_VERSION_MAJOR": "0",
+        "CARGO_PKG_VERSION_MINOR": "17",
+        "CARGO_PKG_VERSION_PATCH": "7",
+        "CARGO_PKG_VERSION_PRE": "",
+    },
+    visibility = [],
+    deps = [
+        ":http-body-util-0.1",
+        ":hyper-1",
+        ":hyper-util-0.1",
+        ":log-0.4",
+        ":prometheus-0.13",
+        ":thiserror-1",
+        ":tokio-1",
     ],
 )
 
@@ -88455,6 +89957,7 @@ cargo.rust_library(
         "smallvec",
         "std",
         "thread_local",
+        "time",
         "tracing",
         "tracing-log",
     ],
@@ -88467,6 +89970,7 @@ cargo.rust_library(
         ":sharded-slab-0.1",
         ":smallvec-1",
         ":thread_local-1",
+        ":time-0.3",
         ":tracing-0.1",
         ":tracing-core-0.1",
         ":tracing-log-0.2",
@@ -89355,9 +90859,18 @@ cargo.rust_library(
     crate = "twox_hash",
     crate_root = "twox-hash-1.6.3.crate/src/lib.rs",
     edition = "2018",
+    features = [
+        "digest_0_10",
+        "rand",
+        "std",
+    ],
+    named_deps = {
+        "digest_0_10": ":digest-0.10",
+    },
     visibility = [],
     deps = [
         ":cfg-if-1",
+        ":rand-0.8",
         ":static_assertions-1",
     ],
 )

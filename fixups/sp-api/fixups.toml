@@ -1,0 +1,3 @@
+# Polkadot SDK: parity-scale-codec Encode/Decode derive needs CARGO_MANIFEST_DIR
+# (via proc-macro-crate); supplied by cargo_env.
+cargo_env = true

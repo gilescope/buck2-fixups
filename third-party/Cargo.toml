@@ -2419,6 +2419,10 @@ float_next_after = "2.0.0"
 actix-cors = "0.7.1"
 tinyjson = "2.5.1"
 docopt = "1.1.1"
+sp-core = "41.0.0"
+sp-runtime = "47.0.0"
+sp-io = "46.0.0"
+sp-keyring = "47.0.0"
 
 [target.'cfg(windows)'.dependencies]
 # miow = "0.6.0" # windows-only: alias would fail compat checks in cross-OS sweeps
