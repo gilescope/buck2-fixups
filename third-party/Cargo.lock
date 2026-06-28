@@ -873,6 +873,20 @@ dependencies = [
 
 [[package]]
 name = "aquamarine"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "21cc1548309245035eb18aa7f0967da6bc65587005170c56e6ef2788a4cf3f4e"
+dependencies = [
+ "include_dir",
+ "itertools 0.10.5",
+ "proc-macro-error",
+ "proc-macro2 1.0.106",
+ "quote 1.0.45",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "aquamarine"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f50776554130342de4836ba542aa85a4ddb361690d7e8df13774d7284c3d5c2"
@@ -10462,6 +10476,115 @@ dependencies = [
  "cfg-if 1.0.4",
  "parity-scale-codec",
  "scale-info",
+ "serde",
+]
+
+[[package]]
+name = "frame-support"
+version = "47.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bba1bf34af600d7b60fb75d6326dd15faf2e0c5e7f0e54f930562ef90ab94e78"
+dependencies = [
+ "aquamarine 0.5.0",
+ "array-bytes 6.2.3",
+ "binary-merkle-tree",
+ "bitflags 1.3.2",
+ "derive-where",
+ "docify 0.2.9",
+ "environmental",
+ "frame-metadata",
+ "frame-support-procedural",
+ "impl-trait-for-tuples",
+ "k256",
+ "log 0.4.33",
+ "macro_magic 0.5.1",
+ "parity-scale-codec",
+ "paste",
+ "scale-info",
+ "serde",
+ "serde_json",
+ "sp-api",
+ "sp-arithmetic",
+ "sp-core",
+ "sp-crypto-hashing-proc-macro",
+ "sp-debug-derive",
+ "sp-genesis-builder",
+ "sp-inherents",
+ "sp-io",
+ "sp-metadata-ir",
+ "sp-runtime",
+ "sp-staking",
+ "sp-state-machine",
+ "sp-std",
+ "sp-tracing",
+ "sp-trie",
+ "sp-weights",
+ "tt-call",
+]
+
+[[package]]
+name = "frame-support-procedural"
+version = "38.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "673819ac0c7bee44a653ed5b1161a767c886f21b3a468db536e5d6d9d31c42ed"
+dependencies = [
+ "Inflector",
+ "cfg-expr 0.15.8",
+ "derive-syn-parse",
+ "docify 0.2.9",
+ "expander",
+ "frame-support-procedural-tools",
+ "itertools 0.11.0",
+ "macro_magic 0.5.1",
+ "proc-macro-warning",
+ "proc-macro2 1.0.106",
+ "quote 1.0.45",
+ "sp-crypto-hashing",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "frame-support-procedural-tools"
+version = "13.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81a088fd6fda5f53ff0c17fc7551ce8bd0ead14ba742228443c8196296a7369b"
+dependencies = [
+ "frame-support-procedural-tools-derive",
+ "proc-macro-crate 3.3.0",
+ "proc-macro2 1.0.106",
+ "quote 1.0.45",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "frame-support-procedural-tools-derive"
+version = "12.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed971c6435503a099bdac99fe4c5bea08981709e5b5a0a8535a1856f48561191"
+dependencies = [
+ "proc-macro2 1.0.106",
+ "quote 1.0.45",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "frame-system"
+version = "47.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77d1fc13a3ff43f0f1b4c5232910356779dd391676b4d7b77861b0286e2eeb08"
+dependencies = [
+ "cfg-if 1.0.4",
+ "docify 0.2.9",
+ "frame-support",
+ "log 0.4.33",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-runtime",
+ "sp-version",
+ "sp-weights",
 ]
 
 [[package]]
@@ -16987,11 +17110,37 @@ dependencies = [
 
 [[package]]
 name = "macro_magic"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc33f9f0351468d26fbc53d9ce00a096c8522ecb42f19b50f34f2c422f76d21d"
+dependencies = [
+ "macro_magic_core 0.5.1",
+ "macro_magic_macros 0.5.1",
+ "quote 1.0.45",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "macro_magic"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0625ea4e11e9b0f45e650aa92a94e83719433992dcafd5f130c6435d2ea67107"
 dependencies = [
- "macro_magic_macros",
+ "macro_magic_macros 0.6.0",
+]
+
+[[package]]
+name = "macro_magic_core"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1687dc887e42f352865a393acae7cf79d98fab6351cde1f58e9e057da89bf150"
+dependencies = [
+ "const-random",
+ "derive-syn-parse",
+ "macro_magic_core_macros 0.5.1",
+ "proc-macro2 1.0.106",
+ "quote 1.0.45",
+ "syn 2.0.117",
 ]
 
 [[package]]
@@ -17002,7 +17151,18 @@ checksum = "10a0d941b46232df6f549002d493fc30b720b617b5d7bfb58febda386c2c5abe"
 dependencies = [
  "const-random",
  "derive-syn-parse",
- "macro_magic_core_macros",
+ "macro_magic_core_macros 0.6.0",
+ "proc-macro2 1.0.106",
+ "quote 1.0.45",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "macro_magic_core_macros"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b02abfe41815b5bd98dbd4260173db2c116dda171dc0fe7838cb206333b83308"
+dependencies = [
  "proc-macro2 1.0.106",
  "quote 1.0.45",
  "syn 2.0.117",
@@ -17021,11 +17181,22 @@ dependencies = [
 
 [[package]]
 name = "macro_magic_macros"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73ea28ee64b88876bf45277ed9a5817c1817df061a74f2b988971a12570e5869"
+dependencies = [
+ "macro_magic_core 0.5.1",
+ "quote 1.0.45",
+ "syn 2.0.117",
+]
+
+[[package]]
+name = "macro_magic_macros"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54256681b01f4e5b038a619b24896f8c76d61995075909226d4e6bcf60bad525"
 dependencies = [
- "macro_magic_core",
+ "macro_magic_core 0.6.0",
  "quote 1.0.45",
  "syn 2.0.117",
 ]
@@ -24592,7 +24763,7 @@ dependencies = [
  "anyhow",
  "apache-avro",
  "approx",
- "aquamarine",
+ "aquamarine 0.6.0",
  "ar_archive_writer",
  "arbitrary",
  "arboard",
@@ -25199,6 +25370,8 @@ dependencies = [
  "forwarded-header-value",
  "fraction",
  "fragile",
+ "frame-support",
+ "frame-system",
  "freetype-sys",
  "from_variant",
  "fs-err 3.1.0",
@@ -25609,10 +25782,10 @@ dependencies = [
  "mac",
  "mac_address",
  "mach2 0.6.0",
- "macro_magic",
- "macro_magic_core",
- "macro_magic_core_macros",
- "macro_magic_macros",
+ "macro_magic 0.6.0",
+ "macro_magic_core 0.6.0",
+ "macro_magic_core_macros 0.6.0",
+ "macro_magic_macros 0.6.0",
  "macro_rules_attribute",
  "macro_rules_attribute-proc_macro",
  "malloc_buf 1.0.0",
@@ -29327,6 +29500,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-api"
+version = "42.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8977f83b4672cff5fff35a89a042e925d02f2a7dbfd63b7f4d12c80a2581f16b"
+dependencies = [
+ "docify 0.2.9",
+ "hash-db",
+ "log 0.4.33",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api-proc-macro",
+ "sp-core",
+ "sp-externalities",
+ "sp-metadata-ir",
+ "sp-runtime",
+ "sp-runtime-interface",
+ "sp-state-machine",
+ "sp-trie",
+ "sp-version",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sp-api-proc-macro"
+version = "27.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32c95e3a2cadf60408a228d175d10bbacacdd2b1cd4a15115bc97e8d667ab0eb"
+dependencies = [
+ "Inflector",
+ "blake2 0.10.6",
+ "expander",
+ "proc-macro-crate 3.3.0",
+ "proc-macro2 1.0.106",
+ "quote 1.0.45",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "sp-application-crypto"
 version = "46.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -29417,6 +29628,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-crypto-hashing-proc-macro"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b85d0f1f1e44bd8617eb2a48203ee854981229e3e79e6f468c7175d5fd37489b"
+dependencies = [
+ "quote 1.0.45",
+ "sp-crypto-hashing",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "sp-debug-derive"
 version = "15.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -29437,6 +29659,33 @@ dependencies = [
  "environmental",
  "parity-scale-codec",
  "sp-storage",
+]
+
+[[package]]
+name = "sp-genesis-builder"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2cee8b7ba45f4b2d8a5720248e024489daf58a9b795ac3e24ac9a697938b0254"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "serde_json",
+ "sp-api",
+ "sp-runtime",
+]
+
+[[package]]
+name = "sp-inherents"
+version = "42.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a298a87658bf4420b179fb15ee45ed885d77b53dc9627b1e858c16e1705417f"
+dependencies = [
+ "async-trait",
+ "impl-trait-for-tuples",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+ "thiserror 1.0.69",
 ]
 
 [[package]]
@@ -29487,6 +29736,18 @@ dependencies = [
  "parking_lot 0.12.5",
  "sp-core",
  "sp-externalities",
+]
+
+[[package]]
+name = "sp-metadata-ir"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb285f8d35b3fbb553e31c66182c25985717526f21920a08d23fdca88e3bdd1e"
+dependencies = [
+ "derive-where",
+ "frame-metadata",
+ "parity-scale-codec",
+ "scale-info",
 ]
 
 [[package]]
@@ -29562,6 +29823,20 @@ dependencies = [
  "proc-macro2 1.0.106",
  "quote 1.0.45",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "sp-staking"
+version = "44.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd5fbc654e344fe2e89574058e3c4b7cb75fa3a72f6fc6e34d55bce74fb9f978"
+dependencies = [
+ "impl-trait-for-tuples",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -29641,6 +29916,38 @@ dependencies = [
  "tracing",
  "trie-db",
  "trie-root",
+]
+
+[[package]]
+name = "sp-version"
+version = "45.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45a409b2e4cf147fc24ef158b3c6659738e7dca70838350309a3dc0cd59a81bc"
+dependencies = [
+ "impl-serde 0.5.0",
+ "parity-scale-codec",
+ "parity-wasm",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-crypto-hashing-proc-macro",
+ "sp-runtime",
+ "sp-std",
+ "sp-version-proc-macro",
+ "thiserror 1.0.69",
+]
+
+[[package]]
+name = "sp-version-proc-macro"
+version = "15.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54cabc8279e835cd9c608d70cb00e693bddec94fe8478e9f3104dad1da5f93ca"
+dependencies = [
+ "parity-scale-codec",
+ "proc-macro-warning",
+ "proc-macro2 1.0.106",
+ "quote 1.0.45",
+ "syn 2.0.117",
 ]
 
 [[package]]

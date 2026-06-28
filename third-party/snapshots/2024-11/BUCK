@@ -11098,6 +11098,9 @@ cargo.rust_library(
     crate = "const_random_macro",
     crate_root = "const-random-macro-0.1.16.crate/src/lib.rs",
     edition = "2018",
+    env = {
+        "CONST_RANDOM_SEED": "buck2-fixups",
+    },
     proc_macro = True,
     visibility = [],
     deps = [

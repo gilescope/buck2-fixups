@@ -1,0 +1,64 @@
+# =============================================================================
+# Pin const-random's compile-time seed so const_random!() is reproducible.
+# =============================================================================
+#
+# WHAT THIS IS
+#   The `const-random` crate (via its proc-macro `const-random-macro`) emits a
+#   FRESH RANDOM value every time it is compiled, e.g.
+#       const COMPILATION_TAG: u32 = const_random!(u32);   // macro_magic_core
+#   Without a fixed seed, two compiles of the same crate produce DIFFERENT code.
+#
+# WHY THAT BREAKS BUCK2 (and not cargo)
+#   buck2's prelude does "pipelined" rust builds: an rlib's codegen build consumes
+#   its dependencies' *metadata* (rmeta) builds rather than their *codegen* rlibs,
+#   for parallelism (prelude rust/build.bzl, the `crate_type == rlib` branch that
+#   downgrades a dep's MetadataKind from `link` to `full`). That is only sound if a
+#   crate's metadata build and its codegen build are byte-identical.
+#
+#   const_random!() violates that: macro_magic_core's metadata build bakes in one
+#   random COMPILATION_TAG and its codegen build bakes in a different one. So an
+#   rlib built against the metadata (e.g. macro_magic, which re-exports from
+#   macro_magic_core) references a macro_magic_core that NO codegen consumer can
+#   satisfy. When a proc-macro consumer (frame-support-procedural) finally links
+#   the codegen rlibs, rustc rejects the mismatch.
+#
+#   The user-visible symptom is a BARE, misleading error in the *consumer*:
+#       error[E0463]: can't find crate for `macro_magic`
+#       error: cannot find attribute `with_custom_parsing` in this scope
+#   It is really a masked E0460 ("found possibly newer version of crate ... which
+#   X depends on"). Cargo never hits this because it never cross-uses metadata
+#   builds for codegen. See facebook/buck2#1206 (maintainer cormacrelf's analysis).
+#
+# WHY THE SEED GOES *HERE* (on const-random-macro, not on the crate that uses it)
+#   const-random-macro reads the seed with `option_env!("CONST_RANDOM_SEED")` in
+#   its own src/span.rs. `option_env!` is evaluated at the moment const-random-macro
+#   ITSELF is compiled and bakes the value into the proc-macro binary. So the env
+#   must be present on THIS crate's build, not on macro_magic_core/macro_magic.
+#   reindeer routes a `[env]` fixup onto the rust rule's `env` attr, and the prelude
+#   threads `ctx.attrs.env` into the rustc compile environment (rust/build.bzl), so
+#   the value reaches `option_env!`.
+#
+# EFFECT
+#   Every const_random!() across the whole rig becomes reproducible (const-random
+#   still derives a DIFFERENT value per call-site by hashing the seed with the
+#   source span, so there are no collisions - it is deterministic, not constant).
+#   This both fixes the macro_magic / FRAME proc-macro chain AND advances the
+#   rig's byte-reproducible-build goal. It keeps pipelining ON (no speed cost) -
+#   the alternative (opting the crate out of pipelining) is strictly worse.
+#
+# THE SEED VALUE
+#   Arbitrary but FIXED. Any stable string works; it only needs to never change
+#   (changing it rebuilds every const_random consumer). Do not randomise it.
+#
+# HOW TO DIAGNOSE A FUTURE RECURRENCE (another non-deterministic proc-macro/buildscript)
+#   * A bare E0463/"can't find crate" on a proc-macro consumer with the dep clearly
+#     passed via --extern is the tell. Add `extern crate <dep>;` to surface the
+#     real E0460 naming the mismatched crate.
+#   * Confirm non-determinism: `buck2 build :<crate>[expand] --out a.rs; buck2 clean;
+#     buck2 build :<crate>[expand] --out b.rs; diff a.rs b.rs`. A non-empty diff is
+#     the culprit; fix the source of randomness (seed/env/sort) like this fixup.
+#
+# Refs: facebook/buck2#1206 ; const-random-macro src/span.rs ; macro_magic_core src/lib.rs
+
+[env]
+CONST_RANDOM_SEED = "buck2-fixups"

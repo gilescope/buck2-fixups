@@ -2423,6 +2423,8 @@ sp-core = "41.0.0"
 sp-runtime = "47.0.0"
 sp-io = "46.0.0"
 sp-keyring = "47.0.0"
+frame-support = "47.0.0"
+frame-system = "47.0.0"
 
 [target.'cfg(windows)'.dependencies]
 # miow = "0.6.0" # windows-only: alias would fail compat checks in cross-OS sweeps

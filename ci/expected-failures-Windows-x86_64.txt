@@ -170,3 +170,8 @@ fixups//third-party:sp-panic-handler
 fixups//third-party:sp-runtime
 fixups//third-party:sp-state-machine
 fixups//third-party:sp-trie
+
+# FRAME sits on the sp-* layer, so it transitively pulls secp256k1-sys/backtrace
+# and can't build on windows x86_64 (same cause as the sp-* entries above).
+fixups//third-party:frame-support
+fixups//third-party:frame-system
