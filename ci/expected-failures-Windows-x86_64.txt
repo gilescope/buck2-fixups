@@ -175,3 +175,51 @@ fixups//third-party:sp-trie
 # and can't build on windows x86_64 (same cause as the sp-* entries above).
 fixups//third-party:frame-support
 fixups//third-party:frame-system
+
+# pallet / frame-executive layer: transitively pull secp256k1-sys/backtrace via
+# frame-support/sp-* -> can't build on windows x86_64 (same cause as sp-*/FRAME).
+fixups//third-party:frame-executive
+fixups//third-party:frame-benchmarking
+fixups//third-party:pallet-balances
+fixups//third-party:pallet-timestamp
+fixups//third-party:pallet-sudo
+fixups//third-party:pallet-transaction-payment
+fixups//third-party:sp-timestamp
+
+# pallet/xcm/consensus layer (batch 2): transitively pull secp256k1-sys/backtrace
+# via frame-support/sp-* -> can't build on windows x86_64.
+fixups//third-party:frame-system-benchmarking
+fixups//third-party:frame-system-rpc-runtime-api
+fixups//third-party:frame-try-runtime
+fixups//third-party:pallet-accumulate-and-forward
+fixups//third-party:pallet-asset-conversion
+fixups//third-party:pallet-assets
+fixups//third-party:pallet-collective
+fixups//third-party:pallet-contracts
+fixups//third-party:pallet-democracy
+fixups//third-party:pallet-multisig
+fixups//third-party:pallet-utility
+fixups//third-party:polkadot-core-primitives
+fixups//third-party:polkadot-parachain-primitives
+fixups//third-party:polkadot-sdk-frame
+fixups//third-party:sp-block-builder
+fixups//third-party:sp-consensus-aura
+fixups//third-party:sp-consensus-grandpa
+fixups//third-party:sp-consensus-slots
+fixups//third-party:sp-offchain
+fixups//third-party:sp-session
+fixups//third-party:sp-transaction-pool
+fixups//third-party:staging-xcm
+fixups//third-party:staging-xcm-builder
+fixups//third-party:staging-xcm-executor
+
+# sc-* client layer (batch 3): pull secp256k1-sys/backtrace/aws-lc-sys -> can't build on windows.
+fixups//third-party:sc-allocator
+fixups//third-party:sc-client-api
+fixups//third-party:sc-executor
+fixups//third-party:sc-executor-common
+fixups//third-party:sc-executor-polkavm
+fixups//third-party:sc-transaction-pool
+fixups//third-party:sc-transaction-pool-api
+fixups//third-party:sp-blockchain
+fixups//third-party:sp-consensus
