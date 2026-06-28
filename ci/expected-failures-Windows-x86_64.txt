@@ -155,3 +155,18 @@ fixups//third-party:datafusion-physical-expr
 fixups//third-party:datafusion-physical-plan
 fixups//third-party:datafusion-sql
 fixups//third-party:vsdb_core
+
+# sp-* layer: these transitively pull secp256k1-sys (C build fails on windows) or
+# backtrace (rustc E0308 on windows, via sp-panic-handler), so they cannot build
+# on windows x86_64. The remaining sp-* / substrate-* crates are pure and build.
+# (Determined from third-party/Cargo.lock transitive deps; buck2 uquery can't see
+#  the windows-cfg-gated backtrace edge.)
+fixups//third-party:sp-application-crypto
+fixups//third-party:sp-core
+fixups//third-party:sp-io
+fixups//third-party:sp-keyring
+fixups//third-party:sp-keystore
+fixups//third-party:sp-panic-handler
+fixups//third-party:sp-runtime
+fixups//third-party:sp-state-machine
+fixups//third-party:sp-trie
