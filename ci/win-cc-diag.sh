@@ -51,6 +51,24 @@ ls -la diag/t.obj 2>&1 || echo "NO t.obj (shim compile failed)"
 ls -la diag/libt.a 2>&1 || echo "NO libt.a (shim archive failed)"
 echo "::endgroup::"
 
+echo "::group::TEST C — replay cc-rs family detection (why does it fall back to GNU?)"
+# cc-rs detect_family_inner runs '$CC -E <probe.c>' and reads stdout for
+# __clang__/__GNUC__ pragmas; accepts_cl_style_flags runs '$CC -?'. For cl.exe
+# both should succeed -> Msvc. Capture exit + output of each through the shim.
+printf '#ifdef __clang__\n#pragma message "clang"\n#endif\n#ifdef __GNUC__\n#pragma message "gcc"\n#endif\n' > diag/detect.c
+probe="$(cygpath -w "$PWD/diag/detect.c")"
+echo "--- C1: __cc_shim.bat -E <probe>  (detect_family_inner) ---"
+"$cc_shim" -E "$probe" > diag/E.out 2> diag/E.err; echo "cc_shim -E exit=$?"
+echo "  stdout bytes=$(wc -c < diag/E.out)  stderr bytes=$(wc -c < diag/E.err)"
+echo "  --- stdout (first 25 lines) ---"; head -25 diag/E.out
+echo "  --- stderr (first 25 lines) ---"; head -25 diag/E.err
+echo "--- C2: __cc_shim.bat -?  (accepts_cl_style_flags) ---"
+"$cc_shim" '-?' > diag/help.out 2> diag/help.err; echo "cc_shim -? exit=$?"
+echo "  stdout bytes=$(wc -c < diag/help.out)  stderr bytes=$(wc -c < diag/help.err)"
+echo "  --- stdout (first 5 lines) ---"; head -5 diag/help.out
+echo "  --- stderr (first 5 lines) ---"; head -5 diag/help.err
+echo "::endgroup::"
+
 echo "::group::host MSVC sanity"
 which cl.exe lib.exe python.exe 2>/dev/null || true
 echo "::endgroup::"
