@@ -1,0 +1,6 @@
+# Derives Encode/Decode (parity-scale-codec); the derive uses proc-macro-crate
+# which reads CARGO_MANIFEST_DIR. buck2 doesn't set it by default -> the derive
+# can't find the codec crate and associated types go missing (E0220 cascade).
+# cargo_env supplies the CARGO_* vars, same fix as the sp-*/frame-support layer.
+cargo_env = true
+buildscript.run = true
