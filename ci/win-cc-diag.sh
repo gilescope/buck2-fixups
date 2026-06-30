@@ -7,8 +7,9 @@
 set -x
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
-echo "::group::buck2 build wasmtime-36 (-v5, expected to fail)"
-buck2 build fixups//third-party:wasmtime-36 -v5 2>&1 | tee /tmp/wasmtime.log || true
+echo "::group::buck2 build wasmtime-36 (-v5) — should SUCCEED with the from_any_dir fix"
+buck2 build fixups//third-party:wasmtime-36 -v5 2>&1 | tee /tmp/wasmtime.log; rc=${PIPESTATUS[0]}
+echo "WASMTIME-36 BUILD EXIT: $rc  (0 == fix works)"
 echo "::endgroup::"
 
 root="$(buck2 root --kind project 2>/dev/null)"; echo "buck root: $root"

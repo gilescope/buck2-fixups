@@ -7,9 +7,9 @@ prelude = prelude
 toolchains = toolchains
 none = none
 
-[external_cells]
-prelude = bundled
-
+# prelude is vendored on disk (see prelude/) so the windows from_any_dir.py
+# os.execl->spawnv fix can be carried until it lands upstream in facebook/buck2.
+# Pinned to the prelude bundled by BUCK2_VERSION (tag 2026-06-01).
 [cell_aliases]
 config = prelude
 fbcode = none
