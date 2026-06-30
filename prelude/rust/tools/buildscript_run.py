@@ -180,6 +180,10 @@ def run_buildscript(
         print(f"Failed to run {buildscript} because {ex}", file=sys.stderr)
         sys.exit(1)
     except subprocess.CalledProcessError as ex:
+        # DIAG: surface the buildscript's captured stdout on failure (normally
+        # discarded) so cc-rs's CC_ENABLE_DEBUG_OUTPUT trace is visible.
+        if ex.output:
+            print(ex.output, file=sys.stderr)
         sys.exit(ex.returncode)
 
 
@@ -244,6 +248,10 @@ def main() -> None:  # noqa: C901
         cwd=cwd,
         target=target,
     )
+
+    # DIAG: make cc-rs print every compiler/probe invocation + exit code, so we
+    # can see why its family detection resolves GNU under the buck2 MSVC shim.
+    env["CC_ENABLE_DEBUG_OUTPUT"] = "1"
 
     script_output = run_buildscript(args.buildscript, env=env, cwd=cwd)
 
