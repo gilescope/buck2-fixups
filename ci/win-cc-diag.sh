@@ -69,6 +69,26 @@ echo "  --- stdout (first 5 lines) ---"; head -5 diag/help.out
 echo "  --- stderr (first 5 lines) ---"; head -5 diag/help.err
 echo "::endgroup::"
 
+echo "::group::TEST D — FAITHFUL detect probe: absolute CC, deep OUT_DIR probe, buildscript cwd"
+# cc-rs's -E probe exits 2 only in the real build. Reproduce its exact
+# conditions and capture cl's stderr (the real C#### error cc-rs discards).
+bcwd="$(find buck-out -type d -path '*wasmtime-36-build-script-run*output_artifacts/cwd' 2>/dev/null | head -1)"
+odir="$(find buck-out -type d -path '*wasmtime-36-build-script-run*output_artifacts/OUT_DIR' 2>/dev/null | head -1)"
+cc_abs="$(cygpath -w "$PWD/$cc_shim")"
+echo "bcwd=$bcwd"; echo "odir=$odir"; echo "cc_abs=$cc_abs"
+mkdir -p "$odir" 2>/dev/null
+printf '#ifdef __clang__\n#pragma message "clang"\n#endif\n#ifdef __GNUC__\n#pragma message "gcc"\n#endif\n' > "$odir/9999detect_compiler_family.c"
+probe_deep="$(cygpath -w "$PWD/$odir/9999detect_compiler_family.c")"
+echo "probe_deep=$probe_deep"
+echo "--- D1: -E deep probe from REPO ROOT ---"
+"$cc_abs" -E "$probe_deep" > /tmp/D1.out 2> /tmp/D1.err; echo "exit=$?  stdout=$(wc -c </tmp/D1.out) stderr=$(wc -c </tmp/D1.err)"
+echo "  stderr:"; head -15 /tmp/D1.err
+echo "--- D2: -E deep probe from BUILDSCRIPT CWD (faithful to cc-rs) ---"
+( cd "$bcwd" && "$cc_abs" -E "$probe_deep" > /tmp/D2.out 2> /tmp/D2.err ); echo "exit=$?  stdout=$(wc -c </tmp/D2.out) stderr=$(wc -c </tmp/D2.err)"
+echo "  stdout:"; head -10 /tmp/D2.out
+echo "  stderr (the real cl error):"; head -20 /tmp/D2.err
+echo "::endgroup::"
+
 echo "::group::host MSVC sanity"
 which cl.exe lib.exe python.exe 2>/dev/null || true
 echo "::endgroup::"
