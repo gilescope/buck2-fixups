@@ -81,7 +81,14 @@ expected_content=""
 [ -f "$expected" ] && expected_content=$(sed '/^#/d;/^$/d' "$expected" | grep -E "$scope_re" | sort -u)
 
 new_failures=$(comm -23 <(echo "$failed") <(echo "$expected_content"))
-fixed=$(comm -13 <(echo "$failed") <(echo "$expected_content"))
+# Stale detection only applies to entries this sweep actually builds as targets
+# (the reindeer aliases in `targets`). Transitive-only crates have no bare alias,
+# so they're never a target here -- the PR-leg builds their versioned
+# rust_library directly and excludes them by stem. The sweep can't verify them as
+# "now passing", so don't flag them stale (which would otherwise fail CI for an
+# entry that's still a genuine transitive failure).
+built_targets=$(echo "$targets" | sed '/^$/d' | sort -u)
+fixed=$(comm -13 <(echo "$failed") <(echo "$expected_content") | { grep -Fxf <(echo "$built_targets") || true; })
 
 status=0
 if [ -n "$new_failures" ]; then
