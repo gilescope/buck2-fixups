@@ -7,12 +7,16 @@
 set -x
 export MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*'
 
-leaves="secp256k1-sys zstd-sys lz4-sys lzma-sys openssl-sys libgit2-sys libsqlite3-sys aws-lc-sys ring backtrace psm onig_sys rdkafka-sys"
+# round 2: dependents of the now-building C leaves + the wasmtime layer, to see
+# which un-exclude vs which stay (via backtrace/aws-lc/openssl).
+leaves="lz4 xz2 zip zstd zstd-safe rusqlite git2 onig aes-soft cpuid-bool"
+vers="wasmtime-internal-cache-36 ittapi-sys-0.4 ittapi-0.4 sc-executor-wasmtime-0.45 sp-virtualization-0.2 sp-maybe-compressed-blob-11 sp-wasm-interface-25 sp-runtime-interface-35 sp-api-42 sp-inherents-42 sp-staking-44 sp-genesis-builder-0.23"
 targets=""
 for c in $leaves; do
   t=$(buck2 uquery "//third-party:$c" 2>/dev/null | head -1)
   [ -n "$t" ] && targets="$targets $t"
 done
+for t in $vers; do targets="$targets fixups//third-party:$t"; done
 echo "targets:$targets"
 
 report="$(mktemp)"
