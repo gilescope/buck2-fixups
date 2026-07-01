@@ -1,3 +1,7 @@
 # Top-level files and directories used by buck.
 /buck-out
 /.lsp-buck-out
+
+# vendored: never commit python bytecode caches
+__pycache__/
+*.pyc
