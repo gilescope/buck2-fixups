@@ -146,12 +146,6 @@ jobs:
           SKIP_CRATE_BUILDS: ${{ matrix.arch == 'aarch64' && '1' || '' }}
         run: ./test.sh
 
-      # TEMPORARY: which native crates now build with the prelude fixes.
-      - name: Shrink check (temporary)
-        if: ${{ matrix.arch == 'x86_64' }}
-        continue-on-error: true
-        run: ./ci/win-shrink-check.sh
-
   sweep-linux:
     name: sweep linux ${{ matrix.arch }} ${{ matrix.leg.id }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
