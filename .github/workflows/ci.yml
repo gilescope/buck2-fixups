@@ -146,14 +146,6 @@ jobs:
           SKIP_CRATE_BUILDS: ${{ matrix.arch == 'aarch64' && '1' || '' }}
         run: ./test.sh
 
-      # TEMPORARY: pin the cc-rs/buck2 MSVC lib.exe hard-link failure. Runs even
-      # when ./test.sh passes (wasmtime is expected-failure now) and never fails
-      # the job. Remove once the prelude shim bug is fixed.
-      - name: Diagnose cc-rs MSVC failure (temporary)
-        if: ${{ always() && matrix.arch == 'x86_64' }}
-        continue-on-error: true
-        run: ./ci/win-cc-diag.sh
-
   sweep-linux:
     name: sweep linux ${{ matrix.arch }} ${{ matrix.leg.id }}
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.sweep)
