@@ -88,13 +88,16 @@ jobs:
           tls = false
           EOF
 
-      - name: Build ONE http_archive target remotely
+      - name: Build 300 http_archive targets remotely (scale reproducer)
         run: |
-          # No `uquery | head` — head's early close SIGPIPEs buck2 under pipefail.
-          buck2 uquery "kind('^http_archive\$', //third-party:)" > targets.txt
-          target=$(head -1 targets.txt)
-          echo "target: $target"
-          buck2 build "$target" 2>&1 | tee build.log || true
+          # n=1 passed; the sweep failure is scale-coupled. 300 unpacks via
+          # argfile, --keep-going, so the forensics get real failures.
+          buck2 uquery "kind('^http_archive\$', //third-party:)" > all-targets.txt
+          head -300 all-targets.txt > targets.txt
+          wc -l targets.txt
+          df -h /c || true
+          buck2 build --keep-going @targets.txt 2>&1 | tee build.log || true
+          df -h /c || true
 
       - name: Forensics
         if: always()
@@ -102,22 +105,23 @@ jobs:
           set +e  # forensics never fails the job; every probe is best-effort
           echo "=== worker per-action log (argv/cwd/exit) ==="
           grep -E "^\[exec\]" worker.log | head -20 || true
-          echo "=== kept scratch dirs ==="
-          SCRATCH="$RUNNER_TEMP/rebuck2-exec"
-          ls "$SCRATCH" 2>/dev/null || SCRATCH="$LOCALAPPDATA/Temp/rebuck2-exec"
-          ls "$SCRATCH" 2>/dev/null || SCRATCH="/c/Users/RUNNERADMIN/AppData/Local/Temp/rebuck2-exec"
-          ls "$SCRATCH" || true
-          for d in "$SCRATCH"/*/; do
-            echo "--- exec dir: $d"
-            find "$d" -maxdepth 4 | head -40
-            bat=$(find "$d" -name "*_unpack.bat" | head -1)
+          echo "=== failed actions ==="
+          grep "exit=Some" worker.log | grep -v "exit=Some(0)" > fails.txt
+          wc -l fails.txt; head -3 fails.txt
+          p=$(head -1 fails.txt | sed 's/.*scratch kept at //')
+          if [ -n "$p" ]; then
+            pu=$(cygpath -u "$p")
+            echo "--- failing exec dir: $pu"
+            find "$pu" -maxdepth 6 | head -60
+            bat=$(find "$pu" -name "*_unpack.bat" | head -1)
             if [ -n "$bat" ]; then
-              echo "--- bat content: $bat"
-              cat "$bat"
-              echo "--- manual re-run with echo on:"
-              (cd "$d" && cmd //v //c "$(cygpath -w "$bat")") || echo "manual run rc=$?"
+              echo "--- bat content:"; cat "$bat"
+              echo "--- manual re-run:"
+              (cd "$pu" && cmd //c "$(cygpath -w "$bat")"); echo "manual rc=$?"
             fi
-          done
+          else
+            echo "(no failing actions recorded)"
+          fi
           echo "=== driver log tail ==="
           tail -20 driver.log
           echo "=== build log tail ==="
