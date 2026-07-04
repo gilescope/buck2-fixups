@@ -36,12 +36,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Snap legs paused until the base leg is green end-to-end — no point
+        # burning 12 extra runners per iteration while shaking out RE bugs.
         leg:
           - { id: base, pattern: "//third-party: //third-party/conflict-rigs/..." }
-          - { id: snap-2024-11, pattern: "//third-party/snapshots/2024-11/..." }
-          - { id: snap-2025-05, pattern: "//third-party/snapshots/2025-05/..." }
-          - { id: snap-2025-11, pattern: "//third-party/snapshots/2025-11/..." }
-          - { id: snap-2026-05, pattern: "//third-party/snapshots/2026-05/..." }
+          # - { id: snap-2024-11, pattern: "//third-party/snapshots/2024-11/..." }
+          # - { id: snap-2025-05, pattern: "//third-party/snapshots/2025-05/..." }
+          # - { id: snap-2025-11, pattern: "//third-party/snapshots/2025-11/..." }
+          # - { id: snap-2026-05, pattern: "//third-party/snapshots/2026-05/..." }
     runs-on: windows-latest
     timeout-minutes: 300
     permissions:
@@ -149,12 +151,13 @@ jobs:
       fail-fast: false
       matrix:
         n: [1, 2]
+        # Keep in step with the driver matrix above (snap legs paused).
         leg:
           - { id: base }
-          - { id: snap-2024-11 }
-          - { id: snap-2025-05 }
-          - { id: snap-2025-11 }
-          - { id: snap-2026-05 }
+          # - { id: snap-2024-11 }
+          # - { id: snap-2025-05 }
+          # - { id: snap-2025-11 }
+          # - { id: snap-2026-05 }
     runs-on: windows-latest
     timeout-minutes: 300
     permissions:

@@ -16,6 +16,7 @@ def _re_execution_platform_impl(ctx: AnalysisContext) -> list[Provider]:
         configuration = cfg,
         executor_config = CommandExecutorConfig(
             local_enabled = ctx.attrs.local_enabled,
+            use_limited_hybrid = ctx.attrs.use_limited_hybrid,
             remote_enabled = True,
             remote_cache_enabled = True,
             remote_execution_use_case = "buck2-default",
@@ -38,6 +39,9 @@ re_execution_platform = rule(
         "os_configuration": attrs.dep(providers = [ConfigurationInfo]),
         # False = every action must go through the RE Execution service.
         "local_enabled": attrs.bool(default = True),
+        # True + local_enabled: remote preferred, local reserved for
+        # local_only actions (msvc discovery/vswhere cannot run remotely).
+        "use_limited_hybrid": attrs.bool(default = False),
         "use_windows_path_separators": attrs.bool(default = False),
     },
 )

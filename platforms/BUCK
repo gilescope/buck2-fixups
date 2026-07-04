@@ -4,11 +4,14 @@ load(":defs.bzl", "re_execution_platform")
 # into .buckconfig.local (sweep-re.yml does this). Default builds are untouched.
 # Constraints hardcoded (not host_configuration) — this platform only exists
 # for the x86_64 windows sweep runners.
+# Limited hybrid: compiles go remote; only local_only actions (the prelude's
+# msvc/vswhere discovery) run beside buck2 — negligible memory on the driver.
 re_execution_platform(
     name = "re-exec-win",
     cpu_configuration = "prelude//cpu:x86_64",
-    local_enabled = False,
+    local_enabled = True,
     os_configuration = "prelude//os:windows",
+    use_limited_hybrid = True,
     use_windows_path_separators = True,
     visibility = ["PUBLIC"],
 )
