@@ -175,3 +175,76 @@ fixups//third-party:sp-trie
 # and can't build on windows x86_64 (same cause as the sp-* entries above).
 fixups//third-party:frame-support
 fixups//third-party:frame-system
+
+# pallet / frame-executive layer: transitively pull secp256k1-sys/backtrace via
+# frame-support/sp-* -> can't build on windows x86_64 (same cause as sp-*/FRAME).
+fixups//third-party:frame-executive
+fixups//third-party:frame-benchmarking
+fixups//third-party:pallet-balances
+fixups//third-party:pallet-timestamp
+fixups//third-party:pallet-sudo
+fixups//third-party:pallet-transaction-payment
+fixups//third-party:sp-timestamp
+
+# pallet/xcm/consensus layer (batch 2): transitively pull secp256k1-sys/backtrace
+# via frame-support/sp-* -> can't build on windows x86_64.
+fixups//third-party:frame-system-benchmarking
+fixups//third-party:frame-system-rpc-runtime-api
+fixups//third-party:frame-try-runtime
+fixups//third-party:pallet-accumulate-and-forward
+fixups//third-party:pallet-asset-conversion
+fixups//third-party:pallet-assets
+fixups//third-party:pallet-collective
+fixups//third-party:pallet-contracts
+fixups//third-party:pallet-democracy
+fixups//third-party:pallet-multisig
+fixups//third-party:pallet-utility
+fixups//third-party:polkadot-core-primitives
+fixups//third-party:polkadot-parachain-primitives
+fixups//third-party:polkadot-sdk-frame
+fixups//third-party:sp-block-builder
+fixups//third-party:sp-consensus-aura
+fixups//third-party:sp-consensus-grandpa
+fixups//third-party:sp-consensus-slots
+fixups//third-party:sp-offchain
+fixups//third-party:sp-session
+fixups//third-party:sp-transaction-pool
+fixups//third-party:staging-xcm
+fixups//third-party:staging-xcm-builder
+fixups//third-party:staging-xcm-executor
+
+# sc-* client layer (batch 3): pull secp256k1-sys/backtrace/aws-lc-sys -> can't build on windows.
+fixups//third-party:sc-allocator
+fixups//third-party:sc-client-api
+fixups//third-party:sc-executor
+fixups//third-party:sc-executor-common
+fixups//third-party:sc-executor-polkavm
+fixups//third-party:sc-transaction-pool
+fixups//third-party:sc-transaction-pool-api
+fixups//third-party:sp-blockchain
+fixups//third-party:sp-consensus
+
+# wasmtime executor layer: wasmtime's build.rs unconditionally cc-compiles
+# helpers.c on every supported OS (windows included), and ittapi-sys compiles
+# the ittnotify C lib; both hit the same cc-rs `lib.exe` hard-link failure that
+# already blocks secp256k1-sys/aws-lc-sys/zstd-sys here (the buck2 prelude's
+# __ar_shim + cc-rs MSVC archive path -- facebook/buck2's from_any_dir.py TODO).
+# Feature unification then forces sp-wasm-interface's `wasmtime` feature on for
+# the whole rig, so every sp-runtime-interface consumer transitively pulls
+# wasmtime-36 -> the sp-* primitives below fail too. wasmtime-internal-cache and
+# sp-maybe-compressed-blob fail via zstd-sys. These are transitive-only crates
+# (no bare alias): the PR-leg builds their versioned rust_library directly and
+# excludes them by stem; the sweep reconciles aliases only, so it never builds
+# them (build-all.sh scopes its stale check to built targets).
+fixups//third-party:wasmtime-36
+fixups//third-party:wasmtime-internal-cache-36
+fixups//third-party:ittapi-sys-0.4
+fixups//third-party:sc-executor-wasmtime-0.45
+fixups//third-party:sp-virtualization-0.2
+fixups//third-party:sp-wasm-interface-25
+fixups//third-party:sp-runtime-interface-35
+fixups//third-party:sp-api-42
+fixups//third-party:sp-inherents-42
+fixups//third-party:sp-staking-44
+fixups//third-party:sp-genesis-builder-0.23
+fixups//third-party:sp-maybe-compressed-blob-11

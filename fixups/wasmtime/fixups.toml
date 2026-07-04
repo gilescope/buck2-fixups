@@ -1,1 +1,9 @@
-buildscript.run = false
+# build.rs emits has_virtual_memory/has_native_signals cfgs by probing the target
+# (without running it the mmap runtime modules are cfg-ed out), and uses cc-rs to
+# compile the trampoline/signal C shims (cc-rs needs OPT_LEVEL, which cargo sets
+# but buck2 doesn't). The [buildscript.run.env] table both runs the script AND
+# supplies the env; cargo_env adds the CARGO_* vars the script also reads.
+cargo_env = true
+
+[buildscript.run.env]
+OPT_LEVEL = "3"
