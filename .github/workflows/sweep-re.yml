@@ -1,11 +1,12 @@
 # Windows crate sweep on rebuck2 (distributed RE over iroh — gilescope/rebuck).
-# Per leg: one driver runner (buck2 + rebuck2 driver, local execution OFF) and
-# four worker runners that join the iroh mesh and do all the compiling. The
-# driver box never runs cl.exe/rustc, so the 16 GB single-runner OOM that
-# killed sweep-windows cannot happen there; workers spread the load, and a
-# worker OOM-kill just requeues its actions on the survivor.
+# HARD MODE: one driver, ONE buck2 invocation for the entire tree (base +
+# conflict rigs + all snapshots — the per-leg split was only ever a workaround
+# for single-runner limits), 8 workers doing all the compiling. The driver box
+# never runs cl.exe/rustc — the 16 GB single-runner OOM cannot happen there —
+# and it deletes runner-image ballast in the background while workers join,
+# ahead of the rlib flood into its store.
 # Rendezvous is keyless: driver + workers derive the driver's iroh key from
-# GITHUB_RUN_ID + leg id. Opt-in only — the normal sweep is untouched.
+# GITHUB_RUN_ID. Opt-in only — the normal sweep is untouched.
 name: sweep-re
 on:
   workflow_dispatch: {}
@@ -34,20 +35,9 @@ env:
 
 jobs:
   driver:
-    name: driver ${{ matrix.leg.id }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # Snap legs paused until the base leg is green end-to-end — no point
-        # burning 12 extra runners per iteration while shaking out RE bugs.
-        leg:
-          - { id: base, pattern: "//third-party: //third-party/conflict-rigs/..." }
-          # - { id: snap-2024-11, pattern: "//third-party/snapshots/2024-11/..." }
-          # - { id: snap-2025-05, pattern: "//third-party/snapshots/2025-05/..." }
-          # - { id: snap-2025-11, pattern: "//third-party/snapshots/2025-11/..." }
-          # - { id: snap-2026-05, pattern: "//third-party/snapshots/2026-05/..." }
+    name: driver
     runs-on: windows-latest
-    timeout-minutes: 300
+    timeout-minutes: 350
     permissions:
       contents: read
     env:
@@ -89,19 +79,27 @@ jobs:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
 
-      - name: Start driver (remote exec only, barrier on 2 workers)
-        env:
-          LEG: ${{ matrix.leg.id }}
+      - name: Reclaim runner ballast in the background (disk for the store)
         run: |
-          rebuck2 driver --grpc-port 9092 --min-workers 4 --no-local-exec \
-            --session "$GITHUB_RUN_ID-$LEG" \
+          # The driver is network-bound once dispatch starts; spend the idle
+          # cycles freeing C: for ~8000 crates of rlibs. Python stays (pinned
+          # toolchain lives in hostedtoolcache).
+          (rm -rf /c/Android "/c/Program Files/dotnet" \
+             /c/hostedtoolcache/windows/Java* /c/hostedtoolcache/windows/go \
+             /c/hostedtoolcache/windows/node /c/hostedtoolcache/windows/Ruby \
+             /c/hostedtoolcache/windows/CodeQL 2>/dev/null; df -h /c) &
+
+      - name: Start driver (remote exec only, barrier on 8 workers)
+        run: |
+          rebuck2 driver --grpc-port 9092 --min-workers 8 --no-local-exec \
+            --session "$GITHUB_RUN_ID" \
             --store "$HOME/.cache/rebuck2/driver" > driver.log 2>&1 &
           echo $! > driver.pid
 
-      - name: Wait for both workers to join the mesh
+      - name: Wait for all 8 workers to join the mesh
         run: |
           for _ in $(seq 1 180); do
-            grep -q "worker 4 joined" driver.log && exit 0
+            grep -q "worker 8 joined" driver.log && exit 0
             kill -0 "$(cat driver.pid)" || { cat driver.log; echo "driver died"; exit 1; }
             sleep 5
           done
@@ -120,13 +118,8 @@ jobs:
           tls = false
           EOF
 
-      - name: Build all crates (compiles happen on the workers)
-        env:
-          LEG_PATTERN: ${{ matrix.leg.pattern }}
-        run: |
-          # word-split intentional: the base leg holds two space-separated patterns
-          # shellcheck disable=SC2086
-          ./build-all.sh $LEG_PATTERN
+      - name: Build the entire tree in one buck2 invocation
+        run: ./build-all.sh //third-party/...
 
       - name: Dispatch stats
         if: always()
@@ -140,7 +133,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: driver-log-${{ matrix.leg.id }}
+          name: driver-log
           path: driver.log
 
       - name: Stop driver
@@ -148,20 +141,13 @@ jobs:
         run: kill "$(cat driver.pid)" 2>/dev/null || true
 
   worker:
-    name: worker ${{ matrix.n }} ${{ matrix.leg.id }}
+    name: worker ${{ matrix.n }}
     strategy:
       fail-fast: false
       matrix:
-        n: [1, 2, 3, 4]
-        # Keep in step with the driver matrix above (snap legs paused).
-        leg:
-          - { id: base }
-          # - { id: snap-2024-11 }
-          # - { id: snap-2025-05 }
-          # - { id: snap-2025-11 }
-          # - { id: snap-2026-05 }
+        n: [1, 2, 3, 4, 5, 6, 7, 8]
     runs-on: windows-latest
-    timeout-minutes: 300
+    timeout-minutes: 350
     permissions:
       contents: read
     env:
@@ -196,12 +182,10 @@ jobs:
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
 
       - name: Serve until the driver disconnects
-        env:
-          LEG: ${{ matrix.leg.id }}
         # Exits 0 when the driver job's process closes the control stream;
-        # `timeout` guards a driver that never shows up (17400s < job cap).
+        # `timeout` guards a driver that never shows up (20400s < job cap).
         run: |
-          timeout 17400 rebuck2 worker \
-            --session "$GITHUB_RUN_ID-$LEG" \
+          timeout 20400 rebuck2 worker \
+            --session "$GITHUB_RUN_ID" \
             --connect-wait-secs 1800 \
             --store "$HOME/.cache/rebuck2/worker" | tee worker.log
