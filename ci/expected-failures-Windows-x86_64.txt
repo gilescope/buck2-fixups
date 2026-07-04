@@ -10,34 +10,28 @@ fixups//third-party:xattr
 fixups//third-party:core-foundation
 fixups//third-party:security-framework
 fixups//third-party:system-configuration-sys
-# native build scripts needing fixup work (asm/cmake/vendored C):
+# NOTE: the cc-rs "can't create hard-link to generated lib" failure that used to
+# block every C-compiling buildscript on windows is fixed in the vendored prelude
+# (from_any_dir.py os.execl->spawnv + cmd_script.bzl %~dp0 wrappers). secp256k1-sys,
+# zstd-sys, lz4-sys, lzma-sys, libsqlite3-sys, onig_sys, psm and their dependents
+# (zip/zstd/zstd-safe/rusqlite/xz2/onig/lz4) now build and were removed. The
+# entries below fail for OTHER reasons: nasm/asm, cmake, perl, or rustc E0308.
+
+# native build scripts needing nasm/cmake (not the cc-rs shim bug):
 fixups//third-party:aws-lc-sys
-fixups//third-party:lz4
-fixups//third-party:lz4-sys
-fixups//third-party:lzma-sys
-fixups//third-party:psm
 fixups//third-party:sha1-asm
 fixups//third-party:sha2-asm
-fixups//third-party:xz2
 # broken against current msvc rustc (old abandoned crates):
 fixups//third-party:backtrace
 fixups//third-party:color-eyre
 fixups//third-party:error-chain
 fixups//third-party:failure
-# native buildscripts that fail in the msvc shim environment (vendored
-# C/cmake/perl builds); refine after the first windows sweep:
+# vendored C needing cmake/perl (not the cc-rs shim bug):
 fixups//third-party:aws-lc-rs
 fixups//third-party:libgit2-sys
-fixups//third-party:libsqlite3-sys
 fixups//third-party:openssl
 fixups//third-party:openssl-sys
-fixups//third-party:rusqlite
-fixups//third-party:secp256k1-sys
-fixups//third-party:zstd-sys
 # dependents of the above (fail via dep):
-fixups//third-party:zip
-fixups//third-party:zstd
-fixups//third-party:zstd-safe
 fixups//third-party:git2
 # sqlx conflict rig: its libsqlite3-sys 0.30 fails to build the bundled
 # sqlite3.c here, same as the main rig's libsqlite3-sys above. sqlx-mysql and
@@ -85,8 +79,6 @@ fixups//third-party:ndk-sys
 fixups//third-party:neli
 fixups//third-party:netlink-proto
 fixups//third-party:netlink-sys
-fixups//third-party:onig
-fixups//third-party:onig_sys
 fixups//third-party:rav1e
 fixups//third-party:ravif
 fixups//third-party:rdkafka
@@ -224,27 +216,15 @@ fixups//third-party:sc-transaction-pool-api
 fixups//third-party:sp-blockchain
 fixups//third-party:sp-consensus
 
-# wasmtime executor layer: wasmtime's build.rs unconditionally cc-compiles
-# helpers.c on every supported OS (windows included), and ittapi-sys compiles
-# the ittnotify C lib; both hit the same cc-rs `lib.exe` hard-link failure that
-# already blocks secp256k1-sys/aws-lc-sys/zstd-sys here (the buck2 prelude's
-# __ar_shim + cc-rs MSVC archive path -- facebook/buck2's from_any_dir.py TODO).
-# Feature unification then forces sp-wasm-interface's `wasmtime` feature on for
-# the whole rig, so every sp-runtime-interface consumer transitively pulls
-# wasmtime-36 -> the sp-* primitives below fail too. wasmtime-internal-cache and
-# sp-maybe-compressed-blob fail via zstd-sys. These are transitive-only crates
-# (no bare alias): the PR-leg builds their versioned rust_library directly and
-# excludes them by stem; the sweep reconciles aliases only, so it never builds
-# them (build-all.sh scopes its stale check to built targets).
-fixups//third-party:wasmtime-36
-fixups//third-party:wasmtime-internal-cache-36
-fixups//third-party:ittapi-sys-0.4
-fixups//third-party:sc-executor-wasmtime-0.45
-fixups//third-party:sp-virtualization-0.2
-fixups//third-party:sp-wasm-interface-25
-fixups//third-party:sp-runtime-interface-35
+# sp-* primitives that still fail on windows via backtrace (rustc E0308, see the
+# sp-* layer note above). The cc-rs C-compile bug that used to also block this
+# whole layer (wasmtime helpers.c / ittapi / zstd-sys / secp256k1-sys) is fixed
+# by the vendored-prelude from_any_dir + cmd_script changes, so wasmtime-36,
+# sc-executor-wasmtime, sp-wasm-interface, sp-runtime-interface, sp-virtualization
+# and the zstd/lz4/sqlite/onig leaves now build and were removed. These four
+# still pull backtrace and remain. Transitive-only crates (no bare alias): the
+# PR-leg builds their versioned rust_library directly and excludes them by stem.
 fixups//third-party:sp-api-42
 fixups//third-party:sp-inherents-42
 fixups//third-party:sp-staking-44
 fixups//third-party:sp-genesis-builder-0.23
-fixups//third-party:sp-maybe-compressed-blob-11
