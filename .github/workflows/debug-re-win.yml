@@ -90,14 +90,16 @@ jobs:
 
       - name: Build ONE http_archive target remotely
         run: |
-          target=$(buck2 uquery "kind('^http_archive\$', //third-party:)" 2>/dev/null | head -1)
+          # No `uquery | head` — head's early close SIGPIPEs buck2 under pipefail.
+          buck2 uquery "kind('^http_archive\$', //third-party:)" > targets.txt
+          target=$(head -1 targets.txt)
           echo "target: $target"
-          echo "$target" > target.txt
           buck2 build "$target" 2>&1 | tee build.log || true
 
       - name: Forensics
         if: always()
         run: |
+          set +e  # forensics never fails the job; every probe is best-effort
           echo "=== worker per-action log (argv/cwd/exit) ==="
           grep -E "^\[exec\]" worker.log | head -20 || true
           echo "=== kept scratch dirs ==="
