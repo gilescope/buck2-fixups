@@ -27,7 +27,6 @@ fixups//third-party:color-eyre
 fixups//third-party:error-chain
 fixups//third-party:failure
 # vendored C needing cmake/perl (not the cc-rs shim bug):
-fixups//third-party:aws-lc-rs
 fixups//third-party:libgit2-sys
 fixups//third-party:openssl
 fixups//third-party:openssl-sys
@@ -36,24 +35,8 @@ fixups//third-party:git2
 # sqlx conflict rig: its libsqlite3-sys 0.30 fails to build the bundled
 # sqlite3.c here, same as the main rig's libsqlite3-sys above. sqlx-mysql and
 # tracing (no sqlite dep) still build.
-fixups//third-party/conflict-rigs/sqlx:sqlx
-fixups//third-party/conflict-rigs/sqlx:sqlx-sqlite
 # rustls/aws-lc blast radius (same as linux: feature unification re-enables
 # rustls' aws-lc-rs provider; aws-lc-sys fails on the cc-rs hardlink issue):
-fixups//third-party:aws-config
-fixups//third-party:aws-runtime
-fixups//third-party:aws-sdk-s3
-fixups//third-party:aws-sdk-sso
-fixups//third-party:aws-sdk-ssooidc
-fixups//third-party:aws-sdk-sts
-fixups//third-party:aws-smithy-http-client
-fixups//third-party:aws-smithy-runtime
-fixups//third-party:hyper-rustls
-fixups//third-party:quinn-proto
-fixups//third-party:rustls
-fixups//third-party:rustls-webpki
-fixups//third-party:tokio-rustls
-fixups//third-party:ureq
 
 # ── top-2000 breadth wave: native/GUI/syscall crates + their changed parents
 #    that fail on this platform (system libs absent in CI / unix-only). The Darwin-48
@@ -86,14 +69,10 @@ fixups//third-party:rtnetlink
 fixups//third-party:sctk-adwaita
 fixups//third-party:seccompiler
 fixups//third-party:sentry
-fixups//third-party:sentry-contexts
 fixups//third-party:slog-json
 fixups//third-party:smithay-client-toolkit
 fixups//third-party:smithay-clipboard
-fixups//third-party:sqlx-rt
-fixups//third-party:syntect
 fixups//third-party:tauri-runtime-wry
-fixups//third-party:tokenizers
 fixups//third-party:v8
 fixups//third-party:wayland-client
 fixups//third-party:wayland-cursor
@@ -112,24 +91,16 @@ fixups//third-party:glutin_wgl_sys
 fixups//third-party:libxdo-sys
 fixups//third-party:prost-wkt-types
 fixups//third-party:softbuffer
-fixups//third-party:tree-sitter
 fixups//third-party:wayland-sys
 
 # top-2000 wave: changed crates failing on windows — aws-sdk-secretsmanager pulls
 # aws-lc-sys (already listed); wayland-* are unix-only; parquet pulls zstd-sys
 # whose C build fails here. (backtrace failure is a transitive of these.)
-fixups//third-party:aws-sdk-secretsmanager
 fixups//third-party:wayland-sys
 fixups//third-party:wayland-backend
-fixups//third-party:parquet
 # top-2000 wave (round 2): changed parents pulling the wide-blast-radius natives —
 # rfd→wayland-client; elasticsearch/metrics-exporter-prometheus→(rustls)→aws-lc-sys;
 # tauri-runtime/wry→(windows crate)→windows-future. backtrace/zstd-sys drop with these.
-fixups//third-party:elasticsearch
-fixups//third-party:metrics-exporter-prometheus
-fixups//third-party:rfd
-fixups//third-party:tauri-runtime
-fixups//third-party:wry
 
 # round 3: rdkafka-sys (changed fixup, vendored build fails); sentry-* pull
 # backtrace; arrow/datafusion-*/vsdb_core pull zstd-sys (already fails on windows).
@@ -137,15 +108,6 @@ fixups//third-party:rdkafka-sys
 fixups//third-party:sentry-backtrace
 fixups//third-party:sentry-panic
 fixups//third-party:sentry-tracing
-fixups//third-party:arrow
-fixups//third-party:datafusion-common
-fixups//third-party:datafusion-execution
-fixups//third-party:datafusion-expr
-fixups//third-party:datafusion-functions
-fixups//third-party:datafusion-optimizer
-fixups//third-party:datafusion-physical-expr
-fixups//third-party:datafusion-physical-plan
-fixups//third-party:datafusion-sql
 fixups//third-party:vsdb_core
 
 # sp-* layer: these transitively pull secp256k1-sys (C build fails on windows) or
@@ -154,7 +116,6 @@ fixups//third-party:vsdb_core
 # (Determined from third-party/Cargo.lock transitive deps; buck2 uquery can't see
 #  the windows-cfg-gated backtrace edge.)
 fixups//third-party:sp-application-crypto
-fixups//third-party:sp-core
 fixups//third-party:sp-io
 fixups//third-party:sp-keyring
 fixups//third-party:sp-keystore
@@ -228,3 +189,31 @@ fixups//third-party:sp-api-42
 fixups//third-party:sp-inherents-42
 fixups//third-party:sp-staking-44
 fixups//third-party:sp-genesis-builder-0.23
+fixups//third-party:cocoa
+fixups//third-party:hyper-openssl
+fixups//third-party:hyperlocal
+fixups//third-party:mach2
+fixups//third-party:metal
+fixups//third-party:netlink-packet-route
+fixups//third-party:objc2-app-kit
+fixups//third-party:objc2-cloud-kit
+fixups//third-party:objc2-core-data
+fixups//third-party:objc2-core-graphics
+fixups//third-party:objc2-core-image
+fixups//third-party:objc2-foundation
+fixups//third-party:objc2-io-surface
+fixups//third-party:objc2-metal
+fixups//third-party:objc2-quartz-core
+fixups//third-party:objc2-ui-kit
+fixups//third-party:pprof
+fixups//third-party:termios
+fixups//third-party:tokio-openssl
+fixups//third-party:uname
+fixups//third-party:wayland-csd-frame
+# RE-hostile: buildscript bakes absolute exec-dir paths into generated code
+# (include_bytes! of a worker-local path). Proper fix: prefer_local or a
+# path-relative fixup for these buildscripts; listed until then.
+fixups//third-party:built
+fixups//third-party:gl_generator
+fixups//third-party:glutin_glx_sys
+fixups//third-party:khronos_api

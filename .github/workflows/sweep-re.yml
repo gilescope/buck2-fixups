@@ -13,7 +13,9 @@ on:
   # branch; on the PR branch the trigger is a push touching this file.
   push:
     branches: [giles-rebuck2-sweep]
-    paths: [.github/workflows/sweep-re.yml]
+    paths:
+      - .github/workflows/sweep-re.yml
+      - ci/expected-failures-*.txt
 
 permissions:
   contents: read
