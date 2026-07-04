@@ -1,8 +1,8 @@
-# Minimal reproducer for the sweep-re windows http_archive failure
-# ("The system cannot find the path specified.", empty stdout).
-# One runner, driver + worker as two processes, ONE .crate target, then a
-# full forensic dump: the generated _unpack.bat, the kept exec dir, and a
-# manual re-run of the bat with echo on.
+# Reproducer for the sweep-re windows http_archive failure.
+# Bisection so far: same-box windows = 300/300 PASS; cross-runner windows =
+# 7582/7582 FAIL ("The system cannot find the path specified.", empty stdout);
+# cross-runner linux = PASS. This rig is the failing combination — two
+# runners — with keep-scratch forensics on the worker side.
 name: debug-re-win
 on:
   workflow_dispatch: {}
@@ -19,7 +19,7 @@ env:
   REBUCK2_BRANCH: giles-iroh-re-punch
 
 jobs:
-  debug:
+  driver:
     runs-on: windows-latest
     timeout-minutes: 40
     permissions:
@@ -61,19 +61,18 @@ jobs:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
 
-      - name: Start driver + worker (same box, worker keeps scratch)
+      - name: Start driver (cross-runner worker required)
         run: |
           rebuck2 driver --grpc-port 9092 --min-workers 1 --no-local-exec \
             --session "debug-$GITHUB_RUN_ID" \
             --store "$HOME/.cache/rebuck2/driver" > driver.log 2>&1 &
-          REBUCK2_KEEP_SCRATCH=1 rebuck2 worker \
-            --session "debug-$GITHUB_RUN_ID" \
-            --store "$HOME/.cache/rebuck2/worker" > worker.log 2>&1 &
-          for _ in $(seq 1 60); do
+          echo $! > driver.pid
+          for _ in $(seq 1 120); do
             grep -q "worker 1 joined" driver.log && exit 0
+            kill -0 "$(cat driver.pid)" || { cat driver.log; echo "driver died"; exit 1; }
             sleep 5
           done
-          cat driver.log worker.log; echo "worker never joined"; exit 1
+          cat driver.log; echo "worker never joined"; exit 1
 
       - name: Point buck2 at rebuck2
         run: |
@@ -88,51 +87,93 @@ jobs:
           tls = false
           EOF
 
-      - name: Build 300 http_archive targets remotely (scale reproducer)
+      - name: Build 300 http_archive targets on the remote worker
         run: |
-          # n=1 passed; the sweep failure is scale-coupled. 300 unpacks via
-          # argfile, --keep-going, so the forensics get real failures.
           buck2 uquery "kind('^http_archive\$', //third-party:)" > all-targets.txt
           head -300 all-targets.txt > targets.txt
-          wc -l targets.txt
-          df -h /c || true
           buck2 build --keep-going @targets.txt 2>&1 | tee build.log || true
-          df -h /c || true
+          grep -cE "Action failed" build.log || true
+          grep -E "Commands:" build.log || true
 
-      - name: Forensics
+      - name: Stop driver (lets the worker exit and run its forensics)
         if: always()
-        run: |
-          set +e  # forensics never fails the job; every probe is best-effort
-          echo "=== worker per-action log (argv/cwd/exit) ==="
-          grep -E "^\[exec\]" worker.log | head -20 || true
-          echo "=== failed actions ==="
-          grep "exit=Some" worker.log | grep -v "exit=Some(0)" > fails.txt
-          wc -l fails.txt; head -3 fails.txt
-          p=$(head -1 fails.txt | sed 's/.*scratch kept at //')
-          if [ -n "$p" ]; then
-            pu=$(cygpath -u "$p")
-            echo "--- failing exec dir: $pu"
-            find "$pu" -maxdepth 6 | head -60
-            bat=$(find "$pu" -name "*_unpack.bat" | head -1)
-            if [ -n "$bat" ]; then
-              echo "--- bat content:"; cat "$bat"
-              echo "--- manual re-run:"
-              (cd "$pu" && cmd //c "$(cygpath -w "$bat")"); echo "manual rc=$?"
-            fi
-          else
-            echo "(no failing actions recorded)"
-          fi
-          echo "=== driver log tail ==="
-          tail -20 driver.log
-          echo "=== build log tail ==="
-          tail -30 build.log
+        run: kill "$(cat driver.pid)" 2>/dev/null || true
 
-      - name: Upload logs
+      - name: Upload driver logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: debug-logs
+          name: debug-driver-logs
           path: |
             driver.log
-            worker.log
             build.log
+
+  worker:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache rebuck2 binary (keyed by rebuck commit)
+        id: rebuck2bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/rebuck2.exe
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      - name: Serve (keep scratch) until the driver disconnects
+        run: |
+          REBUCK2_KEEP_SCRATCH=1 timeout 2100 rebuck2 worker \
+            --session "debug-$GITHUB_RUN_ID" --connect-wait-secs 1200 \
+            --store "$HOME/.cache/rebuck2/worker" 2>&1 | tee worker.log || true
+
+      - name: Worker-side forensics
+        if: always()
+        run: |
+          set +e
+          echo "=== action results (first 6 + failures) ==="
+          grep "\[exec\]" worker.log > execlog.txt
+          head -6 execlog.txt
+          grep "exit=Some" execlog.txt | grep -v "exit=Some(0)" > fails.txt
+          echo "failed actions: $(wc -l < fails.txt)"
+          p=$(head -1 fails.txt | sed 's/.*scratch kept at //')
+          if [ -z "$p" ]; then
+            echo "(no failures — dumping a passing dir instead)"
+            p=$(grep "scratch kept at" execlog.txt | head -1 | sed 's/.*scratch kept at //')
+          fi
+          pu=$(cygpath -u "$p")
+          echo "--- exec dir: $pu"
+          find "$pu" | head -60
+          bat=$(find "$pu" -name "*_unpack.bat" | head -1)
+          if [ -n "$bat" ]; then
+            echo "--- bat content:"; cat "$bat"
+            echo "--- hexdump head (line endings / BOM):"; head -c 200 "$bat" | od -c | head -8
+            echo "--- manual re-run from exec root:"
+            (cd "$pu" && cmd //c "$(cygpath -w "$bat")"); echo "manual rc=$?"
+          fi
+          echo "--- disk:"; df -h /c || true
+
+      - name: Upload worker logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: debug-worker-logs
+          path: worker.log
