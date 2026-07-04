@@ -1,0 +1,132 @@
+# Minimal reproducer for the sweep-re windows http_archive failure
+# ("The system cannot find the path specified.", empty stdout).
+# One runner, driver + worker as two processes, ONE .crate target, then a
+# full forensic dump: the generated _unpack.bat, the kept exec dir, and a
+# manual re-run of the bat with echo on.
+name: debug-re-win
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths: [.github/workflows/debug-re-win.yml]
+
+permissions:
+  contents: read
+
+env:
+  BUCK2_VERSION: 2026-06-01
+  REBUCK2_GIT: https://github.com/gilescope/rebuck
+  REBUCK2_BRANCH: giles-iroh-re-punch
+
+jobs:
+  debug:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install buck2
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache rebuck2 binary (keyed by rebuck commit)
+        id: rebuck2bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/rebuck2.exe
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      - name: Start driver + worker (same box, worker keeps scratch)
+        run: |
+          rebuck2 driver --grpc-port 9092 --min-workers 1 --no-local-exec \
+            --session "debug-$GITHUB_RUN_ID" \
+            --store "$HOME/.cache/rebuck2/driver" > driver.log 2>&1 &
+          REBUCK2_KEEP_SCRATCH=1 rebuck2 worker \
+            --session "debug-$GITHUB_RUN_ID" \
+            --store "$HOME/.cache/rebuck2/worker" > worker.log 2>&1 &
+          for _ in $(seq 1 60); do
+            grep -q "worker 1 joined" driver.log && exit 0
+            sleep 5
+          done
+          cat driver.log worker.log; echo "worker never joined"; exit 1
+
+      - name: Point buck2 at rebuck2
+        run: |
+          cat > .buckconfig.local <<'EOF'
+          [build]
+          execution_platforms = fixups//platforms:re-exec-win
+
+          [buck2_re_client]
+          action_cache_address = grpc://127.0.0.1:9092
+          cas_address = grpc://127.0.0.1:9092
+          engine_address = grpc://127.0.0.1:9092
+          tls = false
+          EOF
+
+      - name: Build ONE http_archive target remotely
+        run: |
+          target=$(buck2 uquery "kind('^http_archive\$', //third-party:)" 2>/dev/null | head -1)
+          echo "target: $target"
+          echo "$target" > target.txt
+          buck2 build "$target" 2>&1 | tee build.log || true
+
+      - name: Forensics
+        if: always()
+        run: |
+          echo "=== worker per-action log (argv/cwd/exit) ==="
+          grep -E "^\[exec\]" worker.log | head -20 || true
+          echo "=== kept scratch dirs ==="
+          SCRATCH="$RUNNER_TEMP/rebuck2-exec"
+          ls "$SCRATCH" 2>/dev/null || SCRATCH="$LOCALAPPDATA/Temp/rebuck2-exec"
+          ls "$SCRATCH" 2>/dev/null || SCRATCH="/c/Users/RUNNERADMIN/AppData/Local/Temp/rebuck2-exec"
+          ls "$SCRATCH" || true
+          for d in "$SCRATCH"/*/; do
+            echo "--- exec dir: $d"
+            find "$d" -maxdepth 4 | head -40
+            bat=$(find "$d" -name "*_unpack.bat" | head -1)
+            if [ -n "$bat" ]; then
+              echo "--- bat content: $bat"
+              cat "$bat"
+              echo "--- manual re-run with echo on:"
+              (cd "$d" && cmd //v //c "$(cygpath -w "$bat")") || echo "manual run rc=$?"
+            fi
+          done
+          echo "=== driver log tail ==="
+          tail -20 driver.log
+          echo "=== build log tail ==="
+          tail -30 build.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: debug-logs
+          path: |
+            driver.log
+            worker.log
+            build.log
