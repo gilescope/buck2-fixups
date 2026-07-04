@@ -1,4 +1,16 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
 load(":defs.bzl", "re_execution_platform")
+
+# OS-generic limited-hybrid RE platform (linux/mac sweeps, compose rig).
+# Requires the pinned buck2 (host_configuration uses newer prelude API).
+re_execution_platform(
+    name = "re-exec",
+    cpu_configuration = host_configuration.cpu,
+    local_enabled = True,
+    os_configuration = host_configuration.os,
+    use_limited_hybrid = True,
+    visibility = ["PUBLIC"],
+)
 
 # Selected by writing `[build] execution_platforms = fixups//platforms:re-exec-win`
 # into .buckconfig.local (sweep-re.yml does this). Default builds are untouched.
