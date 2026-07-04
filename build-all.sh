@@ -22,7 +22,8 @@ fi
 platform="${os}-${arch}"
 expected="ci/expected-failures-${platform}.txt"
 report=$(mktemp)
-trap 'rm -f "$report"' EXIT
+targetsfile=$(mktemp)
+trap 'rm -f "$report" "$targetsfile"' EXIT
 
 # Build the top-level crate aliases reindeer generated (one per Cargo.toml dep)
 # under the given buck2 target pattern(s). Default = the whole tree (main rig +
@@ -52,8 +53,10 @@ targets=$(buck2 uquery "kind('^alias\$', ${universe})" 2>/dev/null)
 echo "Building $(echo "$targets" | grep -c .) crates for ${platform} (scope: ${patterns[*]})..."
 
 buildlog=$(mktemp)
-# shellcheck disable=SC2086
-buck2 build --keep-going --build-report "$report" $targets 2>&1 | tee "$buildlog" || true
+# Targets go via an argfile: 2185 labels ≈ 87 KB of argv, and Windows'
+# CreateProcess caps the command line at ~32 KB ("Argument list too long").
+echo "$targets" > "$targetsfile"
+buck2 build --keep-going --build-report "$report" @"$targetsfile" 2>&1 | tee "$buildlog" || true
 # A concurrent buck2 command or a BUCK rewrite mid-build cancels DICE keys;
 # the report then marks unbuilt targets as failures. Don't diff bogus data.
 if grep -q "evaluation of this key was cancelled" "$buildlog"; then
