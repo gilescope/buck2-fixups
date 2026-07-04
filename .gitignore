@@ -2,3 +2,4 @@ buck-out
 buck-out-docker
 target
 .tools
+.buckconfig.local

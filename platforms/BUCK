@@ -1,0 +1,14 @@
+load(":defs.bzl", "re_execution_platform")
+
+# Selected by writing `[build] execution_platforms = fixups//platforms:re-exec-win`
+# into .buckconfig.local (sweep-re.yml does this). Default builds are untouched.
+# Constraints hardcoded (not host_configuration) — this platform only exists
+# for the x86_64 windows sweep runners.
+re_execution_platform(
+    name = "re-exec-win",
+    cpu_configuration = "prelude//cpu:x86_64",
+    local_enabled = False,
+    os_configuration = "prelude//os:windows",
+    use_windows_path_separators = True,
+    visibility = ["PUBLIC"],
+)

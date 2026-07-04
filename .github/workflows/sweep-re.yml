@@ -1,0 +1,169 @@
+# Windows crate sweep on rebuck2 (distributed RE over iroh — gilescope/rebuck).
+# Per leg: one driver runner (buck2 + rebuck2 driver, local execution OFF) and
+# two worker runners that join the iroh mesh and do all the compiling. The
+# driver box never runs cl.exe/rustc, so the 16 GB single-runner OOM that
+# killed sweep-windows cannot happen there; workers spread the load, and a
+# worker OOM-kill just requeues its actions on the survivor.
+# Rendezvous is keyless: driver + workers derive the driver's iroh key from
+# GITHUB_RUN_ID + leg id. Opt-in only — the normal sweep is untouched.
+name: sweep-re
+on:
+  workflow_dispatch: {}
+  # workflow_dispatch only registers once this file reaches the default
+  # branch; on the PR branch the trigger is a push touching this file.
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths: [.github/workflows/sweep-re.yml]
+
+permissions:
+  contents: read
+
+env:
+  BUCK2_VERSION: 2026-06-01
+  # rebuck2 built from the rebuck repo's engine branch.
+  # TODO pin to a --rev once giles-iroh-re-punch is signed/stable.
+  REBUCK2_GIT: https://github.com/gilescope/rebuck
+  REBUCK2_BRANCH: giles-iroh-re-punch
+
+jobs:
+  driver:
+    name: driver ${{ matrix.leg.id }}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg:
+          - { id: base, pattern: "//third-party: //third-party/conflict-rigs/..." }
+          - { id: snap-2024-11, pattern: "//third-party/snapshots/2024-11/..." }
+          - { id: snap-2025-05, pattern: "//third-party/snapshots/2025-05/..." }
+          - { id: snap-2025-11, pattern: "//third-party/snapshots/2025-11/..." }
+          - { id: snap-2026-05, pattern: "//third-party/snapshots/2026-05/..." }
+    runs-on: windows-latest
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # pyo3 0.24 supports python <= 3.13; the runner default is newer.
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install buck2
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/buck2.exe" --version
+
+      - name: Install rebuck2
+        run: cargo install --locked --git "$REBUCK2_GIT" --branch "$REBUCK2_BRANCH" rebuck2
+
+      - name: Start driver (remote exec only, barrier on 2 workers)
+        env:
+          LEG: ${{ matrix.leg.id }}
+        run: |
+          rebuck2 driver --grpc-port 9092 --min-workers 2 --no-local-exec \
+            --session "$GITHUB_RUN_ID-$LEG" \
+            --store "$HOME/.cache/rebuck2/driver" > driver.log 2>&1 &
+          echo $! > driver.pid
+
+      - name: Wait for both workers to join the mesh
+        run: |
+          for _ in $(seq 1 180); do
+            grep -q "worker 2 joined" driver.log && exit 0
+            kill -0 "$(cat driver.pid)" || { cat driver.log; echo "driver died"; exit 1; }
+            sleep 5
+          done
+          cat driver.log; echo "workers never joined"; exit 1
+
+      - name: Point buck2 at rebuck2
+        run: |
+          cat > .buckconfig.local <<'EOF'
+          [build]
+          execution_platforms = fixups//platforms:re-exec-win
+
+          [buck2_re_client]
+          action_cache_address = grpc://127.0.0.1:9092
+          cas_address = grpc://127.0.0.1:9092
+          engine_address = grpc://127.0.0.1:9092
+          tls = false
+          EOF
+
+      - name: Build all crates (compiles happen on the workers)
+        env:
+          LEG_PATTERN: ${{ matrix.leg.pattern }}
+        run: |
+          # word-split intentional: the base leg holds two space-separated patterns
+          # shellcheck disable=SC2086
+          ./build-all.sh $LEG_PATTERN
+
+      - name: Dispatch stats
+        if: always()
+        run: |
+          echo "jobs dispatched: $(grep -c -- '-> worker ' driver.log || true)"
+          grep -o -- '-> worker [0-9]*' driver.log | sort | uniq -c || true
+          grep -c "requeueing" driver.log >/dev/null 2>&1 && grep "requeueing" driver.log || true
+          tail -5 driver.log
+
+      - name: Upload driver log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: driver-log-${{ matrix.leg.id }}
+          path: driver.log
+
+      - name: Stop driver
+        if: always()
+        run: kill "$(cat driver.pid)" 2>/dev/null || true
+
+  worker:
+    name: worker ${{ matrix.n }} ${{ matrix.leg.id }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2]
+        leg:
+          - { id: base }
+          - { id: snap-2024-11 }
+          - { id: snap-2025-05 }
+          - { id: snap-2025-11 }
+          - { id: snap-2026-05 }
+    runs-on: windows-latest
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - name: Install rebuck2
+        run: cargo install --locked --git "$REBUCK2_GIT" --branch "$REBUCK2_BRANCH" rebuck2
+
+      - name: Serve until the driver disconnects
+        env:
+          LEG: ${{ matrix.leg.id }}
+        # Exits 0 when the driver job's process closes the control stream;
+        # `timeout` guards a driver that never shows up (17400s < job cap).
+        run: |
+          timeout 17400 rebuck2 worker \
+            --session "$GITHUB_RUN_ID-$LEG" \
+            --connect-wait-secs 1800 \
+            --store "$HOME/.cache/rebuck2/worker" | tee worker.log
