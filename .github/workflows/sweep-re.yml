@@ -1,6 +1,6 @@
 # Windows crate sweep on rebuck2 (distributed RE over iroh — gilescope/rebuck).
 # Per leg: one driver runner (buck2 + rebuck2 driver, local execution OFF) and
-# two worker runners that join the iroh mesh and do all the compiling. The
+# four worker runners that join the iroh mesh and do all the compiling. The
 # driver box never runs cl.exe/rustc, so the 16 GB single-runner OOM that
 # killed sweep-windows cannot happen there; workers spread the load, and a
 # worker OOM-kill just requeues its actions on the survivor.
@@ -91,7 +91,7 @@ jobs:
         env:
           LEG: ${{ matrix.leg.id }}
         run: |
-          rebuck2 driver --grpc-port 9092 --min-workers 2 --no-local-exec \
+          rebuck2 driver --grpc-port 9092 --min-workers 4 --no-local-exec \
             --session "$GITHUB_RUN_ID-$LEG" \
             --store "$HOME/.cache/rebuck2/driver" > driver.log 2>&1 &
           echo $! > driver.pid
@@ -99,7 +99,7 @@ jobs:
       - name: Wait for both workers to join the mesh
         run: |
           for _ in $(seq 1 180); do
-            grep -q "worker 2 joined" driver.log && exit 0
+            grep -q "worker 4 joined" driver.log && exit 0
             kill -0 "$(cat driver.pid)" || { cat driver.log; echo "driver died"; exit 1; }
             sleep 5
           done
@@ -150,7 +150,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        n: [1, 2]
+        n: [1, 2, 3, 4]
         # Keep in step with the driver matrix above (snap legs paused).
         leg:
           - { id: base }
