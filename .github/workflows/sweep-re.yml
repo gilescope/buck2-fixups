@@ -55,6 +55,13 @@ jobs:
         with:
           python-version: '3.13'
 
+      # Pinned rustc: PATH-resolved toolchains are not part of action digests,
+      # so warm cache hits are only honest if every run compiles with the
+      # same compiler.
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
       - name: Install buck2
         run: |
           mkdir -p "$HOME/bin"
@@ -78,6 +85,24 @@ jobs:
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      - name: Restore store snapshot (roadmap #5 seed)
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot
+          key: rebuck2-store-${{ github.run_id }}
+          restore-keys: rebuck2-store-
+
+      - name: Seed the store from the snapshot
+        run: |
+          mkdir -p "$HOME/.cache/rebuck2/driver"
+          for t in snapshot/bulk.tar.zst snapshot/tail.tar.zst; do
+            if [ -f "$t" ]; then
+              zstd -d < "$t" | tar -x -C "$HOME/.cache/rebuck2/driver"
+              echo "seeded from $t ($(du -h "$t" | cut -f1))"
+            fi
+          done
+          rm -rf snapshot; mkdir -p snapshot
 
       - name: Reclaim runner ballast in the background (disk for the store)
         run: |
@@ -122,7 +147,50 @@ jobs:
           EOF
 
       - name: Build the entire tree in one buck2 invocation
-        run: ./build-all.sh //third-party/...
+        run: |
+          # Overlap the bulk snapshot with the build's tail: when the driver's
+          # heartbeat shows the queue nearly drained, tar the store-so-far in
+          # the background; only the delta is left for after the build.
+          (
+            while true; do
+              sleep 60
+              pending=$(grep -o "pending_jobs=[0-9]*" driver.log | tail -1 | cut -d= -f2)
+              [ -n "$pending" ] || continue
+              total=$(grep -c -- "-> worker " driver.log || true)
+              if [ "$total" -gt 1000 ] && [ "$pending" -lt 300 ]; then
+                echo "[snapshot] queue draining (pending=$pending) — bulk tar starts"
+                touch snapshot/.bulk-marker
+                tar -c -C "$HOME/.cache/rebuck2/driver" ac cas | zstd -3 > snapshot/bulk.tar.zst
+                echo "[snapshot] bulk done: $(du -h snapshot/bulk.tar.zst | cut -f1)"
+                break
+              fi
+            done
+          ) &
+          echo $! > snapshotter.pid
+          ./build-all.sh //third-party/...
+
+      - name: Finish snapshot (delta since the bulk tar)
+        if: always()
+        run: |
+          kill "$(cat snapshotter.pid)" 2>/dev/null || true
+          cd "$HOME/.cache/rebuck2/driver"
+          MARKER="$GITHUB_WORKSPACE/snapshot/.bulk-marker"
+          if [ -f "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst" ]; then
+            find ac cas -type f -newer "$MARKER" | tar -c -T - | zstd -3 \
+              > "$GITHUB_WORKSPACE/snapshot/tail.tar.zst" || true
+          else
+            echo "[snapshot] bulk never triggered — full tar now"
+            tar -c ac cas | zstd -3 > "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst"
+          fi
+          rm -f "$MARKER"
+          ls -lh "$GITHUB_WORKSPACE/snapshot/"
+
+      - name: Save store snapshot
+        if: always()
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot
+          key: rebuck2-store-${{ github.run_id }}
 
       - name: Dispatch stats
         if: always()
@@ -166,6 +234,10 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: '3.13'
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
 
       - name: Resolve rebuck2 rev
         id: rebuck2rev
