@@ -52,13 +52,13 @@ jobs:
             echo "$name: $((t1 - t0)) ms"
           }
           echo "== COLD (fresh daemon; each phase includes the layers before it)"
-          phase "parse    (targets)          " buck2 targets //third-party:
-          phase "configure(cquery)           " buck2 cquery //third-party:
-          phase "analysis (audit providers)  " buck2 audit providers //third-party:
+          phase "parse    (targets)          " buck2 targets fixups//third-party:
+          phase "configure(cquery)           " buck2 cquery fixups//third-party:
+          phase "analysis (audit providers)  " buck2 audit providers fixups//third-party:
           echo "== WARM (same daemon — what durable DICE state would give us)"
-          phase "parse    (targets)          " buck2 targets //third-party:
-          phase "configure(cquery)           " buck2 cquery //third-party:
-          phase "analysis (audit providers)  " buck2 audit providers //third-party:
+          phase "parse    (targets)          " buck2 targets fixups//third-party:
+          phase "configure(cquery)           " buck2 cquery fixups//third-party:
+          phase "analysis (audit providers)  " buck2 audit providers fixups//third-party:
           echo "== COLD RESTART (daemon killed — today's every-CI-run reality)"
           buck2 killall > /dev/null 2>&1 || true
-          phase "full stack after restart    " buck2 audit providers //third-party:
+          phase "full stack after restart    " buck2 audit providers fixups//third-party:
