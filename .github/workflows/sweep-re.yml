@@ -122,6 +122,11 @@ jobs:
             exit 1
           fi
           echo "preflight OK"
+          # The preflight birthed a daemon BEFORE .buckconfig.local exists;
+          # RE addresses are read at daemon startup. Kill it so the build
+          # step spawns a fresh daemon with the RE config (and the dice
+          # snapshot load) in place.
+          "$HOME/bin/buck2.exe" kill > /dev/null 2>&1 || true
 
       - name: Resolve rebuck2 rev
         id: rebuck2rev
