@@ -28,6 +28,9 @@ concurrency:
 
 env:
   BUCK2_VERSION: 2026-06-01
+  # "1": store+exec live on a ReFS Dev Drive (block-clone CoW + Defender
+  # performance mode). "0": old windows mode — plain C:, NTFS hardlinks.
+  USE_DEV_DRIVE: "1"
   # rebuck2 built from the rebuck repo's engine branch.
   # TODO pin to a --rev once giles-iroh-re-punch is signed/stable.
   REBUCK2_GIT: https://github.com/gilescope/rebuck
@@ -86,6 +89,13 @@ jobs:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
 
+      - name: Mount ReFS Dev Drive
+        if: env.USE_DEV_DRIVE == '1'
+        uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
+        with:
+          drive-size: 20GB
+          drive-format: ReFS
+
       - name: Restore store snapshot (roadmap #5 seed)
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
@@ -95,10 +105,11 @@ jobs:
 
       - name: Seed the store from the snapshot
         run: |
-          mkdir -p "$HOME/.cache/rebuck2/driver"
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          mkdir -p "$STORE/driver"
           for t in snapshot/bulk.tar.zst snapshot/tail.tar.zst; do
             if [ -f "$t" ]; then
-              zstd -d < "$t" | tar -x -C "$HOME/.cache/rebuck2/driver"
+              zstd -d < "$t" | tar -x -C "$STORE/driver"
               echo "seeded from $t ($(du -h "$t" | cut -f1))"
             fi
           done
@@ -116,13 +127,14 @@ jobs:
 
       - name: Start driver (remote exec only, barrier on 8 workers)
         run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           rebuck2 driver --grpc-port 9092 --min-workers 8 --no-local-exec \
             --session "$GITHUB_RUN_ID" \
-            --store "$HOME/.cache/rebuck2/driver" > driver.log 2>&1 &
+            --store "$STORE/driver" > driver.log 2>&1 &
           echo $! > driver.pid
           # The driver is network-bound; lend half its cores to the pool.
           rebuck2 worker --session "$GITHUB_RUN_ID" --slots $(($(nproc) / 2)) \
-            --store "$HOME/.cache/rebuck2/co-worker" > co-worker.log 2>&1 &
+            --store "$STORE/co-worker" > co-worker.log 2>&1 &
 
       - name: Wait for all 8 workers to join the mesh
         run: |
@@ -160,7 +172,8 @@ jobs:
               if [ "$total" -gt 1000 ] && [ "$pending" -lt 300 ]; then
                 echo "[snapshot] queue draining (pending=$pending) — bulk tar starts"
                 touch snapshot/.bulk-marker
-                tar -c -C "$HOME/.cache/rebuck2/driver" ac cas | zstd -3 > snapshot/bulk.tar.zst
+                STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+                tar -c -C "$STORE/driver" ac cas | zstd -3 > snapshot/bulk.tar.zst
                 echo "[snapshot] bulk done: $(du -h snapshot/bulk.tar.zst | cut -f1)"
                 break
               fi
@@ -175,7 +188,8 @@ jobs:
         if: always()
         run: |
           kill "$(cat snapshotter.pid)" 2>/dev/null || true
-          cd "$HOME/.cache/rebuck2/driver"
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          cd "$STORE/driver"
           MARKER="$GITHUB_WORKSPACE/snapshot/.bulk-marker"
           if [ -f "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst" ]; then
             find ac cas -type f -newer "$MARKER" | tar -c -T - | zstd -3 \
@@ -258,11 +272,19 @@ jobs:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
 
+      - name: Mount ReFS Dev Drive
+        if: env.USE_DEV_DRIVE == '1'
+        uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
+        with:
+          drive-size: 16GB
+          drive-format: ReFS
+
       - name: Serve until the driver disconnects
         # Exits 0 when the driver job's process closes the control stream;
         # `timeout` guards a driver that never shows up (20400s < job cap).
         run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           timeout 20400 rebuck2 worker \
             --session "$GITHUB_RUN_ID" \
             --connect-wait-secs 1800 \
-            --store "$HOME/.cache/rebuck2/worker" | tee worker.log
+            --store "$STORE/worker" | tee worker.log
