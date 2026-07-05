@@ -2,6 +2,7 @@
 # parks the binary in the actions cache. The sweep driver enables DICE
 # persistence only when this cache exists - until the fork branch is pushed,
 # this workflow fails fast at checkout and the sweep runs exactly as today.
+# rev 2: full-analysis persistence (enum equality fix).
 name: buck2-fork
 on:
   workflow_dispatch: {}
