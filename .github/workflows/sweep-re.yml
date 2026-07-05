@@ -93,7 +93,7 @@ jobs:
         if: env.USE_DEV_DRIVE == '1'
         uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
         with:
-          drive-size: 20GB
+          drive-size: 24GB
           drive-format: ReFS
 
       - name: Restore store snapshot (roadmap #5 seed)
@@ -276,7 +276,7 @@ jobs:
         if: env.USE_DEV_DRIVE == '1'
         uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
         with:
-          drive-size: 16GB
+          drive-size: 24GB
           drive-format: ReFS
 
       - name: Serve until the driver disconnects
