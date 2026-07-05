@@ -5,6 +5,9 @@
 name: buck2-fork
 on:
   workflow_dispatch: {}
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths: [.github/workflows/buck2-fork.yml]
   schedule:
     - cron: '17 4 * * 1' # weekly refresh so the cache never expires away
 
