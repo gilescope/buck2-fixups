@@ -5,6 +5,7 @@
 # never runs cl.exe/rustc — the 16 GB single-runner OOM cannot happen there —
 # and it deletes runner-image ballast in the background while workers join,
 # ahead of the rlib flood into its store.
+# Warm steady-state demonstrator: failure-cache verdicts + no materialization.
 # Rendezvous is keyless: driver + workers derive the driver's iroh key from
 # GITHUB_RUN_ID. Opt-in only — the normal sweep is untouched.
 name: sweep-re
