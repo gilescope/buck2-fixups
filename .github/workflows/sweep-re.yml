@@ -5,7 +5,7 @@
 # never runs cl.exe/rustc — the 16 GB single-runner OOM cannot happen there —
 # and it deletes runner-image ballast in the background while workers join,
 # ahead of the rlib flood into its store.
-# DICE ladder run 1: fork binary + snapshot write. Run 2 reads it back.
+# DICE ladder run 2: the reader - warm graph from the snapshot cache.
 # Rendezvous is keyless: driver + workers derive the driver's iroh key from
 # GITHUB_RUN_ID. Opt-in only — the normal sweep is untouched.
 name: sweep-re
