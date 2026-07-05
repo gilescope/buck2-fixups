@@ -47,7 +47,7 @@ jobs:
             local name="$1"; shift
             local t0 t1
             t0=$(date +%s%3N)
-            "$@" > /dev/null 2>phase.err || { echo "$name: FAILED"; head -5 phase.err; return 0; }
+            "$@" > /dev/null 2>phase.err || { echo "$name: FAILED"; grep -v "^\[" phase.err | head -20; return 0; }
             t1=$(date +%s%3N)
             echo "$name: $((t1 - t0)) ms"
           }
