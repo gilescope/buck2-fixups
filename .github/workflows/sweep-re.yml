@@ -105,8 +105,23 @@ jobs:
             echo "BUCK2_DICE_SNAPSHOT_SEED=$(cat fork-bin/REV 2>/dev/null)-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}"
           } >> "$GITHUB_ENV"
           ls -la dice-snap/ || true
-          echo "-- preflight: can the fork binary parse this repo's prelude?"
-          "$HOME/bin/buck2.exe" targets fixups//third-party:v_lit-1 2>&1 | tail -8 || true
+          # The binary and prelude must be version-matched: the vendored
+          # prelude tracks the pinned release, so in fork mode we swap in the
+          # fork's own prelude (same custom cc-rs fixes, matching version).
+          echo "-- swap vendored prelude for the fork's matched one"
+          git clone --quiet --depth 1 --branch giles-dice-persistence --filter=blob:none --no-checkout \
+            https://github.com/gilescope/buck2 "$RUNNER_TEMP/fork-src"
+          git -C "$RUNNER_TEMP/fork-src" sparse-checkout set prelude
+          git -C "$RUNNER_TEMP/fork-src" checkout --quiet
+          rm -rf prelude
+          cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
+          echo "-- preflight: fork binary + fork prelude must parse the tree"
+          if ! "$HOME/bin/buck2.exe" targets fixups//third-party: > /dev/null 2> probe.err; then
+            echo "preflight FAILED - fork binary cannot parse the repo:"
+            tail -12 probe.err
+            exit 1
+          fi
+          echo "preflight OK"
 
       - name: Resolve rebuck2 rev
         id: rebuck2rev
