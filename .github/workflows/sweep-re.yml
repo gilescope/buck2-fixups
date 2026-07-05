@@ -128,7 +128,7 @@ jobs:
       - name: Start driver (remote exec only, barrier on 8 workers)
         run: |
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          rebuck2 driver --grpc-port 9092 --min-workers 8 --no-local-exec \
+          rebuck2 driver --grpc-port 9092 --min-workers 8 --no-local-exec --cache-failures \
             --session "$GITHUB_RUN_ID" \
             --store "$STORE/driver" > driver.log 2>&1 &
           echo $! > driver.pid
