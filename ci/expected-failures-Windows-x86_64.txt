@@ -484,3 +484,7 @@ fixups//third-party/snapshots/2026-05:wasm-bindgen
 fixups//third-party/snapshots/2026-05:wasm-bindgen-backend
 fixups//third-party/snapshots/2026-05:web-sys
 fixups//third-party/snapshots/2026-05:xattr
+
+# Casualty of the rustc 1.92.0 pin (digest stability): needs
+# Layout::dangling_ptr from a newer stable. Remove when the pin rises.
+fixups//third-party:v_frame
