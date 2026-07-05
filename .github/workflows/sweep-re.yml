@@ -105,6 +105,8 @@ jobs:
             echo "BUCK2_DICE_SNAPSHOT_SEED=$(cat fork-bin/REV 2>/dev/null)-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}"
           } >> "$GITHUB_ENV"
           ls -la dice-snap/ || true
+          echo "-- preflight: can the fork binary parse this repo's prelude?"
+          "$HOME/bin/buck2.exe" targets fixups//third-party:v_lit-1 2>&1 | tail -8 || true
 
       - name: Resolve rebuck2 rev
         id: rebuck2rev
