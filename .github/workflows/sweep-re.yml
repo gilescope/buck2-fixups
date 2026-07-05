@@ -160,6 +160,10 @@ jobs:
           EOF
 
       - name: Build the tree (snaps paused for iteration speed)
+        env:
+          # Iteration mode: skip known-failures entirely. Unset for the
+          # honest full run (stale detection needs failures requested).
+          SKIP_EXPECTED: "1"
         run: |
           # Overlap the bulk snapshot with the build's tail: when the driver's
           # heartbeat shows the queue nearly drained, tar the store-so-far in

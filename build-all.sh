@@ -53,6 +53,17 @@ targets=$(buck2 uquery "kind('^alias\$', ${universe})" 2>/dev/null)
 echo "Building $(echo "$targets" | grep -c .) crates for ${platform} (scope: ${patterns[*]})..."
 
 buildlog=$(mktemp)
+# SKIP_EXPECTED=1: iteration mode — don't request crates that are known
+# not to build clean (the expected-failures list). The scheduled full run
+# omits this, keeping "started passing" detection honest.
+if [ "${SKIP_EXPECTED:-}" = "1" ] && [ -f "$expected" ]; then
+  known=$(sed '/^#/d;/^$/d' "$expected" | sort -u)
+  before=$(echo "$targets" | grep -c .)
+  targets=$(comm -23 <(echo "$targets" | sort -u) <(echo "$known"))
+  after=$(echo "$targets" | grep -c .)
+  echo "SKIP_EXPECTED: requesting $after of $before targets ($((before - after)) known-failures skipped)"
+fi
+
 # Targets go via an argfile: 2185 labels ≈ 87 KB of argv, and Windows'
 # CreateProcess caps the command line at ~32 KB ("Argument list too long").
 echo "$targets" > "$targetsfile"
@@ -84,7 +95,11 @@ expected_content=""
 # Scope expected entries to the built pattern(s) so a per-leg build only
 # reconciles its own rig's known failures (else every other rig's entries look
 # "stale"). grep -E on the derived label-prefix regex.
-[ -f "$expected" ] && expected_content=$(sed '/^#/d;/^$/d' "$expected" | grep -E "$scope_re" | sort -u)
+if [ "${SKIP_EXPECTED:-}" = "1" ]; then
+  expected_content=""   # nothing expected was requested; any failure is news
+elif [ -f "$expected" ]; then
+  expected_content=$(sed '/^#/d;/^$/d' "$expected" | grep -E "$scope_re" | sort -u)
+fi
 
 new_failures=$(comm -23 <(echo "$failed") <(echo "$expected_content"))
 # Stale detection only applies to entries this sweep actually builds as targets
