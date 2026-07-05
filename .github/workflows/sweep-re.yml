@@ -95,6 +95,9 @@ jobs:
             --session "$GITHUB_RUN_ID" \
             --store "$HOME/.cache/rebuck2/driver" > driver.log 2>&1 &
           echo $! > driver.pid
+          # The driver is network-bound; lend half its cores to the pool.
+          rebuck2 worker --session "$GITHUB_RUN_ID" --slots $(($(nproc) / 2)) \
+            --store "$HOME/.cache/rebuck2/co-worker" > co-worker.log 2>&1 &
 
       - name: Wait for all 8 workers to join the mesh
         run: |
