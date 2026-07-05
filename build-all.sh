@@ -56,7 +56,10 @@ buildlog=$(mktemp)
 # Targets go via an argfile: 2185 labels ≈ 87 KB of argv, and Windows'
 # CreateProcess caps the command line at ~32 KB ("Argument list too long").
 echo "$targets" > "$targetsfile"
-buck2 build --keep-going --build-report "$report" @"$targetsfile" 2>&1 | tee "$buildlog" || true
+# --materializations=none: the sweep's product is the report, not the
+# artifacts — skipping output materialization saves GBs of pointless
+# download+write on warm cache-hit runs.
+buck2 build --keep-going --materializations=none --build-report "$report" @"$targetsfile" 2>&1 | tee "$buildlog" || true
 # A concurrent buck2 command or a BUCK rewrite mid-build cancels DICE keys;
 # the report then marks unbuilt targets as failures. Don't diff bogus data.
 if grep -q "evaluation of this key was cancelled" "$buildlog"; then
