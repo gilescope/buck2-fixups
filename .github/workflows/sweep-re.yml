@@ -146,7 +146,7 @@ jobs:
           tls = false
           EOF
 
-      - name: Build the entire tree in one buck2 invocation
+      - name: Build the tree (snaps paused for iteration speed)
         run: |
           # Overlap the bulk snapshot with the build's tail: when the driver's
           # heartbeat shows the queue nearly drained, tar the store-so-far in
@@ -167,7 +167,9 @@ jobs:
             done
           ) &
           echo $! > snapshotter.pid
-          ./build-all.sh //third-party/...
+          # Whole tree = //third-party/... — restore once engine iteration
+          # settles. Base+conflict keeps runs ~3x shorter.
+          ./build-all.sh //third-party: //third-party/conflict-rigs/...
 
       - name: Finish snapshot (delta since the bulk tar)
         if: always()
