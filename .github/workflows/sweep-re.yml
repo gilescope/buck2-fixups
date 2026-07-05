@@ -73,6 +73,39 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
           "$HOME/bin/buck2.exe" --version
 
+      # DICE persistence ladder: if the buck2-fork workflow has parked a fork
+      # binary in the cache, use it and warm-start the daemon's graph from
+      # the dice snapshot. Cache miss = today's behaviour, untouched.
+      - name: Restore fork buck2 (dice persistence)
+        id: forkbin
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: fork-bin
+          key: buck2-fork-win-never-matches
+          restore-keys: buck2-fork-win-
+
+      - name: Restore dice snapshot
+        if: steps.forkbin.outputs.cache-matched-key != ''
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: dice-snap
+          key: dice-snap-never-matches
+          restore-keys: dice-snap-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-
+
+      - name: Enable dice persistence
+        if: steps.forkbin.outputs.cache-matched-key != ''
+        run: |
+          cp fork-bin/buck2.exe "$HOME/bin/buck2.exe"
+          "$HOME/bin/buck2.exe" --version
+          echo "fork rev: $(cat fork-bin/REV 2>/dev/null || echo unknown)"
+          mkdir -p dice-snap
+          {
+            echo "BUCK2_DICE_DB_PATH=$GITHUB_WORKSPACE/dice-snap/db"
+            echo "BUCK2_DICE_SNAPSHOT_PATH=$GITHUB_WORKSPACE/dice-snap/graph.meta"
+            echo "BUCK2_DICE_SNAPSHOT_SEED=$(cat fork-bin/REV 2>/dev/null)-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}"
+          } >> "$GITHUB_ENV"
+          ls -la dice-snap/ || true
+
       - name: Resolve rebuck2 rev
         id: rebuck2rev
         run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
@@ -189,6 +222,12 @@ jobs:
           # settles. Base+conflict keeps runs ~3x shorter.
           ./build-all.sh //third-party: //third-party/conflict-rigs/...
 
+      - name: Save dice snapshot (page-out doubles as the save point)
+        if: steps.forkbin.outputs.cache-matched-key != ''
+        run: |
+          buck2 debug hydration page-out || echo "page-out failed (non-fatal)"
+          ls -lh dice-snap/ || true
+
       - name: Finish snapshot (delta since the bulk tar)
         if: always()
         run: |
@@ -212,6 +251,13 @@ jobs:
         with:
           path: snapshot
           key: rebuck2-store-${{ github.run_id }}
+
+      - name: Save dice snapshot cache
+        if: always() && steps.forkbin.outputs.cache-matched-key != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: dice-snap
+          key: dice-snap-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-${{ github.run_id }}
 
       - name: Dispatch stats
         if: always()
