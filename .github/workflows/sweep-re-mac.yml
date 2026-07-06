@@ -301,8 +301,12 @@ jobs:
       - name: Serve until the driver disconnects
         run: |
           STORE="$HOME/.cache/rebuck2"
-          TIMEOUT=$(command -v timeout || command -v gtimeout)
-          "$TIMEOUT" 20400 rebuck2 worker \
+          # macos runners ship without GNU coreutils: no timeout/gtimeout.
+          # The job-level timeout-minutes guards the bare fallback.
+          if command -v timeout >/dev/null 2>&1; then T=(timeout 20400)
+          elif command -v gtimeout >/dev/null 2>&1; then T=(gtimeout 20400)
+          else T=(); fi
+          "${T[@]}" rebuck2 worker \
             --session "mac-$GITHUB_RUN_ID" \
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
