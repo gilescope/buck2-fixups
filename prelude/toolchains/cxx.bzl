@@ -263,7 +263,14 @@ system_cxx_toolchain = rule(
         "supports_content_based_paths": attrs.bool(default = False),
         "_cxx_tools_info": attrs.exec_dep(
             providers = [CxxToolsInfo],
-            default = "prelude//toolchains/msvc:msvc_tools" if host_info().os.is_windows else "prelude//toolchains/cxx/clang:path_clang_tools",
+            # Select on the EXEC configuration, not host_info(): a windows
+            # HOST configuring a linux/mac leg must not drag in msvc_tools
+            # (windows-only), which poisons exec-platform resolution for
+            # every cxx-adjacent target. Mirrors cxx_tools_info_toolchain.
+            default = select({
+                "DEFAULT": "prelude//toolchains/cxx/clang:path_clang_tools",
+                "config//os:windows": "prelude//toolchains/msvc:msvc_tools",
+            }),
         ),
         "_target_os_type": buck.target_os_type_arg(),
     },
