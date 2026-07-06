@@ -87,9 +87,18 @@ jobs:
           drive-size: 24GB
           drive-format: ReFS
 
-      # Seed the union of the win + mac stores: content-addressed, so the
-      # two snapshots merge cleanly. The linux leg starts cold.
+      # Seed preference: our own tri-OS snapshot first, else the union of
+      # the single-OS donors (content-addressed, merges cleanly).
+      - name: Restore hetero store snapshot
+        id: heterosnap
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot-hetero
+          key: rebuck2-store-hetero-${{ github.run_id }}
+          restore-keys: rebuck2-store-hetero-
+
       - name: Restore win store snapshot
+        if: steps.heterosnap.outputs.cache-matched-key == ''
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: snapshot
@@ -97,6 +106,7 @@ jobs:
           restore-keys: rebuck2-store-
 
       - name: Restore mac store snapshot
+        if: steps.heterosnap.outputs.cache-matched-key == ''
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: snapshot-mac
@@ -107,13 +117,13 @@ jobs:
         run: |
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           mkdir -p "$STORE/driver"
-          for t in snapshot/bulk.tar.zst snapshot/tail.tar.zst snapshot-mac/bulk.tar.zst snapshot-mac/tail.tar.zst; do
+          for t in snapshot-hetero/bulk.tar.zst snapshot-hetero/tail.tar.zst snapshot/bulk.tar.zst snapshot/tail.tar.zst snapshot-mac/bulk.tar.zst snapshot-mac/tail.tar.zst; do
             if [ -f "$t" ]; then
               zstd -d < "$t" | tar -x -C "$STORE/driver"
               echo "seeded from $t ($(du -h "$t" | cut -f1))"
             fi
           done
-          rm -rf snapshot snapshot-mac
+          rm -rf snapshot snapshot-mac snapshot-hetero; mkdir -p snapshot
 
       - name: Reclaim runner ballast in the background
         run: |
@@ -166,6 +176,24 @@ jobs:
             echo "leg $name exited rc=$rc"
             return $rc
           }
+          # Bulk-tar the store as the combined queue drains; delta after.
+          (
+            while true; do
+              sleep 60
+              pending=$(grep -o "pending_jobs=[0-9]*" driver.log | tail -1 | cut -d= -f2)
+              [ -n "$pending" ] || continue
+              total=$(grep -c -- "-> worker " driver.log || true)
+              if [ "$total" -gt 1000 ] && [ "$pending" -lt 300 ]; then
+                echo "[snapshot] queue draining (pending=$pending) — bulk tar starts"
+                touch snapshot/.bulk-marker
+                STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+                tar -c -C "$STORE/driver" ac cas | zstd -3 > snapshot/bulk.tar.zst
+                echo "[snapshot] bulk done: $(du -h snapshot/bulk.tar.zst | cut -f1)"
+                break
+              fi
+            done
+          ) &
+          echo $! > snapshotter.pid
           touch leg-win.log leg-linux.log leg-mac.log
           tail -F leg-win.log leg-linux.log leg-mac.log &
           TAIL=$!
@@ -182,6 +210,30 @@ jobs:
             tail -30 "leg-$l.log"
           done
           exit $rc
+
+      - name: Finish snapshot (delta since the bulk tar)
+        if: always()
+        run: |
+          kill "$(cat snapshotter.pid)" 2>/dev/null || true
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          cd "$STORE/driver"
+          MARKER="$GITHUB_WORKSPACE/snapshot/.bulk-marker"
+          if [ -f "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst" ]; then
+            find ac cas -type f -newer "$MARKER" | tar -c -T - | zstd -3 \
+              > "$GITHUB_WORKSPACE/snapshot/tail.tar.zst" || true
+          else
+            echo "[snapshot] bulk never triggered — full tar now"
+            tar -c ac cas | zstd -3 > "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst"
+          fi
+          rm -f "$MARKER"
+          ls -lh "$GITHUB_WORKSPACE/snapshot/"
+
+      - name: Save hetero store snapshot
+        if: always()
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot
+          key: rebuck2-store-hetero-${{ github.run_id }}
 
       - name: Dispatch stats
         if: always()
