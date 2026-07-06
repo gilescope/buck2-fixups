@@ -21,7 +21,17 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            slug: win
+            bin: buck2.exe
+          - os: macos-15
+            slug: mac
+            bin: buck2
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     permissions:
       contents: read
@@ -44,7 +54,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: fork-bin
-          key: buck2-fork-win-${{ steps.rev.outputs.sha }}
+          key: buck2-fork-${{ matrix.slug }}-${{ steps.rev.outputs.sha }}
 
       - name: Build buck2 (cache miss only)
         if: steps.bincache.outputs.cache-hit != 'true'
@@ -52,5 +62,5 @@ jobs:
           # rust-toolchain.toml in the repo pins the channel; rustup obeys.
           cargo build --release --bin buck2
           mkdir -p fork-bin
-          cp target/release/buck2.exe fork-bin/
+          cp "target/release/${{ matrix.bin }}" fork-bin/
           echo "${{ steps.rev.outputs.sha }}" > fork-bin/REV
