@@ -32,6 +32,22 @@ re_execution_platform(
     visibility = ["PUBLIC"],
 )
 
+# Hetero v2: pure-remote windows leg (vswhere discovery is remote-routable
+# now - prelude/toolchains/msvc/tools.bzl - so nothing needs a windows
+# host beside the daemon and the driver can be linux).
+re_execution_platform(
+    name = "re-exec-win-remote",
+    cpu_configuration = "prelude//cpu:x86_64",
+    local_enabled = False,
+    os_configuration = "prelude//os:windows",
+    remote_execution_properties = {
+        "Arch": "x86_64",
+        "OSFamily": "windows",
+    },
+    use_windows_path_separators = True,
+    visibility = ["PUBLIC"],
+)
+
 # ── Heterogeneous sweep (one driver, mixed-OS fleet) ─────────────────────
 # One exec platform per worker OS; rebuck2 routes each action to a worker
 # whose Hello matches these properties. The driver box runs one buck2
