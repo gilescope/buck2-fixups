@@ -165,6 +165,9 @@ jobs:
             echo "leg $name exited rc=$rc"
             return $rc
           }
+          touch leg-win.log leg-linux.log leg-mac.log
+          tail -F leg-win.log leg-linux.log leg-mac.log &
+          TAIL=$!
           leg win   Windows-x86_64 t-win   re-exec-win   & WIN=$!
           leg linux Linux-x86_64   t-linux re-exec-linux & LIN=$!
           leg mac   Darwin-arm64   t-mac   re-exec-mac   & MAC=$!
@@ -172,6 +175,7 @@ jobs:
           wait $WIN || { echo "WIN LEG FAILED"; rc=1; }
           wait $LIN || { echo "LINUX LEG FAILED"; rc=1; }
           wait $MAC || { echo "MAC LEG FAILED"; rc=1; }
+          kill $TAIL 2>/dev/null || true
           for l in win linux mac; do
             echo "=== leg $l tail ==="
             tail -30 "leg-$l.log"
