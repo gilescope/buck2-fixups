@@ -36,29 +36,31 @@ re_execution_platform(
 # One exec platform per worker OS; rebuck2 routes each action to a worker
 # whose Hello matches these properties. The driver box runs one buck2
 # invocation per leg (separate isolation dirs) against the same store.
+# Cross legs are pure-remote: "local" on the driver box is the WRONG OS, and
+# limited-hybrid happily runs small actions (build-script compiles) locally -
+# windows rustc has no linux/mac std. Genuinely local_only actions on these
+# legs fail loudly and become baseline entries instead of silent misbuilds.
 re_execution_platform(
     name = "re-exec-linux",
     cpu_configuration = "prelude//cpu:x86_64",
-    local_enabled = True,
+    local_enabled = False,
     os_configuration = "prelude//os:linux",
     remote_execution_properties = {
         "Arch": "x86_64",
         "OSFamily": "linux",
     },
-    use_limited_hybrid = True,
     visibility = ["PUBLIC"],
 )
 
 re_execution_platform(
     name = "re-exec-mac",
     cpu_configuration = "prelude//cpu:arm64",
-    local_enabled = True,
+    local_enabled = False,
     os_configuration = "prelude//os:macos",
     remote_execution_properties = {
         "Arch": "aarch64",
         "OSFamily": "macos",
     },
-    use_limited_hybrid = True,
     visibility = ["PUBLIC"],
 )
 

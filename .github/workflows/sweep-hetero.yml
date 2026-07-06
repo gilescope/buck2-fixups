@@ -8,7 +8,7 @@
 # driver, so it is native only for the windows leg - the driver is windows.
 # linux/mac cxx-discovery failures land in those legs' expected lists.
 # Snapshot rigs stay excluded (base + conflict rigs only).
-# take 3: host_info() prelude fix - cross legs resolve on windows hosts.
+# take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
 name: sweep-hetero
 on:
   workflow_dispatch: {}
