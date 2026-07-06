@@ -20,7 +20,7 @@ def _re_execution_platform_impl(ctx: AnalysisContext) -> list[Provider]:
             remote_enabled = True,
             remote_cache_enabled = True,
             remote_execution_use_case = "buck2-default",
-            remote_execution_properties = {},
+            remote_execution_properties = ctx.attrs.remote_execution_properties,
             use_windows_path_separators = ctx.attrs.use_windows_path_separators,
         ),
     )
@@ -43,5 +43,12 @@ re_execution_platform = rule(
         # local_only actions (msvc discovery/vswhere cannot run remotely).
         "use_limited_hybrid": attrs.bool(default = False),
         "use_windows_path_separators": attrs.bool(default = False),
+        # REAPI platform properties: rebuck2 routes actions to matching
+        # workers on OSFamily/Arch (empty = any worker; single-OS sweeps).
+        "remote_execution_properties": attrs.dict(
+            key = attrs.string(),
+            value = attrs.string(),
+            default = {},
+        ),
     },
 )

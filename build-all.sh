@@ -20,6 +20,7 @@ if [ "$os" = Windows ]; then
   esac
 fi
 platform="${os}-${arch}"
+[ -n "${PLATFORM_OVERRIDE:-}" ] && platform="$PLATFORM_OVERRIDE"
 expected="ci/expected-failures-${platform}.txt"
 report=$(mktemp)
 targetsfile=$(mktemp)
@@ -49,7 +50,10 @@ for p in "${patterns[@]}"; do
   scope_re="${scope_re:+$scope_re|}${re}"
   universe="${universe:+$universe + }${p}"   # buck2 query union operator
 done
-targets=$(buck2 uquery "kind('^alias\$', ${universe})" 2>/dev/null)
+# Hetero-leg hooks: BUCK2_ISOLATION gives each concurrent leg its own
+# daemon; BUCK2_BUILD_ARGS carries --target-platforms etc.
+B2="buck2${BUCK2_ISOLATION:+ --isolation-dir $BUCK2_ISOLATION}"
+targets=$($B2 uquery "kind('^alias\$', ${universe})" 2>/dev/null)
 echo "Building $(echo "$targets" | grep -c .) crates for ${platform} (scope: ${patterns[*]})..."
 
 buildlog=$(mktemp)
@@ -70,7 +74,8 @@ echo "$targets" > "$targetsfile"
 # --materializations=none: the sweep's product is the report, not the
 # artifacts — skipping output materialization saves GBs of pointless
 # download+write on warm cache-hit runs.
-buck2 build --keep-going --materializations=none --build-report "$report" @"$targetsfile" 2>&1 | tee "$buildlog" || true
+# shellcheck disable=SC2086 # $B2 and BUCK2_BUILD_ARGS intentionally word-split (multi-arg strings)
+$B2 build --keep-going --materializations=none ${BUCK2_BUILD_ARGS:-} --build-report "$report" @"$targetsfile" 2>&1 | tee "$buildlog" || true
 # A concurrent buck2 command or a BUCK rewrite mid-build cancels DICE keys;
 # the report then marks unbuilt targets as failures. Don't diff bogus data.
 if grep -q "evaluation of this key was cancelled" "$buildlog"; then

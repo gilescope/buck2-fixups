@@ -1,0 +1,340 @@
+# Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
+# The driver box runs three concurrent buck2 invocations (one per target OS,
+# separate isolation dirs) against the same localhost driver; rebuck2 routes
+# each action to a worker whose OS/arch matches the exec platform's REAPI
+# properties. One store, one action cache, one mesh.
+#
+# v1 caveat: local_only toolchain discovery (vswhere-class) runs beside the
+# driver, so it is native only for the windows leg - the driver is windows.
+# linux/mac cxx-discovery failures land in those legs' expected lists.
+# Snapshot rigs stay excluded (base + conflict rigs only).
+name: sweep-hetero
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths:
+      - .github/workflows/sweep-hetero.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sweep-hetero
+  cancel-in-progress: false
+
+env:
+  BUCK2_VERSION: 2026-06-01
+  USE_DEV_DRIVE: "1"
+  REBUCK2_GIT: https://github.com/gilescope/rebuck
+  REBUCK2_BRANCH: giles-iroh-re-punch
+  TOTAL_WORKERS: "11"
+
+jobs:
+  driver:
+    name: driver
+    runs-on: windows-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
+      - name: Install buck2
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/buck2.exe" --version
+
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache rebuck2 binary (keyed by rebuck commit)
+        id: rebuck2bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/rebuck2.exe
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      - name: Mount ReFS Dev Drive
+        if: env.USE_DEV_DRIVE == '1'
+        uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
+        with:
+          drive-size: 24GB
+          drive-format: ReFS
+
+      # Seed the union of the win + mac stores: content-addressed, so the
+      # two snapshots merge cleanly. The linux leg starts cold.
+      - name: Restore win store snapshot
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot
+          key: rebuck2-store-${{ github.run_id }}
+          restore-keys: rebuck2-store-
+
+      - name: Restore mac store snapshot
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot-mac
+          key: rebuck2-store-mac-${{ github.run_id }}
+          restore-keys: rebuck2-store-mac-
+
+      - name: Seed the store from both snapshots
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          mkdir -p "$STORE/driver"
+          for t in snapshot/bulk.tar.zst snapshot/tail.tar.zst snapshot-mac/bulk.tar.zst snapshot-mac/tail.tar.zst; do
+            if [ -f "$t" ]; then
+              zstd -d < "$t" | tar -x -C "$STORE/driver"
+              echo "seeded from $t ($(du -h "$t" | cut -f1))"
+            fi
+          done
+          rm -rf snapshot snapshot-mac
+
+      - name: Reclaim runner ballast in the background
+        run: |
+          (rm -rf /c/Android "/c/Program Files/dotnet" \
+             /c/hostedtoolcache/windows/Java* /c/hostedtoolcache/windows/go \
+             /c/hostedtoolcache/windows/node /c/hostedtoolcache/windows/Ruby \
+             /c/hostedtoolcache/windows/CodeQL 2>/dev/null; df -h /c) &
+
+      - name: Start driver (barrier on the full mixed fleet)
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          rebuck2 driver --grpc-port 9092 --min-workers "$TOTAL_WORKERS" --no-local-exec --cache-failures \
+            --session "hetero-$GITHUB_RUN_ID" \
+            --store "$STORE/driver" > driver.log 2>&1 &
+          echo $! > driver.pid
+          rebuck2 worker --session "hetero-$GITHUB_RUN_ID" --slots $(($(nproc) / 2)) \
+            --store "$STORE/co-worker" > co-worker.log 2>&1 &
+
+      - name: Wait for the full fleet to join
+        run: |
+          for _ in $(seq 1 240); do
+            joined=$(grep -c " joined: " driver.log || true)
+            [ "$joined" -ge "$TOTAL_WORKERS" ] && { grep " joined: " driver.log; exit 0; }
+            kill -0 "$(cat driver.pid)" || { cat driver.log; echo "driver died"; exit 1; }
+            sleep 5
+          done
+          cat driver.log; echo "fleet never fully joined"; exit 1
+
+      - name: Point buck2 at rebuck2
+        run: |
+          cat > .buckconfig.local <<'EOF'
+          [buck2_re_client]
+          action_cache_address = grpc://127.0.0.1:9092
+          cas_address = grpc://127.0.0.1:9092
+          engine_address = grpc://127.0.0.1:9092
+          tls = false
+          EOF
+
+      - name: Build all three legs concurrently
+        env:
+          SKIP_EXPECTED: "1"
+        run: |
+          leg() {
+            local name="$1" plat="$2" tplat="$3" explat="$4"
+            PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="$name" \
+            BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat" \
+              ./build-all.sh //third-party: //third-party/conflict-rigs/... \
+              > "leg-$name.log" 2>&1
+            local rc=$?
+            echo "leg $name exited rc=$rc"
+            return $rc
+          }
+          leg win   Windows-x86_64 t-win   re-exec-win   & WIN=$!
+          leg linux Linux-x86_64   t-linux re-exec-linux & LIN=$!
+          leg mac   Darwin-arm64   t-mac   re-exec-mac   & MAC=$!
+          rc=0
+          wait $WIN || { echo "WIN LEG FAILED"; rc=1; }
+          wait $LIN || { echo "LINUX LEG FAILED"; rc=1; }
+          wait $MAC || { echo "MAC LEG FAILED"; rc=1; }
+          for l in win linux mac; do
+            echo "=== leg $l tail ==="
+            tail -30 "leg-$l.log"
+          done
+          exit $rc
+
+      - name: Dispatch stats
+        if: always()
+        run: |
+          echo "jobs dispatched: $(grep -c -- '-> worker ' driver.log || true)"
+          grep -o -- '-> worker [0-9]*' driver.log | sort | uniq -c || true
+          tail -5 driver.log
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hetero-logs
+          path: |
+            driver.log
+            leg-*.log
+
+      - name: Stop driver
+        if: always()
+        run: kill "$(cat driver.pid)" 2>/dev/null || true
+
+  worker-win:
+    name: win worker ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4]
+    runs-on: windows-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: rebuck2bin
+        with:
+          path: ~/.cargo/bin/rebuck2.exe
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+      - name: Mount ReFS Dev Drive
+        if: env.USE_DEV_DRIVE == '1'
+        uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
+        with:
+          drive-size: 24GB
+          drive-format: ReFS
+      - name: Serve until the driver disconnects
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          timeout 20400 rebuck2 worker \
+            --session "hetero-$GITHUB_RUN_ID" \
+            --connect-wait-secs 1800 \
+            --store "$STORE/worker" | tee worker.log
+
+  worker-linux:
+    name: linux worker ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: rebuck2bin
+        with:
+          path: ~/.cargo/bin/rebuck2
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+      - name: Serve until the driver disconnects
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          timeout 20400 rebuck2 worker \
+            --session "hetero-$GITHUB_RUN_ID" \
+            --connect-wait-secs 1800 \
+            --store "$STORE/worker" | tee worker.log
+
+  worker-mac:
+    name: mac worker ${{ matrix.n }}
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4]
+    runs-on: macos-15
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: rebuck2bin
+        with:
+          path: ~/.cargo/bin/rebuck2
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+      - name: Serve until the driver disconnects
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          if command -v timeout >/dev/null 2>&1; then T=(timeout 20400)
+          elif command -v gtimeout >/dev/null 2>&1; then T=(gtimeout 20400)
+          else T=(); fi
+          "${T[@]}" rebuck2 worker \
+            --session "hetero-$GITHUB_RUN_ID" \
+            --connect-wait-secs 1800 \
+            --store "$STORE/worker" | tee worker.log

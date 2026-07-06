@@ -23,7 +23,69 @@ re_execution_platform(
     cpu_configuration = "prelude//cpu:x86_64",
     local_enabled = True,
     os_configuration = "prelude//os:windows",
+    remote_execution_properties = {
+        "Arch": "x86_64",
+        "OSFamily": "windows",
+    },
     use_limited_hybrid = True,
     use_windows_path_separators = True,
+    visibility = ["PUBLIC"],
+)
+
+# ── Heterogeneous sweep (one driver, mixed-OS fleet) ─────────────────────
+# One exec platform per worker OS; rebuck2 routes each action to a worker
+# whose Hello matches these properties. The driver box runs one buck2
+# invocation per leg (separate isolation dirs) against the same store.
+re_execution_platform(
+    name = "re-exec-linux",
+    cpu_configuration = "prelude//cpu:x86_64",
+    local_enabled = True,
+    os_configuration = "prelude//os:linux",
+    remote_execution_properties = {
+        "Arch": "x86_64",
+        "OSFamily": "linux",
+    },
+    use_limited_hybrid = True,
+    visibility = ["PUBLIC"],
+)
+
+re_execution_platform(
+    name = "re-exec-mac",
+    cpu_configuration = "prelude//cpu:arm64",
+    local_enabled = True,
+    os_configuration = "prelude//os:macos",
+    remote_execution_properties = {
+        "Arch": "aarch64",
+        "OSFamily": "macos",
+    },
+    use_limited_hybrid = True,
+    visibility = ["PUBLIC"],
+)
+
+# Target platforms for cross-leg builds (--target-platforms ...).
+platform(
+    name = "t-win",
+    constraint_values = [
+        "prelude//os/constraints:windows",
+        "prelude//cpu/constraints:x86_64",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+platform(
+    name = "t-linux",
+    constraint_values = [
+        "prelude//os/constraints:linux",
+        "prelude//cpu/constraints:x86_64",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+platform(
+    name = "t-mac",
+    constraint_values = [
+        "prelude//os/constraints:macos",
+        "prelude//cpu/constraints:arm64",
+    ],
     visibility = ["PUBLIC"],
 )
