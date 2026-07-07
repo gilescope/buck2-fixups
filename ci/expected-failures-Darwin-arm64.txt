@@ -107,3 +107,7 @@ fixups//third-party:v_frame
 # output; any other worker/action reading it fails. Fixable ledger item
 # (needs a path-stable buildscript strategy under RE).
 fixups//third-party:khronos_api
+# khronos_api dependent casualties (resurrect with the root):
+fixups//third-party:gl_generator
+fixups//third-party:glutin_egl_sys
+fixups//third-party:glutin_glx_sys

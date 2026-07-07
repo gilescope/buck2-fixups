@@ -167,3 +167,17 @@ fixups//third-party:khronos_api
 # image prep.
 fixups//third-party:openssl
 fixups//third-party:rav1e
+# khronos_api dependent casualties (resurrect with the root):
+fixups//third-party:gl_generator
+fixups//third-party:glutin
+fixups//third-party:glutin_egl_sys
+fixups//third-party:glutin_glx_sys
+# openssl dependent casualties:
+fixups//third-party:attohttpc
+fixups//third-party:hyper-openssl
+fixups//third-party:hyper-tls
+fixups//third-party:native-tls
+fixups//third-party:tokio-native-tls
+fixups//third-party:tokio-openssl
+# rav1e dependent casualties:
+fixups//third-party:ravif
