@@ -102,8 +102,8 @@ fixups//third-party:webview2-com-sys
 # ── rebuck2 RE model (hetero sweep, 2026-07-07) ──
 # v_frame: Layout::dangling_ptr needs a newer stable than the pinned 1.92.0;
 # reclaim when the pin rises.
-fixups//third-party:v_frame-0.7
+fixups//third-party:v_frame
 # khronos_api: build script bakes its scratch OUT_DIR path into the cached
 # output; any other worker/action reading it fails. Fixable ledger item
 # (needs a path-stable buildscript strategy under RE).
-fixups//third-party:khronos_api-3
+fixups//third-party:khronos_api
