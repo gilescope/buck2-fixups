@@ -92,12 +92,18 @@ jobs:
           tls = false
           EOF
 
-      - name: Build ppv-lite86 (expect Opening ... LPTF error)
+      - name: Two-phase repro (warm AC, fresh daemon, dependent build)
         run: |
-          export BUCK_LOG="buck2_execute::materialize=debug,buck2_execute::re::uploader=debug"
-          buck2 build --materializations=none "fixups//third-party:ppv-lite86-0.2" 2>&1 | tee build.log | tail -30 || true
+          # Phase 1: populate the AC (ppv-lite86 + its dependent).
+          buck2 build --materializations=none "fixups//third-party:rand_chacha-0.9" 2>&1 | tail -3 || true
+          # Phase 2: fresh daemon = the write-artifacts are re-declared but
+          # never materialized; link actions AC-hit; the do_not_cache diag
+          # sibling still executes and must upload the json as an input.
+          buck2 kill > /dev/null 2>&1 || true
+          export BUCK_LOG="buck2_execute::materialize=debug"
+          buck2 build --materializations=none "fixups//third-party:rand_chacha-0.9" "fixups//third-party:ppv-lite86-0.2" 2>&1 | tee build.log | tail -20 || true
           echo "== error extract"
-          grep -aE "Opening|remote_upload_error" build.log | head -4 || echo "NO REPRO - build clean"
+          grep -aE "Opening|remote_upload_error" build.log | head -6 || echo "NO REPRO - build clean"
 
       - name: Daemon materializer log tail
         if: always()
