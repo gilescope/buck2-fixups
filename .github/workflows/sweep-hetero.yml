@@ -8,7 +8,7 @@
 # driver, so it is native only for the windows leg - the driver is windows.
 # linux/mac cxx-discovery failures land in those legs' expected lists.
 # Snapshot rigs stay excluded (base + conflict rigs only).
-# green-validation take 5: dependent casualties reconciled.
+# green-validation take 6: quorum window fits worker cold-compiles.
 # take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
 name: sweep-hetero
 on:
@@ -155,7 +155,9 @@ jobs:
 
       - name: Wait for worker quorum
         run: |
-          for _ in $(seq 1 240); do
+          # 45min: a rebuck2 rev bump makes every worker cold-compile the
+          # binary (~10-15min on win/mac) before it can join.
+          for _ in $(seq 1 540); do
             joined=$(grep -c " joined: " driver.log || true)
             [ "$joined" -ge "$QUORUM_WORKERS" ] && { grep " joined: " driver.log; exit 0; }
             kill -0 "$(cat driver.pid)" || { cat driver.log; echo "driver died"; exit 1; }
