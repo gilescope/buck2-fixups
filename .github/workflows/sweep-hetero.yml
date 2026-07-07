@@ -8,7 +8,7 @@
 # driver, so it is native only for the windows leg - the driver is windows.
 # linux/mac cxx-discovery failures land in those legs' expected lists.
 # Snapshot rigs stay excluded (base + conflict rigs only).
-# green-validation run: reconciled baselines, warm tri-OS store.
+# green-validation take 2: quorum barrier rides out discovery flakes.
 # take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
 name: sweep-hetero
 on:
@@ -31,6 +31,10 @@ env:
   REBUCK2_GIT: https://github.com/gilescope/rebuck
   REBUCK2_BRANCH: giles-iroh-re-punch
   TOTAL_WORKERS: "11"
+  # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
+  # sweep proceed (late joiners still connect - 30min window) while a whole
+  # missing platform still stalls only its own leg's queue.
+  QUORUM_WORKERS: "8"
 
 jobs:
   driver:
@@ -128,22 +132,22 @@ jobs:
       - name: Start driver (barrier on the full mixed fleet)
         run: |
           STORE="$HOME/.cache/rebuck2"
-          rebuck2 driver --grpc-port 9092 --min-workers "$TOTAL_WORKERS" --no-local-exec --cache-failures \
+          rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures \
             --session "hetero-$GITHUB_RUN_ID" \
             --store "$STORE/driver" > driver.log 2>&1 &
           echo $! > driver.pid
           rebuck2 worker --session "hetero-$GITHUB_RUN_ID" --slots $(($(nproc) / 2)) \
             --store "$STORE/co-worker" > co-worker.log 2>&1 &
 
-      - name: Wait for the full fleet to join
+      - name: Wait for worker quorum
         run: |
           for _ in $(seq 1 240); do
             joined=$(grep -c " joined: " driver.log || true)
-            [ "$joined" -ge "$TOTAL_WORKERS" ] && { grep " joined: " driver.log; exit 0; }
+            [ "$joined" -ge "$QUORUM_WORKERS" ] && { grep " joined: " driver.log; exit 0; }
             kill -0 "$(cat driver.pid)" || { cat driver.log; echo "driver died"; exit 1; }
             sleep 5
           done
-          cat driver.log; echo "fleet never fully joined"; exit 1
+          cat driver.log; echo "quorum never formed"; exit 1
 
       - name: Point buck2 at rebuck2
         run: |
