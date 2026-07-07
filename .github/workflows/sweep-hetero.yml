@@ -8,7 +8,7 @@
 # driver, so it is native only for the windows leg - the driver is windows.
 # linux/mac cxx-discovery failures land in those legs' expected lists.
 # Snapshot rigs stay excluded (base + conflict rigs only).
-# green-validation take 3: alias-form baselines.
+# green-validation take 4: workers dial the published driver addr.
 # take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
 name: sweep-hetero
 on:
@@ -134,10 +134,24 @@ jobs:
           STORE="$HOME/.cache/rebuck2"
           rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures \
             --session "hetero-$GITHUB_RUN_ID" \
+            --addr-file driver-addr.json \
             --store "$STORE/driver" > driver.log 2>&1 &
           echo $! > driver.pid
           rebuck2 worker --session "hetero-$GITHUB_RUN_ID" --slots $(($(nproc) / 2)) \
             --store "$STORE/co-worker" > co-worker.log 2>&1 &
+
+      - name: Wait for driver addr
+        run: |
+          for _ in $(seq 1 60); do [ -s driver-addr.json ] && exit 0; sleep 2; done
+          echo "driver never wrote its addr"; cat driver.log; exit 1
+
+      # Workers fetch this and dial the relay directly - no n0 discovery
+      # dependency (two runs died to a regional discovery outage).
+      - name: Publish driver addr
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: driver-addr
+          path: driver-addr.json
 
       - name: Wait for worker quorum
         run: |
@@ -266,6 +280,7 @@ jobs:
     timeout-minutes: 350
     permissions:
       contents: read
+      actions: read
     env:
       FORCE_COLOR: 1
     defaults:
@@ -298,11 +313,29 @@ jobs:
         with:
           drive-size: 24GB
           drive-format: ReFS
+      - name: Fetch driver addr (poll; discovery remains the fallback)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 90); do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+                 --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
+               && [ -s aid.txt ]; then
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(cat aid.txt)/zip" > addr.zip 2>/dev/null \
+                && unzip -o addr.zip > /dev/null && [ -s driver-addr.json ] && break
+            fi
+            sleep 10
+          done
+          ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
+
       - name: Serve until the driver disconnects
         run: |
+          ADDR_FLAG=()
+          [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           timeout 20400 rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
+            "${ADDR_FLAG[@]}" \
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
@@ -319,6 +352,7 @@ jobs:
     timeout-minutes: 350
     permissions:
       contents: read
+      actions: read
     env:
       FORCE_COLOR: 1
     defaults:
@@ -345,11 +379,29 @@ jobs:
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+      - name: Fetch driver addr (poll; discovery remains the fallback)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 90); do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+                 --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
+               && [ -s aid.txt ]; then
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(cat aid.txt)/zip" > addr.zip 2>/dev/null \
+                && unzip -o addr.zip > /dev/null && [ -s driver-addr.json ] && break
+            fi
+            sleep 10
+          done
+          ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
+
       - name: Serve until the driver disconnects
         run: |
+          ADDR_FLAG=()
+          [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
           STORE="$HOME/.cache/rebuck2"
           timeout 20400 rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
+            "${ADDR_FLAG[@]}" \
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
@@ -366,6 +418,7 @@ jobs:
     timeout-minutes: 350
     permissions:
       contents: read
+      actions: read
     env:
       FORCE_COLOR: 1
     defaults:
@@ -392,13 +445,31 @@ jobs:
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+      - name: Fetch driver addr (poll; discovery remains the fallback)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 90); do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+                 --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
+               && [ -s aid.txt ]; then
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(cat aid.txt)/zip" > addr.zip 2>/dev/null \
+                && unzip -o addr.zip > /dev/null && [ -s driver-addr.json ] && break
+            fi
+            sleep 10
+          done
+          ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
+
       - name: Serve until the driver disconnects
         run: |
+          ADDR_FLAG=()
+          [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
           STORE="$HOME/.cache/rebuck2"
           if command -v timeout >/dev/null 2>&1; then T=(timeout 20400)
           elif command -v gtimeout >/dev/null 2>&1; then T=(gtimeout 20400)
           else T=(); fi
           "${T[@]}" rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
+            "${ADDR_FLAG[@]}" \
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
