@@ -1,0 +1,119 @@
+# Repro rig for the fork-binary upload bug: windows + content-based paths +
+# materializations=none + RE => "Opening art\...\LPTF-...json failed (os
+# error 2)". Runs driver+worker+build on ONE windows box with materializer
+# logging so the misclassification is visible.
+name: debug-upload
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths: [.github/workflows/debug-upload.yml]
+
+permissions:
+  contents: read
+
+env:
+  REBUCK2_GIT: https://github.com/gilescope/rebuck
+  REBUCK2_BRANCH: giles-iroh-re-punch
+
+jobs:
+  repro:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
+      - name: Restore fork buck2
+        id: forkbin
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: fork-bin
+          key: buck2-fork-win-never-matches
+          restore-keys: buck2-fork-win-
+
+      - name: Fork binary + matched prelude
+        run: |
+          mkdir -p "$HOME/bin"
+          cp fork-bin/buck2.exe "$HOME/bin/buck2.exe"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          git clone --quiet --depth 1 --branch giles-dice-persistence --filter=blob:none --no-checkout \
+            https://github.com/gilescope/buck2 "$RUNNER_TEMP/fork-src"
+          git -C "$RUNNER_TEMP/fork-src" sparse-checkout set prelude
+          git -C "$RUNNER_TEMP/fork-src" checkout --quiet
+          rm -rf prelude
+          cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
+
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        id: rebuck2bin
+        with:
+          path: ~/.cargo/bin/rebuck2.exe
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      - name: Local mesh (driver + worker on this box)
+        run: |
+          rebuck2 driver --grpc-port 9092 --min-workers 1 --session "dbg-$GITHUB_RUN_ID" \
+            --store "$HOME/.cache/rebuck2/driver" > driver.log 2>&1 &
+          echo $! > driver.pid
+          rebuck2 worker --session "dbg-$GITHUB_RUN_ID" --slots 4 \
+            --store "$HOME/.cache/rebuck2/worker" > worker.log 2>&1 &
+          for _ in $(seq 1 60); do grep -q "worker 1 joined" driver.log && break; sleep 2; done
+          grep "joined" driver.log
+
+      - name: Point buck2 at rebuck2
+        run: |
+          cat > .buckconfig.local <<'EOF'
+          [build]
+          execution_platforms = fixups//platforms:re-exec-win
+
+          [buck2_re_client]
+          action_cache_address = grpc://127.0.0.1:9092
+          cas_address = grpc://127.0.0.1:9092
+          engine_address = grpc://127.0.0.1:9092
+          tls = false
+          EOF
+
+      - name: Build ppv-lite86 (expect Opening ... LPTF error)
+        run: |
+          export BUCK_LOG="buck2_execute::materialize=debug,buck2_execute::re::uploader=debug"
+          buck2 build --materializations=none "fixups//third-party:ppv-lite86-0.2" 2>&1 | tee build.log | tail -30 || true
+          echo "== error extract"
+          grep -aE "Opening|remote_upload_error" build.log | head -4 || echo "NO REPRO - build clean"
+
+      - name: Daemon materializer log tail
+        if: always()
+        run: |
+          DD=$(buck2 debug daemon-dir 2>/dev/null | tail -1)
+          [ -n "$DD" ] && grep -aE "materiali|LPTF|symlinked_dirs" "$DD"/buckd.stderr 2>/dev/null | tail -40 || true
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: debug-upload-logs
+          path: |
+            build.log
+            driver.log
+
+      - name: Stop mesh
+        if: always()
+        run: kill "$(cat driver.pid)" 2>/dev/null || true
