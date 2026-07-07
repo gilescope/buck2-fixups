@@ -289,6 +289,7 @@ jobs:
       - name: Dispatch stats
         if: always()
         run: |
+          kill -0 "$(cat driver.pid)" 2>/dev/null || echo "*** DRIVER PROCESS DIED — check driver.log tail below ***"
           echo "jobs dispatched: $(grep -c -- '-> worker ' driver.log || true)"
           grep -o -- '-> worker [0-9]*' driver.log | sort | uniq -c || true
           grep -c "requeueing" driver.log >/dev/null 2>&1 && grep "requeueing" driver.log || true
@@ -305,8 +306,11 @@ jobs:
         if: always()
         run: kill "$(cat driver.pid)" 2>/dev/null || true
 
+    # A lost worker must not redden the run - the driver job is the
+    # verdict, and the mesh tolerates stragglers.
   worker:
     name: worker ${{ matrix.n }}
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:

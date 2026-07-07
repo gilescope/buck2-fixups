@@ -253,8 +253,11 @@ jobs:
         if: always()
         run: kill "$(cat driver.pid)" 2>/dev/null || true
 
+    # A lost worker must not redden the run - the driver job is the
+    # verdict, and the mesh tolerates stragglers.
   worker:
     name: worker ${{ matrix.n }}
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:

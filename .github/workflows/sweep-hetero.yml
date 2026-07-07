@@ -230,6 +230,7 @@ jobs:
       - name: Dispatch stats
         if: always()
         run: |
+          kill -0 "$(cat driver.pid)" 2>/dev/null || echo "*** DRIVER PROCESS DIED — check driver.log tail below ***"
           echo "jobs dispatched: $(grep -c -- '-> worker ' driver.log || true)"
           grep -o -- '-> worker [0-9]*' driver.log | sort | uniq -c || true
           tail -5 driver.log
@@ -247,8 +248,11 @@ jobs:
         if: always()
         run: kill "$(cat driver.pid)" 2>/dev/null || true
 
+    # A lost worker must not redden the run - the driver job is the
+    # verdict, and the mesh tolerates stragglers.
   worker-win:
     name: win worker ${{ matrix.n }}
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -297,8 +301,11 @@ jobs:
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
+    # A lost worker must not redden the run - the driver job is the
+    # verdict, and the mesh tolerates stragglers.
   worker-linux:
     name: linux worker ${{ matrix.n }}
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -341,8 +348,11 @@ jobs:
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
+    # A lost worker must not redden the run - the driver job is the
+    # verdict, and the mesh tolerates stragglers.
   worker-mac:
     name: mac worker ${{ matrix.n }}
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
