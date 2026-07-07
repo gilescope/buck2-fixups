@@ -158,3 +158,12 @@ fixups//third-party:objc2-ui-kit
 #
 #  v_frame 0.7 — calls Layout::dangling_ptr, absent on the rust 1.94 toolchain.
 fixups//third-party:v_frame
+
+# ── rebuck2 RE model (hetero sweep, 2026-07-07) ──
+# khronos_api: scratch-path-baking build script (see Darwin list).
+fixups//third-party:khronos_api-3
+# openssl/rav1e: build scripts wanting host tooling the bare RE workers
+# lack (pkg-config/libssl headers, nasm) - env gap, revisit with worker
+# image prep.
+fixups//third-party:openssl-0.10
+fixups//third-party:rav1e-0.8
