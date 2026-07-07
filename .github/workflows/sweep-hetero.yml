@@ -8,7 +8,7 @@
 # driver, so it is native only for the windows leg - the driver is windows.
 # linux/mac cxx-discovery failures land in those legs' expected lists.
 # Snapshot rigs stay excluded (base + conflict rigs only).
-# green-validation take 4: workers dial the published driver addr.
+# green-validation take 5: dependent casualties reconciled.
 # take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
 name: sweep-hetero
 on:
