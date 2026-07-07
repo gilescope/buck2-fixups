@@ -92,18 +92,19 @@ jobs:
           tls = false
           EOF
 
-      - name: Two-phase repro (warm AC, fresh daemon, dependent build)
+      - name: Scale repro (500-crate slice, warm AC, fresh daemon)
         run: |
-          # Phase 1: populate the AC (ppv-lite86 + its dependent).
-          buck2 build --materializations=none "fixups//third-party:rand_chacha-0.9" 2>&1 | tail -3 || true
-          # Phase 2: fresh daemon = the write-artifacts are re-declared but
-          # never materialized; link actions AC-hit; the do_not_cache diag
-          # sibling still executes and must upload the json as an input.
+          # The bug only fires at sweep scale. Build a 500-target slice cold,
+          # restart the daemon, rebuild: link actions AC-hit against our own
+          # store, diag siblings re-execute, write-artifacts upload en masse.
+          buck2 uquery "kind('^alias\$', fixups//third-party:)" 2>/dev/null | head -500 > slice.txt
+          echo "fixups//third-party:ppv-lite86-0.2" >> slice.txt
+          echo "fixups//third-party:rand_chacha-0.9" >> slice.txt
+          buck2 build --keep-going --materializations=none @slice.txt 2>&1 | tail -5 || true
           buck2 kill > /dev/null 2>&1 || true
-          export BUCK_LOG="buck2_execute::materialize=debug"
-          buck2 build --materializations=none "fixups//third-party:rand_chacha-0.9" "fixups//third-party:ppv-lite86-0.2" 2>&1 | tee build.log | tail -20 || true
+          buck2 build --keep-going --materializations=none @slice.txt 2>&1 | tee build.log | tail -10 || true
           echo "== error extract"
-          grep -aE "Opening|remote_upload_error" build.log | head -6 || echo "NO REPRO - build clean"
+          grep -aE "Opening|remote_upload_error" build.log | head -8 || echo "NO REPRO - build clean"
 
       - name: Daemon materializer log tail
         if: always()
