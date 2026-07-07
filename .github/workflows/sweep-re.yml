@@ -5,7 +5,7 @@
 # never runs cl.exe/rustc — the 16 GB single-runner OOM cannot happen there —
 # and it deletes runner-image ballast in the background while workers join,
 # ahead of the rlib flood into its store.
-# Determinism reader, take 2: same binary vs the store holding the 301. 0 dispatches = one-time re-key; repeats = non-determinism, and the repeat set names the unstable root.
+# LPTF-fix validation reader: new fork binary (BuildKey denied from snapshots) - expect no remote_upload_error, honest materializer, dice-warm graph.
 # Rendezvous is keyless: driver + workers derive the driver's iroh key from
 # GITHUB_RUN_ID. Opt-in only — the normal sweep is untouched.
 name: sweep-re
