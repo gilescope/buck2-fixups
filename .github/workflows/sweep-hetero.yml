@@ -419,11 +419,11 @@ jobs:
           ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
           echo "seeded shard manifest: $(cat seeded.manifest)"
 
-      - name: Fetch driver addr (poll; discovery remains the fallback)
+      - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for _ in $(seq 1 90); do
+          for _ in $(seq 1 240); do
             if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
                  --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
                && [ -s aid.txt ]; then
@@ -555,11 +555,11 @@ jobs:
           ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
           echo "seeded shard manifest: $(cat seeded.manifest)"
 
-      - name: Fetch driver addr (poll; discovery remains the fallback)
+      - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for _ in $(seq 1 90); do
+          for _ in $(seq 1 240); do
             if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
                  --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
                && [ -s aid.txt ]; then
@@ -692,11 +692,11 @@ jobs:
           ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
           echo "seeded shard manifest: $(cat seeded.manifest)"
 
-      - name: Fetch driver addr (poll; discovery remains the fallback)
+      - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for _ in $(seq 1 90); do
+          for _ in $(seq 1 240); do
             if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
                  --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
                && [ -s aid.txt ]; then

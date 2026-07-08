@@ -354,11 +354,11 @@ jobs:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
 
-      - name: Fetch driver addr (poll; discovery remains the fallback)
+      - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for _ in $(seq 1 90); do
+          for _ in $(seq 1 240); do
             if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
                  --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
                && [ -s aid.txt ]; then
