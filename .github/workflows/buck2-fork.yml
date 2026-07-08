@@ -31,6 +31,9 @@ jobs:
           - os: macos-15
             slug: mac
             bin: buck2
+          - os: ubuntu-latest
+            slug: linux
+            bin: buck2
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
     permissions:

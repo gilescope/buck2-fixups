@@ -8,7 +8,7 @@
 # driver, so it is native only for the windows leg - the driver is windows.
 # linux/mac cxx-discovery failures land in those legs' expected lists.
 # Snapshot rigs stay excluded (base + conflict rigs only).
-# green-validation take 6: quorum window fits worker cold-compiles.
+# hetero-dice: per-leg dice persistence when the linux fork binary is cached.
 # take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
 name: sweep-hetero
 on:
@@ -85,6 +85,40 @@ jobs:
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      # DICE ladder, hetero edition: the driver box is linux, so one linux
+      # fork binary serves all three legs (target platforms differ; the
+      # buck2 process does not). Cache miss = release binary, no dice.
+      - name: Restore fork buck2 (dice persistence)
+        id: forkbin
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: fork-bin
+          key: buck2-fork-linux-never-matches
+          restore-keys: buck2-fork-linux-
+
+      - name: Restore dice snapshots (all legs)
+        if: steps.forkbin.outputs.cache-matched-key != ''
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: dice-snap
+          key: dice-snap-hetero-never-matches
+          restore-keys: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-
+
+      - name: Enable dice persistence (fork binary + matched prelude)
+        if: steps.forkbin.outputs.cache-matched-key != ''
+        run: |
+          cp fork-bin/buck2 "$HOME/bin/buck2"
+          chmod +x "$HOME/bin/buck2"
+          "$HOME/bin/buck2" --version
+          echo "FORK_REV=$(cat fork-bin/REV 2>/dev/null || echo unknown)" >> "$GITHUB_ENV"
+          mkdir -p dice-snap
+          git clone --quiet --depth 1 --branch giles-dice-persistence --filter=blob:none --no-checkout \
+            https://github.com/gilescope/buck2 "$RUNNER_TEMP/fork-src"
+          git -C "$RUNNER_TEMP/fork-src" sparse-checkout set prelude
+          git -C "$RUNNER_TEMP/fork-src" checkout --quiet
+          rm -rf prelude
+          cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
 
       # Seed preference: our own tri-OS snapshot first, else the union of
       # the single-OS donors (content-addressed, merges cleanly).
@@ -181,7 +215,14 @@ jobs:
         run: |
           leg() {
             local name="$1" plat="$2" tplat="$3" explat="$4"
-            PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="$name" \
+            local dice=()
+            if [ -n "${FORK_REV:-}" ]; then
+              mkdir -p "dice-snap/$name"
+              dice=(BUCK2_DICE_DB_PATH="$GITHUB_WORKSPACE/dice-snap/$name/db"
+                    BUCK2_DICE_SNAPSHOT_PATH="$GITHUB_WORKSPACE/dice-snap/$name/graph.meta"
+                    BUCK2_DICE_SNAPSHOT_SEED="$FORK_REV-$name-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}")
+            fi
+            env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="$name" \
             BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat" \
               ./build-all.sh //third-party: //third-party/conflict-rigs/... \
               > "leg-$name.log" 2>&1
@@ -223,6 +264,21 @@ jobs:
             tail -30 "leg-$l.log"
           done
           exit $rc
+
+      - name: Save dice snapshots (page-out per leg)
+        if: always() && steps.forkbin.outputs.cache-matched-key != ''
+        run: |
+          for name in win linux mac; do
+            buck2 --isolation-dir "$name" debug hydration page-out || echo "page-out $name failed (non-fatal)"
+          done
+          du -sh dice-snap/* 2>/dev/null || true
+
+      - name: Save dice snapshot cache
+        if: always() && steps.forkbin.outputs.cache-matched-key != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: dice-snap
+          key: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-${{ github.run_id }}
 
       - name: Finish snapshot (delta since the bulk tar)
         if: always()
