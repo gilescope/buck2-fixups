@@ -48,6 +48,7 @@ jobs:
     timeout-minutes: 350
     permissions:
       contents: read
+      actions: write # dice-snap pruning (cache DELETE)
     env:
       FORCE_COLOR: 1
     defaults:
@@ -277,6 +278,20 @@ jobs:
           path: dice-snap
           key: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-${{ github.run_id }}
 
+      - name: Prune superseded dice snapshots (1GB each; they evicted the CAS)
+        if: always() && steps.forkbin.outputs.rev != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
+            --jq '.actions_caches[] | select(.key | startswith("dice-snap-hetero-")) | .key' 2>/dev/null |
+            grep -v -- "-${GITHUB_RUN_ID}$" |
+            while read -r k; do
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches?key=$k" > /dev/null \
+                && echo "pruned $k" || true
+            done
+          true
+
       # Hand CAS persistence to the fleet: driver assigns shards, workers
       # sync + save them in their own teardown (parallel, off our path).
       - name: Finalize shards across the fleet
@@ -399,12 +414,23 @@ jobs:
           drive-format: ReFS
       # Roadmap #9: preload this worker's slice of the CAS during the join
       # window; bloom gossip announces it, the driver's HasMany verifies it.
-      - name: Restore cas shard ${{ matrix.shard }}
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: shard-in
-          key: rebuck2-shard-${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: rebuck2-shard-${{ matrix.shard }}-
+      - name: Restore cas shard ${{ matrix.shard }} (newest artifact, any run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Artifacts, not the actions cache: the 10GB cache LRU evicted the
+          # whole shard set within an hour (run 28932994472 died on it).
+          # Public-repo artifacts don't evict and every run refreshes them.
+          mkdir -p shard-in
+          AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-shard-${{ matrix.shard }}&per_page=1" \
+            --jq '[.artifacts[] | select(.expired==false)][0].id // empty' 2>/dev/null || true)
+          if [ -n "$AID" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AID/zip" > shard.zip \
+              && unzip -o -q shard.zip -d shard-in && rm -f shard.zip \
+              && ls -lh shard-in/ || echo "shard artifact fetch failed - cold start"
+          else
+            echo "no cas-shard-${{ matrix.shard }} artifact yet - cold start"
+          fi
 
       - name: Seed the worker store from the shard
         run: |
@@ -482,12 +508,13 @@ jobs:
             > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
           ls -lh "$GITHUB_WORKSPACE/shard-out/"
 
-      - name: Save assigned shard
+      - name: Publish assigned shard (artifact)
         if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          path: shard-out
-          key: rebuck2-shard-${{ steps.sid.outputs.shard }}-${{ github.run_id }}
+          name: cas-shard-${{ steps.sid.outputs.shard }}
+          path: shard-out/bulk.tar.zst
+          compression-level: 0
 
 
     # A lost worker must not redden the run - the driver job is the
@@ -535,12 +562,23 @@ jobs:
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
       # Roadmap #9: preload this worker's slice of the CAS during the join
       # window; bloom gossip announces it, the driver's HasMany verifies it.
-      - name: Restore cas shard ${{ matrix.shard }}
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: shard-in
-          key: rebuck2-shard-${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: rebuck2-shard-${{ matrix.shard }}-
+      - name: Restore cas shard ${{ matrix.shard }} (newest artifact, any run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Artifacts, not the actions cache: the 10GB cache LRU evicted the
+          # whole shard set within an hour (run 28932994472 died on it).
+          # Public-repo artifacts don't evict and every run refreshes them.
+          mkdir -p shard-in
+          AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-shard-${{ matrix.shard }}&per_page=1" \
+            --jq '[.artifacts[] | select(.expired==false)][0].id // empty' 2>/dev/null || true)
+          if [ -n "$AID" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AID/zip" > shard.zip \
+              && unzip -o -q shard.zip -d shard-in && rm -f shard.zip \
+              && ls -lh shard-in/ || echo "shard artifact fetch failed - cold start"
+          else
+            echo "no cas-shard-${{ matrix.shard }} artifact yet - cold start"
+          fi
 
       - name: Seed the worker store from the shard
         run: |
@@ -618,12 +656,13 @@ jobs:
             > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
           ls -lh "$GITHUB_WORKSPACE/shard-out/"
 
-      - name: Save assigned shard
+      - name: Publish assigned shard (artifact)
         if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          path: shard-out
-          key: rebuck2-shard-${{ steps.sid.outputs.shard }}-${{ github.run_id }}
+          name: cas-shard-${{ steps.sid.outputs.shard }}
+          path: shard-out/bulk.tar.zst
+          compression-level: 0
 
 
     # A lost worker must not redden the run - the driver job is the
@@ -672,12 +711,23 @@ jobs:
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
       # Roadmap #9: preload this worker's slice of the CAS during the join
       # window; bloom gossip announces it, the driver's HasMany verifies it.
-      - name: Restore cas shard ${{ matrix.shard }}
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: shard-in
-          key: rebuck2-shard-${{ matrix.shard }}-${{ github.run_id }}
-          restore-keys: rebuck2-shard-${{ matrix.shard }}-
+      - name: Restore cas shard ${{ matrix.shard }} (newest artifact, any run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Artifacts, not the actions cache: the 10GB cache LRU evicted the
+          # whole shard set within an hour (run 28932994472 died on it).
+          # Public-repo artifacts don't evict and every run refreshes them.
+          mkdir -p shard-in
+          AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-shard-${{ matrix.shard }}&per_page=1" \
+            --jq '[.artifacts[] | select(.expired==false)][0].id // empty' 2>/dev/null || true)
+          if [ -n "$AID" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AID/zip" > shard.zip \
+              && unzip -o -q shard.zip -d shard-in && rm -f shard.zip \
+              && ls -lh shard-in/ || echo "shard artifact fetch failed - cold start"
+          else
+            echo "no cas-shard-${{ matrix.shard }} artifact yet - cold start"
+          fi
 
       - name: Seed the worker store from the shard
         run: |
@@ -758,9 +808,10 @@ jobs:
             > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
           ls -lh "$GITHUB_WORKSPACE/shard-out/"
 
-      - name: Save assigned shard
+      - name: Publish assigned shard (artifact)
         if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          path: shard-out
-          key: rebuck2-shard-${{ steps.sid.outputs.shard }}-${{ github.run_id }}
+          name: cas-shard-${{ steps.sid.outputs.shard }}
+          path: shard-out/bulk.tar.zst
+          compression-level: 0
