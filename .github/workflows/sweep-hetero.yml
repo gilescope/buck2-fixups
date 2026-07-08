@@ -11,8 +11,8 @@
 # roadmap #9: fleet-sharded snapshots — workers restore + save CAS shards;
 # the driver owns only the AC and dice. Finalize handoff post-build.
 # take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
-# goal run READER take 2: pooled peer conns fix the FindMissing dial storm
-# that broke take 1 (all legs BrokenPipe at minute 2). dice-warm, AC-hot.
+# goal run writer take 4: validated-AC gate on BOTH doors (endpoint + Execute)
+# - unservable results re-execute and self-heal the artifact-hosted shards.
 # size_bytes deferral, AC-only driver seed. The reader after this one is the
 # measured hetero time.
 name: sweep-hetero
