@@ -73,19 +73,28 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
           "$HOME/bin/buck2.exe" --version
 
-      # DICE persistence ladder: if the buck2-fork workflow has parked a fork
-      # binary in the cache, use it and warm-start the daemon's graph from
-      # the dice snapshot. Cache miss = today's behaviour, untouched.
-      - name: Restore fork buck2 (dice persistence)
+      # DICE persistence ladder: fork binaries live as release assets on
+      # gilescope/buck2 (the actions cache LRU-evicted them twice in a day).
+      # manifest.txt names a coherent sha-stamped asset set. Fetch failure =
+      # today's behaviour: plain release-mode sweep.
+      - name: Fetch fork buck2 (dice persistence)
         id: forkbin
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: fork-bin
-          key: buck2-fork-win-never-matches
-          restore-keys: buck2-fork-win-
+        run: |
+          REL="https://github.com/gilescope/buck2/releases/download/dice-persistence"
+          REV=$(curl -fsSL "$REL/manifest.txt" 2>/dev/null | head -1 || true)
+          if [ -z "$REV" ]; then echo "no fork release manifest — release-mode sweep"; exit 0; fi
+          mkdir -p fork-bin
+          if curl -fsSL "$REL/buck2-win-$REV.zst" | zstd -d > fork-bin/buck2.exe; then
+            echo "$REV" > fork-bin/REV
+            echo "rev=$REV" >> "$GITHUB_OUTPUT"
+            echo "fork binary $REV fetched"
+          else
+            echo "asset fetch failed — release-mode sweep"
+            rm -rf fork-bin
+          fi
 
       - name: Restore dice snapshot
-        if: steps.forkbin.outputs.cache-matched-key != ''
+        if: steps.forkbin.outputs.rev != ''
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: dice-snap
@@ -93,7 +102,7 @@ jobs:
           restore-keys: dice-snap-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-
 
       - name: Enable dice persistence
-        if: steps.forkbin.outputs.cache-matched-key != ''
+        if: steps.forkbin.outputs.rev != ''
         run: |
           cp fork-bin/buck2.exe "$HOME/bin/buck2.exe"
           "$HOME/bin/buck2.exe" --version
@@ -108,11 +117,13 @@ jobs:
           # The binary and prelude must be version-matched: the vendored
           # prelude tracks the pinned release, so in fork mode we swap in the
           # fork's own prelude (same custom cc-rs fixes, matching version).
-          echo "-- swap vendored prelude for the fork's matched one"
-          git clone --quiet --depth 1 --branch giles-dice-persistence --filter=blob:none --no-checkout \
-            https://github.com/gilescope/buck2 "$RUNNER_TEMP/fork-src"
+          echo "-- swap vendored prelude for the fork's matched one (pinned to REV)"
+          REV=$(cat fork-bin/REV)
+          git init --quiet "$RUNNER_TEMP/fork-src"
+          git -C "$RUNNER_TEMP/fork-src" remote add origin https://github.com/gilescope/buck2
+          git -C "$RUNNER_TEMP/fork-src" fetch --quiet --depth 1 --filter=blob:none origin "$REV"
           git -C "$RUNNER_TEMP/fork-src" sparse-checkout set prelude
-          git -C "$RUNNER_TEMP/fork-src" checkout --quiet
+          git -C "$RUNNER_TEMP/fork-src" checkout --quiet FETCH_HEAD
           rm -rf prelude
           cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
           echo "-- preflight: fork binary + fork prelude must parse the tree"
@@ -175,6 +186,10 @@ jobs:
             fi
           done
           rm -rf snapshot; mkdir -p snapshot
+          # Record what we seeded: if the store is byte-identical at the end
+          # of the run, the tar + cache upload is skipped entirely.
+          ./ci/store-snapshot.sh manifest "$STORE/driver" > seeded.manifest
+          echo "seeded manifest: $(cat seeded.manifest)"
 
       - name: Reclaim runner ballast in the background (disk for the store)
         run: |
@@ -250,16 +265,23 @@ jobs:
           ./build-all.sh //third-party: //third-party/conflict-rigs/...
 
       - name: Save dice snapshot (page-out doubles as the save point)
-        if: always() && steps.forkbin.outputs.cache-matched-key != ''
+        if: always() && steps.forkbin.outputs.rev != ''
         run: |
           buck2 debug hydration page-out || echo "page-out failed (non-fatal)"
           ls -lh dice-snap/ || true
 
       - name: Finish snapshot (delta since the bulk tar)
+        id: finishsnap
         if: always()
         run: |
           kill "$(cat snapshotter.pid)" 2>/dev/null || true
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          if ./ci/store-snapshot.sh unchanged "$STORE/driver" seeded.manifest; then
+            echo "[snapshot] store unchanged since seed — skipping tar + upload"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            rm -rf snapshot
+            exit 0
+          fi
           cd "$STORE/driver"
           MARKER="$GITHUB_WORKSPACE/snapshot/.bulk-marker"
           if [ -f "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst" ]; then
@@ -273,14 +295,14 @@ jobs:
           ls -lh "$GITHUB_WORKSPACE/snapshot/"
 
       - name: Save store snapshot
-        if: always()
+        if: always() && steps.finishsnap.outputs.skip != '1'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: snapshot
           key: rebuck2-store-${{ github.run_id }}
 
       - name: Save dice snapshot cache
-        if: always() && steps.forkbin.outputs.cache-matched-key != ''
+        if: always() && steps.forkbin.outputs.rev != ''
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: dice-snap
@@ -295,12 +317,29 @@ jobs:
           grep -c "requeueing" driver.log >/dev/null 2>&1 && grep "requeueing" driver.log || true
           tail -5 driver.log
 
+      - name: Collect buck2 event log (client-side download attribution)
+        if: always()
+        run: |
+          # Warm runs pull ~1.1 GiB from CAS despite materializations=none —
+          # the event log records per-action downloads, so we can name the
+          # culprit (depfile refetch is the suspect) offline.
+          mkdir -p evtlog
+          EL=$(buck2 log path 2>/dev/null | tail -1 || true)
+          if [ -n "$EL" ] && [ -f "$EL" ]; then
+            cp "$EL" evtlog/
+            ls -lh evtlog/
+          else
+            echo "no event log found"
+          fi
+
       - name: Upload driver log
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: driver-log
-          path: driver.log
+          path: |
+            driver.log
+            evtlog/
 
       - name: Stop driver
         if: always()

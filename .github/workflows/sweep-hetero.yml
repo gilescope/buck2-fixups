@@ -89,17 +89,27 @@ jobs:
 
       # DICE ladder, hetero edition: the driver box is linux, so one linux
       # fork binary serves all three legs (target platforms differ; the
-      # buck2 process does not). Cache miss = release binary, no dice.
-      - name: Restore fork buck2 (dice persistence)
+      # buck2 process does not). Fork binaries are release assets on
+      # gilescope/buck2 (eviction-proof); fetch failure = release binary, no dice.
+      - name: Fetch fork buck2 (dice persistence)
         id: forkbin
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: fork-bin
-          key: buck2-fork-linux-never-matches
-          restore-keys: buck2-fork-linux-
+        run: |
+          REL="https://github.com/gilescope/buck2/releases/download/dice-persistence"
+          REV=$(curl -fsSL "$REL/manifest.txt" 2>/dev/null | head -1 || true)
+          if [ -z "$REV" ]; then echo "no fork release manifest — release-mode sweep"; exit 0; fi
+          mkdir -p fork-bin
+          if curl -fsSL "$REL/buck2-linux-$REV.zst" | zstd -d > fork-bin/buck2; then
+            chmod +x fork-bin/buck2
+            echo "$REV" > fork-bin/REV
+            echo "rev=$REV" >> "$GITHUB_OUTPUT"
+            echo "fork binary $REV fetched"
+          else
+            echo "asset fetch failed — release-mode sweep"
+            rm -rf fork-bin
+          fi
 
       - name: Restore dice snapshots (all legs)
-        if: steps.forkbin.outputs.cache-matched-key != ''
+        if: steps.forkbin.outputs.rev != ''
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: dice-snap
@@ -107,17 +117,19 @@ jobs:
           restore-keys: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-
 
       - name: Enable dice persistence (fork binary + matched prelude)
-        if: steps.forkbin.outputs.cache-matched-key != ''
+        if: steps.forkbin.outputs.rev != ''
         run: |
           cp fork-bin/buck2 "$HOME/bin/buck2"
           chmod +x "$HOME/bin/buck2"
           "$HOME/bin/buck2" --version
           echo "FORK_REV=$(cat fork-bin/REV 2>/dev/null || echo unknown)" >> "$GITHUB_ENV"
           mkdir -p dice-snap
-          git clone --quiet --depth 1 --branch giles-dice-persistence --filter=blob:none --no-checkout \
-            https://github.com/gilescope/buck2 "$RUNNER_TEMP/fork-src"
+          REV=$(cat fork-bin/REV)
+          git init --quiet "$RUNNER_TEMP/fork-src"
+          git -C "$RUNNER_TEMP/fork-src" remote add origin https://github.com/gilescope/buck2
+          git -C "$RUNNER_TEMP/fork-src" fetch --quiet --depth 1 --filter=blob:none origin "$REV"
           git -C "$RUNNER_TEMP/fork-src" sparse-checkout set prelude
-          git -C "$RUNNER_TEMP/fork-src" checkout --quiet
+          git -C "$RUNNER_TEMP/fork-src" checkout --quiet FETCH_HEAD
           rm -rf prelude
           cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
 
@@ -152,6 +164,9 @@ jobs:
             fi
           done
           rm -rf snapshot-ac snapshot-hetero
+          # AC-only manifest: unchanged AC at run end = skip pack + upload.
+          ./ci/store-snapshot.sh manifest "$STORE/driver" ac > seeded.manifest
+          echo "seeded AC manifest: $(cat seeded.manifest)"
 
       - name: Reclaim runner ballast in the background
         run: |
@@ -244,7 +259,7 @@ jobs:
           exit $rc
 
       - name: Save dice snapshots (page-out per leg)
-        if: always() && steps.forkbin.outputs.cache-matched-key != ''
+        if: always() && steps.forkbin.outputs.rev != ''
         run: |
           for name in win linux mac; do
             buck2 --isolation-dir "$name" debug hydration page-out || echo "page-out $name failed (non-fatal)"
@@ -252,7 +267,7 @@ jobs:
           du -sh dice-snap/* 2>/dev/null || true
 
       - name: Save dice snapshot cache
-        if: always() && steps.forkbin.outputs.cache-matched-key != ''
+        if: always() && steps.forkbin.outputs.rev != ''
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: dice-snap
@@ -272,15 +287,21 @@ jobs:
           echo "finalize timed out (workers save what they synced)"
 
       - name: Pack AC snapshot
+        id: acpack
         if: always()
         run: |
           STORE="$HOME/.cache/rebuck2"
+          if ./ci/store-snapshot.sh unchanged "$STORE/driver" seeded.manifest ac; then
+            echo "[snapshot] AC unchanged since seed — skipping pack + upload"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           mkdir -p snapshot-ac
           tar -c -C "$STORE/driver" ac | zstd -T0 --long=27 -8 > snapshot-ac/ac.tar.zst
           ls -lh snapshot-ac/
 
       - name: Save AC snapshot
-        if: always()
+        if: always() && steps.acpack.outputs.skip != '1'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: snapshot-ac
@@ -294,6 +315,20 @@ jobs:
           grep -o -- '-> worker [0-9]*' driver.log | sort | uniq -c || true
           tail -5 driver.log
 
+      - name: Collect buck2 event logs (per leg, download attribution)
+        if: always()
+        run: |
+          mkdir -p evtlog
+          for name in win linux mac; do
+            EL=$(buck2 --isolation-dir "$name" log path 2>/dev/null | tail -1 || true)
+            if [ -n "$EL" ] && [ -f "$EL" ]; then
+              cp "$EL" "evtlog/$name-$(basename "$EL")"
+            else
+              echo "no event log for leg $name"
+            fi
+          done
+          ls -lh evtlog/ || true
+
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -302,6 +337,7 @@ jobs:
           path: |
             driver.log
             leg-*.log
+            evtlog/
 
       - name: Stop driver
         if: always()
@@ -368,7 +404,7 @@ jobs:
 
       - name: Seed the worker store from the shard
         run: |
-          STORE="$HOME/.cache/rebuck2"
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           mkdir -p "$STORE/worker"
           for t in shard-in/bulk.tar.zst shard-in/tail.tar.zst; do
             if [ -f "$t" ]; then
@@ -377,6 +413,11 @@ jobs:
             fi
           done
           rm -rf shard-in
+          # Record the restored shard's manifest — if finalize assigns this
+          # same shard back and nothing changed, the re-save is skipped.
+          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
+          ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
+          echo "seeded shard manifest: $(cat seeded.manifest)"
 
       - name: Fetch driver addr (poll; discovery remains the fallback)
         env:
@@ -408,7 +449,7 @@ jobs:
         id: sid
         if: always()
         run: |
-          STORE="$HOME/.cache/rebuck2"
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           if [ -f "$STORE/worker/shard.id" ]; then
             read -r shard of < "$STORE/worker/shard.id"
             echo "shard=$shard" >> "$GITHUB_OUTPUT"
@@ -418,11 +459,18 @@ jobs:
           fi
 
       - name: Pack + save assigned shard
+        id: shardpack
         if: always() && steps.sid.outputs.shard != ''
         run: |
-          STORE="$HOME/.cache/rebuck2"
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           i=${{ steps.sid.outputs.shard }}
           a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
+          if [ "$i" = "${{ matrix.shard }}" ] \
+             && ./ci/store-snapshot.sh unchanged "$STORE/worker" seeded.manifest "cas/$a* cas/$b*"; then
+            echo "[shard] shard $i unchanged since seed — skipping pack + upload"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           mkdir -p shard-out
           cd "$STORE/worker"
           find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
@@ -431,7 +479,7 @@ jobs:
           ls -lh "$GITHUB_WORKSPACE/shard-out/"
 
       - name: Save assigned shard
-        if: always() && steps.sid.outputs.shard != ''
+        if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: shard-out
@@ -501,6 +549,11 @@ jobs:
             fi
           done
           rm -rf shard-in
+          # Record the restored shard's manifest — if finalize assigns this
+          # same shard back and nothing changed, the re-save is skipped.
+          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
+          ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
+          echo "seeded shard manifest: $(cat seeded.manifest)"
 
       - name: Fetch driver addr (poll; discovery remains the fallback)
         env:
@@ -542,11 +595,18 @@ jobs:
           fi
 
       - name: Pack + save assigned shard
+        id: shardpack
         if: always() && steps.sid.outputs.shard != ''
         run: |
           STORE="$HOME/.cache/rebuck2"
           i=${{ steps.sid.outputs.shard }}
           a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
+          if [ "$i" = "${{ matrix.shard }}" ] \
+             && ./ci/store-snapshot.sh unchanged "$STORE/worker" seeded.manifest "cas/$a* cas/$b*"; then
+            echo "[shard] shard $i unchanged since seed — skipping pack + upload"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           mkdir -p shard-out
           cd "$STORE/worker"
           find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
@@ -555,7 +615,7 @@ jobs:
           ls -lh "$GITHUB_WORKSPACE/shard-out/"
 
       - name: Save assigned shard
-        if: always() && steps.sid.outputs.shard != ''
+        if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: shard-out
@@ -626,6 +686,11 @@ jobs:
             fi
           done
           rm -rf shard-in
+          # Record the restored shard's manifest — if finalize assigns this
+          # same shard back and nothing changed, the re-save is skipped.
+          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
+          ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
+          echo "seeded shard manifest: $(cat seeded.manifest)"
 
       - name: Fetch driver addr (poll; discovery remains the fallback)
         env:
@@ -670,11 +735,18 @@ jobs:
           fi
 
       - name: Pack + save assigned shard
+        id: shardpack
         if: always() && steps.sid.outputs.shard != ''
         run: |
           STORE="$HOME/.cache/rebuck2"
           i=${{ steps.sid.outputs.shard }}
           a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
+          if [ "$i" = "${{ matrix.shard }}" ] \
+             && ./ci/store-snapshot.sh unchanged "$STORE/worker" seeded.manifest "cas/$a* cas/$b*"; then
+            echo "[shard] shard $i unchanged since seed — skipping pack + upload"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           mkdir -p shard-out
           cd "$STORE/worker"
           find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
@@ -683,7 +755,7 @@ jobs:
           ls -lh "$GITHUB_WORKSPACE/shard-out/"
 
       - name: Save assigned shard
-        if: always() && steps.sid.outputs.shard != ''
+        if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: shard-out

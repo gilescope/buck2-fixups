@@ -58,17 +58,27 @@ jobs:
           echo "$HOME/bin" >> "$GITHUB_PATH"
           "$HOME/bin/buck2" --version
 
-      # DICE persistence ladder, mac edition. Cache miss = plain sweep.
-      - name: Restore fork buck2 (dice persistence)
+      # DICE persistence ladder, mac edition. Fork binaries are release
+      # assets on gilescope/buck2 (eviction-proof); fetch failure = plain sweep.
+      - name: Fetch fork buck2 (dice persistence)
         id: forkbin
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: fork-bin
-          key: buck2-fork-mac-never-matches
-          restore-keys: buck2-fork-mac-
+        run: |
+          REL="https://github.com/gilescope/buck2/releases/download/dice-persistence"
+          REV=$(curl -fsSL "$REL/manifest.txt" 2>/dev/null | head -1 || true)
+          if [ -z "$REV" ]; then echo "no fork release manifest — release-mode sweep"; exit 0; fi
+          mkdir -p fork-bin
+          if curl -fsSL "$REL/buck2-mac-$REV.zst" | zstd -d > fork-bin/buck2; then
+            chmod +x fork-bin/buck2
+            echo "$REV" > fork-bin/REV
+            echo "rev=$REV" >> "$GITHUB_OUTPUT"
+            echo "fork binary $REV fetched"
+          else
+            echo "asset fetch failed — release-mode sweep"
+            rm -rf fork-bin
+          fi
 
       - name: Restore dice snapshot
-        if: steps.forkbin.outputs.cache-matched-key != ''
+        if: steps.forkbin.outputs.rev != ''
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: dice-snap
@@ -76,7 +86,7 @@ jobs:
           restore-keys: dice-snap-mac-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-
 
       - name: Enable dice persistence
-        if: steps.forkbin.outputs.cache-matched-key != ''
+        if: steps.forkbin.outputs.rev != ''
         run: |
           cp fork-bin/buck2 "$HOME/bin/buck2"
           chmod +x "$HOME/bin/buck2"
@@ -90,10 +100,12 @@ jobs:
           } >> "$GITHUB_ENV"
           # Binary and prelude must be version-matched (fork prelude, not
           # the vendored release one).
-          git clone --quiet --depth 1 --branch giles-dice-persistence --filter=blob:none --no-checkout \
-            https://github.com/gilescope/buck2 "$RUNNER_TEMP/fork-src"
+          REV=$(cat fork-bin/REV)
+          git init --quiet "$RUNNER_TEMP/fork-src"
+          git -C "$RUNNER_TEMP/fork-src" remote add origin https://github.com/gilescope/buck2
+          git -C "$RUNNER_TEMP/fork-src" fetch --quiet --depth 1 --filter=blob:none origin "$REV"
           git -C "$RUNNER_TEMP/fork-src" sparse-checkout set prelude
-          git -C "$RUNNER_TEMP/fork-src" checkout --quiet
+          git -C "$RUNNER_TEMP/fork-src" checkout --quiet FETCH_HEAD
           rm -rf prelude
           cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
           if ! "$HOME/bin/buck2" targets fixups//third-party: > /dev/null 2> probe.err; then
@@ -140,6 +152,9 @@ jobs:
             fi
           done
           rm -rf snapshot; mkdir -p snapshot
+          # Record what we seeded: unchanged store at run end = skip the save.
+          ./ci/store-snapshot.sh manifest "$STORE/driver" > seeded.manifest
+          echo "seeded manifest: $(cat seeded.manifest)"
 
       - name: Start driver (remote exec only, barrier on 4 workers)
         run: |
@@ -199,16 +214,23 @@ jobs:
           ./build-all.sh //third-party: //third-party/conflict-rigs/...
 
       - name: Save dice snapshot (page-out doubles as the save point)
-        if: always() && steps.forkbin.outputs.cache-matched-key != ''
+        if: always() && steps.forkbin.outputs.rev != ''
         run: |
           buck2 debug hydration page-out || echo "page-out failed (non-fatal)"
           ls -lh dice-snap/ || true
 
       - name: Finish snapshot (delta since the bulk tar)
+        id: finishsnap
         if: always()
         run: |
           kill "$(cat snapshotter.pid)" 2>/dev/null || true
           STORE="$HOME/.cache/rebuck2"
+          if ./ci/store-snapshot.sh unchanged "$STORE/driver" seeded.manifest; then
+            echo "[snapshot] store unchanged since seed — skipping tar + upload"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            rm -rf snapshot
+            exit 0
+          fi
           cd "$STORE/driver"
           MARKER="$GITHUB_WORKSPACE/snapshot/.bulk-marker"
           if [ -f "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst" ]; then
@@ -222,14 +244,14 @@ jobs:
           ls -lh "$GITHUB_WORKSPACE/snapshot/"
 
       - name: Save store snapshot
-        if: always()
+        if: always() && steps.finishsnap.outputs.skip != '1'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: snapshot
           key: rebuck2-store-mac-${{ github.run_id }}
 
       - name: Save dice snapshot cache
-        if: always() && steps.forkbin.outputs.cache-matched-key != ''
+        if: always() && steps.forkbin.outputs.rev != ''
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: dice-snap
@@ -243,12 +265,21 @@ jobs:
           grep "requeueing" driver.log || true
           tail -5 driver.log
 
+      - name: Collect buck2 event log (client-side download attribution)
+        if: always()
+        run: |
+          mkdir -p evtlog
+          EL=$(buck2 log path 2>/dev/null | tail -1 || true)
+          if [ -n "$EL" ] && [ -f "$EL" ]; then cp "$EL" evtlog/; ls -lh evtlog/; else echo "no event log found"; fi
+
       - name: Upload driver log
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: driver-log-mac
-          path: driver.log
+          path: |
+            driver.log
+            evtlog/
 
       - name: Stop driver
         if: always()
