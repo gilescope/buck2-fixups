@@ -8,7 +8,8 @@
 # driver, so it is native only for the windows leg - the driver is windows.
 # linux/mac cxx-discovery failures land in those legs' expected lists.
 # Snapshot rigs stay excluded (base + conflict rigs only).
-# hetero-dice: per-leg dice persistence when the linux fork binary is cached.
+# roadmap #9: fleet-sharded snapshots — workers restore + save CAS shards;
+# the driver owns only the AC and dice. Finalize handoff post-build.
 # take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
 name: sweep-hetero
 on:
@@ -120,43 +121,37 @@ jobs:
           rm -rf prelude
           cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
 
-      # Seed preference: our own tri-OS snapshot first, else the union of
-      # the single-OS donors (content-addressed, merges cleanly).
-      - name: Restore hetero store snapshot
-        id: heterosnap
+      # Roadmap #9: the driver seeds only the ACTION CACHE. CAS shards
+      # restore on the WORKERS (parallel, during the join window); bloom
+      # gossip + HasMany verification makes them count in
+      # FindMissingBlobs. Monolith restore stays as transition fallback.
+      - name: Restore AC snapshot
+        id: acsnap
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot-ac
+          key: rebuck2-ac-${{ github.run_id }}
+          restore-keys: rebuck2-ac-
+
+      - name: Restore hetero monolith (transition fallback)
+        if: steps.acsnap.outputs.cache-matched-key == ''
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: snapshot-hetero
           key: rebuck2-store-hetero-${{ github.run_id }}
           restore-keys: rebuck2-store-hetero-
 
-      - name: Restore win store snapshot
-        if: steps.heterosnap.outputs.cache-matched-key == ''
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: snapshot
-          key: rebuck2-store-${{ github.run_id }}
-          restore-keys: rebuck2-store-
-
-      - name: Restore mac store snapshot
-        if: steps.heterosnap.outputs.cache-matched-key == ''
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: snapshot-mac
-          key: rebuck2-store-mac-${{ github.run_id }}
-          restore-keys: rebuck2-store-mac-
-
-      - name: Seed the store from both snapshots
+      - name: Seed the driver store
         run: |
           STORE="$HOME/.cache/rebuck2"
           mkdir -p "$STORE/driver"
-          for t in snapshot-hetero/bulk.tar.zst snapshot-hetero/tail.tar.zst snapshot/bulk.tar.zst snapshot/tail.tar.zst snapshot-mac/bulk.tar.zst snapshot-mac/tail.tar.zst; do
+          for t in snapshot-ac/ac.tar.zst snapshot-hetero/bulk.tar.zst snapshot-hetero/tail.tar.zst; do
             if [ -f "$t" ]; then
               zstd -d --long=27 < "$t" | tar -x -C "$STORE/driver"
               echo "seeded from $t ($(du -h "$t" | cut -f1))"
             fi
           done
-          rm -rf snapshot snapshot-mac snapshot-hetero; mkdir -p snapshot
+          rm -rf snapshot-ac snapshot-hetero
 
       - name: Reclaim runner ballast in the background
         run: |
@@ -169,6 +164,7 @@ jobs:
           rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures \
             --session "hetero-$GITHUB_RUN_ID" \
             --addr-file driver-addr.json \
+            --finalize-file finalize.signal \
             --store "$STORE/driver" > driver.log 2>&1 &
           echo $! > driver.pid
           rebuck2 worker --session "hetero-$GITHUB_RUN_ID" --slots $(($(nproc) / 2)) \
@@ -230,24 +226,6 @@ jobs:
             echo "leg $name exited rc=$rc"
             return $rc
           }
-          # Bulk-tar the store as the combined queue drains; delta after.
-          (
-            while true; do
-              sleep 60
-              pending=$(grep -o "pending_jobs=[0-9]*" driver.log | tail -1 | cut -d= -f2)
-              [ -n "$pending" ] || continue
-              total=$(grep -c -- "-> worker " driver.log || true)
-              if [ "$total" -gt 1000 ] && [ "$pending" -lt 300 ]; then
-                echo "[snapshot] queue draining (pending=$pending) — bulk tar starts"
-                touch snapshot/.bulk-marker
-                STORE="$HOME/.cache/rebuck2"
-                tar -c -C "$STORE/driver" ac cas | zstd -T0 --long=27 -8 > snapshot/bulk.tar.zst
-                echo "[snapshot] bulk done: $(du -h snapshot/bulk.tar.zst | cut -f1)"
-                break
-              fi
-            done
-          ) &
-          echo $! > snapshotter.pid
           touch leg-win.log leg-linux.log leg-mac.log
           tail -F leg-win.log leg-linux.log leg-mac.log &
           TAIL=$!
@@ -280,29 +258,33 @@ jobs:
           path: dice-snap
           key: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-${{ github.run_id }}
 
-      - name: Finish snapshot (delta since the bulk tar)
+      # Hand CAS persistence to the fleet: driver assigns shards, workers
+      # sync + save them in their own teardown (parallel, off our path).
+      - name: Finalize shards across the fleet
         if: always()
         run: |
-          kill "$(cat snapshotter.pid)" 2>/dev/null || true
-          STORE="$HOME/.cache/rebuck2"
-          cd "$STORE/driver"
-          MARKER="$GITHUB_WORKSPACE/snapshot/.bulk-marker"
-          if [ -f "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst" ]; then
-            find ac cas -type f -newer "$MARKER" | tar -c -T - | zstd -3 \
-              > "$GITHUB_WORKSPACE/snapshot/tail.tar.zst" || true
-          else
-            echo "[snapshot] bulk never triggered — full tar now"
-            tar -c ac cas | zstd -T0 --long=27 -8 > "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst"
-          fi
-          rm -f "$MARKER"
-          ls -lh "$GITHUB_WORKSPACE/snapshot/"
+          touch finalize.signal
+          for _ in $(seq 1 200); do
+            [ -f finalize.signal.done ] && { echo "finalized: $(cat finalize.signal.done) workers"; exit 0; }
+            kill -0 "$(cat driver.pid)" 2>/dev/null || { echo "driver gone before finalize"; exit 0; }
+            sleep 5
+          done
+          echo "finalize timed out (workers save what they synced)"
 
-      - name: Save hetero store snapshot
+      - name: Pack AC snapshot
+        if: always()
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          mkdir -p snapshot-ac
+          tar -c -C "$STORE/driver" ac | zstd -T0 --long=27 -8 > snapshot-ac/ac.tar.zst
+          ls -lh snapshot-ac/
+
+      - name: Save AC snapshot
         if: always()
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
-          path: snapshot
-          key: rebuck2-store-hetero-${{ github.run_id }}
+          path: snapshot-ac
+          key: rebuck2-ac-${{ github.run_id }}
 
       - name: Dispatch stats
         if: always()
@@ -333,7 +315,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        n: [1, 2, 3, 4]
+        include:
+          - {n: 1, shard: 0}
+          - {n: 2, shard: 1}
+          - {n: 3, shard: 2}
+          - {n: 4, shard: 3}
     runs-on: windows-latest
     timeout-minutes: 350
     permissions:
@@ -371,6 +357,27 @@ jobs:
         with:
           drive-size: 24GB
           drive-format: ReFS
+      # Roadmap #9: preload this worker's slice of the CAS during the join
+      # window; bloom gossip announces it, the driver's HasMany verifies it.
+      - name: Restore cas shard ${{ matrix.shard }}
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: shard-in
+          key: rebuck2-shard-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: rebuck2-shard-${{ matrix.shard }}-
+
+      - name: Seed the worker store from the shard
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          mkdir -p "$STORE/worker"
+          for t in shard-in/bulk.tar.zst shard-in/tail.tar.zst; do
+            if [ -f "$t" ]; then
+              zstd -d --long=27 < "$t" | tar -x -C "$STORE/worker"
+              echo "seeded from $t ($(du -h "$t" | cut -f1))"
+            fi
+          done
+          rm -rf shard-in
+
       - name: Fetch driver addr (poll; discovery remains the fallback)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -397,6 +404,40 @@ jobs:
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
+      - name: Read assigned shard
+        id: sid
+        if: always()
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          if [ -f "$STORE/worker/shard.id" ]; then
+            read -r shard of < "$STORE/worker/shard.id"
+            echo "shard=$shard" >> "$GITHUB_OUTPUT"
+            echo "assigned shard $shard of $of"
+          else
+            echo "no shard assigned (driver died pre-finalize?)"
+          fi
+
+      - name: Pack + save assigned shard
+        if: always() && steps.sid.outputs.shard != ''
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          i=${{ steps.sid.outputs.shard }}
+          a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
+          mkdir -p shard-out
+          cd "$STORE/worker"
+          find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
+            | tar -c -T - | zstd -T0 --long=27 -8 \
+            > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
+          ls -lh "$GITHUB_WORKSPACE/shard-out/"
+
+      - name: Save assigned shard
+        if: always() && steps.sid.outputs.shard != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: shard-out
+          key: rebuck2-shard-${{ steps.sid.outputs.shard }}-${{ github.run_id }}
+
+
     # A lost worker must not redden the run - the driver job is the
     # verdict, and the mesh tolerates stragglers.
   worker-linux:
@@ -405,7 +446,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        n: [1, 2, 3]
+        include:
+          - {n: 1, shard: 4}
+          - {n: 2, shard: 5}
+          - {n: 3, shard: 6}
     runs-on: ubuntu-latest
     timeout-minutes: 350
     permissions:
@@ -437,6 +481,27 @@ jobs:
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+      # Roadmap #9: preload this worker's slice of the CAS during the join
+      # window; bloom gossip announces it, the driver's HasMany verifies it.
+      - name: Restore cas shard ${{ matrix.shard }}
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: shard-in
+          key: rebuck2-shard-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: rebuck2-shard-${{ matrix.shard }}-
+
+      - name: Seed the worker store from the shard
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          mkdir -p "$STORE/worker"
+          for t in shard-in/bulk.tar.zst shard-in/tail.tar.zst; do
+            if [ -f "$t" ]; then
+              zstd -d --long=27 < "$t" | tar -x -C "$STORE/worker"
+              echo "seeded from $t ($(du -h "$t" | cut -f1))"
+            fi
+          done
+          rm -rf shard-in
+
       - name: Fetch driver addr (poll; discovery remains the fallback)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -463,6 +528,40 @@ jobs:
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
+      - name: Read assigned shard
+        id: sid
+        if: always()
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          if [ -f "$STORE/worker/shard.id" ]; then
+            read -r shard of < "$STORE/worker/shard.id"
+            echo "shard=$shard" >> "$GITHUB_OUTPUT"
+            echo "assigned shard $shard of $of"
+          else
+            echo "no shard assigned (driver died pre-finalize?)"
+          fi
+
+      - name: Pack + save assigned shard
+        if: always() && steps.sid.outputs.shard != ''
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          i=${{ steps.sid.outputs.shard }}
+          a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
+          mkdir -p shard-out
+          cd "$STORE/worker"
+          find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
+            | tar -c -T - | zstd -T0 --long=27 -8 \
+            > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
+          ls -lh "$GITHUB_WORKSPACE/shard-out/"
+
+      - name: Save assigned shard
+        if: always() && steps.sid.outputs.shard != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: shard-out
+          key: rebuck2-shard-${{ steps.sid.outputs.shard }}-${{ github.run_id }}
+
+
     # A lost worker must not redden the run - the driver job is the
     # verdict, and the mesh tolerates stragglers.
   worker-mac:
@@ -471,7 +570,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        n: [1, 2, 3, 4]
+        include:
+          - {n: 1, shard: 7}
+          - {n: 2, shard: 0}
+          - {n: 3, shard: 1}
+          - {n: 4, shard: 2}
     runs-on: macos-15
     timeout-minutes: 350
     permissions:
@@ -503,6 +606,27 @@ jobs:
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
         run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+      # Roadmap #9: preload this worker's slice of the CAS during the join
+      # window; bloom gossip announces it, the driver's HasMany verifies it.
+      - name: Restore cas shard ${{ matrix.shard }}
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: shard-in
+          key: rebuck2-shard-${{ matrix.shard }}-${{ github.run_id }}
+          restore-keys: rebuck2-shard-${{ matrix.shard }}-
+
+      - name: Seed the worker store from the shard
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          mkdir -p "$STORE/worker"
+          for t in shard-in/bulk.tar.zst shard-in/tail.tar.zst; do
+            if [ -f "$t" ]; then
+              zstd -d --long=27 < "$t" | tar -x -C "$STORE/worker"
+              echo "seeded from $t ($(du -h "$t" | cut -f1))"
+            fi
+          done
+          rm -rf shard-in
+
       - name: Fetch driver addr (poll; discovery remains the fallback)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -531,3 +655,36 @@ jobs:
             "${ADDR_FLAG[@]}" \
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
+
+      - name: Read assigned shard
+        id: sid
+        if: always()
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          if [ -f "$STORE/worker/shard.id" ]; then
+            read -r shard of < "$STORE/worker/shard.id"
+            echo "shard=$shard" >> "$GITHUB_OUTPUT"
+            echo "assigned shard $shard of $of"
+          else
+            echo "no shard assigned (driver died pre-finalize?)"
+          fi
+
+      - name: Pack + save assigned shard
+        if: always() && steps.sid.outputs.shard != ''
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          i=${{ steps.sid.outputs.shard }}
+          a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
+          mkdir -p shard-out
+          cd "$STORE/worker"
+          find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
+            | tar -c -T - | zstd -T0 --long=27 -8 \
+            > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
+          ls -lh "$GITHUB_WORKSPACE/shard-out/"
+
+      - name: Save assigned shard
+        if: always() && steps.sid.outputs.shard != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: shard-out
+          key: rebuck2-shard-${{ steps.sid.outputs.shard }}-${{ github.run_id }}
