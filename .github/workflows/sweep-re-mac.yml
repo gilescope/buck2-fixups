@@ -23,9 +23,10 @@ env:
   BUCK2_VERSION: 2026-06-01
   REBUCK2_GIT: https://github.com/gilescope/rebuck
   REBUCK2_BRANCH: giles-iroh-re-punch
-  # 4 fleet workers + the driver's co-worker = 5 joiners (the macOS
-  # public-repo cap is 5 concurrent jobs). One no-show must not scrap the run.
-  QUORUM_WORKERS: "4"
+  # Start dispatching at 2 joiners (of 5: 4 fleet + co-worker, the macOS
+  # public-repo job cap): the pull-queue holds, late joiners drain it, and
+  # the latch means a shrinking pool never re-blocks.
+  QUORUM_WORKERS: "2"
 
 jobs:
   driver:

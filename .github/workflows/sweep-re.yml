@@ -36,10 +36,11 @@ env:
   # TODO pin to a --rev once giles-iroh-re-punch is signed/stable.
   REBUCK2_GIT: https://github.com/gilescope/rebuck
   REBUCK2_BRANCH: giles-iroh-re-punch
-  # 8 fleet workers + the driver's co-worker = 9 possible joiners. One
+  # Start dispatching at 2 joiners: the pull-queue holds, late joiners
+  # drain it, and the latch means a shrinking pool never re-blocks. One
   # no-show runner must not scrap the run (28915315742: 7 joined, worker 8
   # never scheduled, 15min idle then abort).
-  QUORUM_WORKERS: "7"
+  QUORUM_WORKERS: "2"
 
 jobs:
   driver:
