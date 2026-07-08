@@ -135,7 +135,7 @@ jobs:
           mkdir -p "$STORE/driver"
           for t in snapshot/bulk.tar.zst snapshot/tail.tar.zst; do
             if [ -f "$t" ]; then
-              zstd -d < "$t" | tar -x -C "$STORE/driver"
+              zstd -d --long=27 < "$t" | tar -x -C "$STORE/driver"
               echo "seeded from $t ($(du -h "$t" | cut -f1))"
             fi
           done
@@ -189,7 +189,7 @@ jobs:
                 echo "[snapshot] queue draining (pending=$pending) — bulk tar starts"
                 touch snapshot/.bulk-marker
                 STORE="$HOME/.cache/rebuck2"
-                tar -c -C "$STORE/driver" ac cas | zstd -3 > snapshot/bulk.tar.zst
+                tar -c -C "$STORE/driver" ac cas | zstd -T0 --long=27 -8 > snapshot/bulk.tar.zst
                 echo "[snapshot] bulk done: $(du -h snapshot/bulk.tar.zst | cut -f1)"
                 break
               fi
@@ -216,7 +216,7 @@ jobs:
               > "$GITHUB_WORKSPACE/snapshot/tail.tar.zst" || true
           else
             echo "[snapshot] bulk never triggered — full tar now"
-            tar -c ac cas | zstd -3 > "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst"
+            tar -c ac cas | zstd -T0 --long=27 -8 > "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst"
           fi
           rm -f "$MARKER"
           ls -lh "$GITHUB_WORKSPACE/snapshot/"
