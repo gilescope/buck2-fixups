@@ -3,6 +3,7 @@
 # local `buck2 build` away. Public-repo macOS concurrency caps at 5 jobs:
 # 1 driver + 4 workers.
 name: sweep-re-mac
+# mac fork-mode maiden: dice ladder live (fork binary cached).
 on:
   workflow_dispatch: {}
   push:
