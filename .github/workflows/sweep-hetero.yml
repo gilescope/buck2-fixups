@@ -11,7 +11,7 @@
 # roadmap #9: fleet-sharded snapshots — workers restore + save CAS shards;
 # the driver owns only the AC and dice. Finalize handoff post-build.
 # take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
-# goal run: fork-mode writer with the full stack - per-leg dice, #9 shards,
+# goal run READER: dice-warm, AC-hot, shards pre-seeded - the measured run.
 # size_bytes deferral, AC-only driver seed. The reader after this one is the
 # measured hetero time.
 name: sweep-hetero
