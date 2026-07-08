@@ -41,6 +41,10 @@ for rig in "${rigs[@]}"; do
   [ "$check" = 1 ] && [ -f "$buck" ] && committed="$(mktemp)" && cp "$buck" "$committed"
 
   out=$("$reindeer" "${args[@]}" buckify 2>&1) || { echo "✗ $label: reindeer failed:"; echo "$out"; status=1; continue; }
+  # Re-inject size_bytes (reindeer doesn't emit it): with sha256+size buck2
+  # defers downloads to the CAS; crates.io's CDN breaks the HEAD fallback.
+  # Offline for known crates (ci/crate-sizes.txt).
+  python3 ci/add-archive-sizes.py > /dev/null || { echo "✗ $label: size_bytes injection failed"; status=1; continue; }
   if [ "$check" = 1 ] && [ -n "$out" ]; then
     echo "✗ $label: buckify is not clean (fix warnings):"; echo "$out"; status=1
   fi
