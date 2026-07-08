@@ -480,8 +480,12 @@ jobs:
         if: always()
         run: |
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          if [ -f "$STORE/worker/shard.id" ]; then
-            read -r shard of < "$STORE/worker/shard.id"
+          # shard.id has no trailing newline: read returns rc=1 at EOF even
+          # after assigning - under bash -e that killed this step on EVERY
+          # worker, so shards were never published (not evicted: never saved).
+          shard=""; of=""
+          [ -f "$STORE/worker/shard.id" ] && { read -r shard of < "$STORE/worker/shard.id" || true; }
+          if [ -n "$shard" ]; then
             echo "shard=$shard" >> "$GITHUB_OUTPUT"
             echo "assigned shard $shard of $of"
           else
@@ -628,8 +632,12 @@ jobs:
         if: always()
         run: |
           STORE="$HOME/.cache/rebuck2"
-          if [ -f "$STORE/worker/shard.id" ]; then
-            read -r shard of < "$STORE/worker/shard.id"
+          # shard.id has no trailing newline: read returns rc=1 at EOF even
+          # after assigning - under bash -e that killed this step on EVERY
+          # worker, so shards were never published (not evicted: never saved).
+          shard=""; of=""
+          [ -f "$STORE/worker/shard.id" ] && { read -r shard of < "$STORE/worker/shard.id" || true; }
+          if [ -n "$shard" ]; then
             echo "shard=$shard" >> "$GITHUB_OUTPUT"
             echo "assigned shard $shard of $of"
           else
@@ -780,8 +788,12 @@ jobs:
         if: always()
         run: |
           STORE="$HOME/.cache/rebuck2"
-          if [ -f "$STORE/worker/shard.id" ]; then
-            read -r shard of < "$STORE/worker/shard.id"
+          # shard.id has no trailing newline: read returns rc=1 at EOF even
+          # after assigning - under bash -e that killed this step on EVERY
+          # worker, so shards were never published (not evicted: never saved).
+          shard=""; of=""
+          [ -f "$STORE/worker/shard.id" ] && { read -r shard of < "$STORE/worker/shard.id" || true; }
+          if [ -n "$shard" ]; then
             echo "shard=$shard" >> "$GITHUB_OUTPUT"
             echo "assigned shard $shard of $of"
           else
