@@ -1,5 +1,5 @@
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
-# Measured warm reader: era = reader #3 (29013436135, first green tri-OS lap).
+# TRUE warm reader: era = 29036454344 (sticky-packed, ALL 8 shards fat, cas-shard-0 at last).
 # The driver box runs three concurrent buck2 invocations (one per target OS,
 # separate isolation dirs) against the same localhost driver; rebuck2 routes
 # each action to a worker whose OS/arch matches the exec platform's REAPI
