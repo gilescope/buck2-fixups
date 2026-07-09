@@ -1,5 +1,5 @@
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
-# Convergence lap 2: era = 29043130822 (77m27s, hits 70-77%, unservable halved).
+# MEASUREMENT lap: era = 29052524702 (57m55s banking lap, first FLEET-COMPLETE pool via union sync).
 # The driver box runs three concurrent buck2 invocations (one per target OS,
 # separate isolation dirs) against the same localhost driver; rebuck2 routes
 # each action to a worker whose OS/arch matches the exec platform's REAPI
