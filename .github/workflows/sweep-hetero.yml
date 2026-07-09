@@ -440,7 +440,7 @@ jobs:
           # Public-repo artifacts don't evict and every run refreshes them.
           mkdir -p shard-in
           AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-shard-${{ matrix.shard }}&per_page=1" \
-            --jq '[.artifacts[] | select(.expired==false)][0].id // empty' 2>/dev/null || true)
+            --jq '[.artifacts[] | select(.expired==false and .workflow_run.head_repository_id == .workflow_run.repository_id)][0].id // empty' 2>/dev/null || true)
           if [ -n "$AID" ]; then
             gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AID/zip" > shard.zip \
               && unzip -o -q shard.zip -d shard-in && rm -f shard.zip \
@@ -465,6 +465,9 @@ jobs:
           a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
           ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
           echo "seeded shard manifest: $(cat seeded.manifest)"
+          # Blobs that crossed the artifact wall must prove themselves:
+          # a CAS filename IS the content sha256; mismatches are deleted.
+          ./ci/verify-cas.sh "$STORE/worker"
 
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         env:
@@ -598,7 +601,7 @@ jobs:
           # Public-repo artifacts don't evict and every run refreshes them.
           mkdir -p shard-in
           AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-shard-${{ matrix.shard }}&per_page=1" \
-            --jq '[.artifacts[] | select(.expired==false)][0].id // empty' 2>/dev/null || true)
+            --jq '[.artifacts[] | select(.expired==false and .workflow_run.head_repository_id == .workflow_run.repository_id)][0].id // empty' 2>/dev/null || true)
           if [ -n "$AID" ]; then
             gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AID/zip" > shard.zip \
               && unzip -o -q shard.zip -d shard-in && rm -f shard.zip \
@@ -623,6 +626,9 @@ jobs:
           a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
           ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
           echo "seeded shard manifest: $(cat seeded.manifest)"
+          # Blobs that crossed the artifact wall must prove themselves:
+          # a CAS filename IS the content sha256; mismatches are deleted.
+          ./ci/verify-cas.sh "$STORE/worker"
 
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         env:
@@ -751,7 +757,7 @@ jobs:
           # Public-repo artifacts don't evict and every run refreshes them.
           mkdir -p shard-in
           AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-shard-${{ matrix.shard }}&per_page=1" \
-            --jq '[.artifacts[] | select(.expired==false)][0].id // empty' 2>/dev/null || true)
+            --jq '[.artifacts[] | select(.expired==false and .workflow_run.head_repository_id == .workflow_run.repository_id)][0].id // empty' 2>/dev/null || true)
           if [ -n "$AID" ]; then
             gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AID/zip" > shard.zip \
               && unzip -o -q shard.zip -d shard-in && rm -f shard.zip \
@@ -776,6 +782,9 @@ jobs:
           a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
           ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
           echo "seeded shard manifest: $(cat seeded.manifest)"
+          # Blobs that crossed the artifact wall must prove themselves:
+          # a CAS filename IS the content sha256; mismatches are deleted.
+          ./ci/verify-cas.sh "$STORE/worker"
 
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         env:
