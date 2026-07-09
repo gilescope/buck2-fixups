@@ -43,7 +43,7 @@ env:
   # (index entries are HasMany-verified hints; serve path walks index ->
   # bloom claimants -> fan-out probe; failed hints evict). Pin to the
   # fixed engine.
-  REBUCK2_REV_PIN: db026136ec98cdf023544b242084ae9acca042ec
+  REBUCK2_REV_PIN: 3229370c24e90d4a3225d899f847415373d77d53
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
