@@ -43,7 +43,7 @@ env:
   # (index entries are HasMany-verified hints; serve path walks index ->
   # bloom claimants -> fan-out probe; failed hints evict). Pin to the
   # fixed engine.
-  REBUCK2_REV_PIN: c933ae104abe264b884378286d41dbd3992301d2
+  REBUCK2_REV_PIN: db026136ec98cdf023544b242084ae9acca042ec
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
@@ -499,6 +499,7 @@ jobs:
           timeout 18000 rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
             "${ADDR_FLAG[@]}" \
+            --preloaded-shard "${{ matrix.shard }}" \
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
@@ -654,6 +655,7 @@ jobs:
           timeout 18000 rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
             "${ADDR_FLAG[@]}" \
+            --preloaded-shard "${{ matrix.shard }}" \
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
@@ -813,6 +815,7 @@ jobs:
           "${T[@]}" rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
             "${ADDR_FLAG[@]}" \
+            --preloaded-shard "${{ matrix.shard }}" \
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
