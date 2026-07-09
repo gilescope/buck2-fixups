@@ -155,8 +155,8 @@ jobs:
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: snapshot-ac
-          key: rebuck2-ac-${{ github.run_id }}
-          restore-keys: rebuck2-ac-
+          key: rebuck2-ac2-${{ github.run_id }}
+          restore-keys: rebuck2-ac2-
 
       - name: Restore hetero monolith (transition fallback)
         if: steps.acsnap.outputs.cache-matched-key == ''
@@ -335,7 +335,7 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: snapshot-ac
-          key: rebuck2-ac-${{ github.run_id }}
+          key: rebuck2-ac2-${{ github.run_id }}
 
       - name: Dispatch stats
         if: always()
