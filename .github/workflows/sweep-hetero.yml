@@ -242,9 +242,12 @@ jobs:
             fi
             env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="$name" \
             BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat" \
-              ./build-all.sh //third-party: //third-party/conflict-rigs/... \
+              timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... \
               > "leg-$name.log" 2>&1
             local rc=$?
+            # 124 = the 250-min checkpoint cap: progress banks in teardown
+            # (finalize + shard/AC saves), the next run continues from it.
+            [ $rc -eq 124 ] && echo "leg $name hit the checkpoint cap (banked)"
             echo "leg $name exited rc=$rc"
             return $rc
           }
@@ -471,7 +474,13 @@ jobs:
           ADDR_FLAG=()
           [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          timeout 20400 rebuck2 worker \
+          # Canonical exec dirs (engine 61f9189+) on the same volume as the
+          # store, or keyed materializations cross devices (copy, not link).
+          if [ -n "${DEV_DRIVE:-}" ]; then
+            REBUCK2_EXEC_BASE="$(cygpath -w "$(cygpath -u "$DEV_DRIVE")/rb2x")"
+            export REBUCK2_EXEC_BASE
+          fi
+          timeout 18000 rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
             "${ADDR_FLAG[@]}" \
             --connect-wait-secs 1800 \
@@ -623,7 +632,7 @@ jobs:
           ADDR_FLAG=()
           [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
           STORE="$HOME/.cache/rebuck2"
-          timeout 20400 rebuck2 worker \
+          timeout 18000 rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
             "${ADDR_FLAG[@]}" \
             --connect-wait-secs 1800 \
@@ -776,8 +785,8 @@ jobs:
           ADDR_FLAG=()
           [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
           STORE="$HOME/.cache/rebuck2"
-          if command -v timeout >/dev/null 2>&1; then T=(timeout 20400)
-          elif command -v gtimeout >/dev/null 2>&1; then T=(gtimeout 20400)
+          if command -v timeout >/dev/null 2>&1; then T=(timeout 18000)
+          elif command -v gtimeout >/dev/null 2>&1; then T=(gtimeout 18000)
           else T=(); fi
           "${T[@]}" rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
