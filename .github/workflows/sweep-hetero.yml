@@ -37,6 +37,12 @@ env:
   USE_DEV_DRIVE: "1"
   REBUCK2_GIT: https://github.com/gilescope/rebuck
   REBUCK2_BRANCH: giles-iroh-re-punch
+  # Baseline-then-bisect pin: healing4 (branch tip = canonical exec dirs,
+  # 61f9189+) died in 10min on "driver CAS missing blob" exec failures -
+  # a signature healing3's engine (e3a985f) never showed in 6h. Pin the
+  # engine so the ONLY variable vs healing3 is the checkpoint-capped
+  # workflow; unpin once canonical dirs are cleared on the fixups rig.
+  REBUCK2_REV_PIN: e3a985f3c434ae182d6c58968d24fcf6a46cabf3
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
@@ -79,7 +85,7 @@ jobs:
 
       - name: Resolve rebuck2 rev
         id: rebuck2rev
-        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+        run: echo "rev=${REBUCK2_REV_PIN:-$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)}" >> "$GITHUB_OUTPUT"
 
       - name: Cache rebuck2 binary (keyed by rebuck commit)
         id: rebuck2bin
@@ -400,7 +406,7 @@ jobs:
           toolchain: "1.92.0"
       - name: Resolve rebuck2 rev
         id: rebuck2rev
-        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+        run: echo "rev=${REBUCK2_REV_PIN:-$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: rebuck2bin
         with:
@@ -564,7 +570,7 @@ jobs:
           toolchain: "1.92.0"
       - name: Resolve rebuck2 rev
         id: rebuck2rev
-        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+        run: echo "rev=${REBUCK2_REV_PIN:-$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: rebuck2bin
         with:
@@ -717,7 +723,7 @@ jobs:
           toolchain: "1.92.0"
       - name: Resolve rebuck2 rev
         id: rebuck2rev
-        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+        run: echo "rev=${REBUCK2_REV_PIN:-$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)}" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         id: rebuck2bin
         with:
