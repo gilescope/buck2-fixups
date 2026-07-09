@@ -11,7 +11,9 @@
 # roadmap #9: fleet-sharded snapshots — workers restore + save CAS shards;
 # the driver owns only the AC and dice. Finalize handoff post-build.
 # take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
-# goal run: healing reader 2 - mesh Get read-through: cross-shard inputs resolve.
+# goal run: healing 3 - full engine (validated AC, read-through, affinity,
+# parallel probes, canonical materialization). Heals writer5 seeds then the
+# next run is the measured reader.
 # - unservable results re-execute and self-heal the artifact-hosted shards.
 # size_bytes deferral, AC-only driver seed. The reader after this one is the
 # measured hetero time.
