@@ -37,12 +37,12 @@ env:
   USE_DEV_DRIVE: "1"
   REBUCK2_GIT: https://github.com/gilescope/rebuck
   REBUCK2_BRANCH: giles-iroh-re-punch
-  # Baseline-then-bisect pin: healing4 (branch tip = canonical exec dirs,
-  # 61f9189+) died in 10min on "driver CAS missing blob" exec failures -
-  # a signature healing3's engine (e3a985f) never showed in 6h. Pin the
-  # engine so the ONLY variable vs healing3 is the checkpoint-capped
-  # workflow; unpin once canonical dirs are cleared on the fixups rig.
-  REBUCK2_REV_PIN: e3a985f3c434ae182d6c58968d24fcf6a46cabf3
+  # healing5 (same storm on e3a985f) exonerated canonical exec dirs; the
+  # true cause was the stale provider index, fixed engine-side in 82f99b3
+  # (index entries are HasMany-verified hints; serve path walks index ->
+  # bloom claimants -> fan-out probe; failed hints evict). Pin to the
+  # fixed engine.
+  REBUCK2_REV_PIN: 82f99b3254eaa4bbec8b4cef6e746f8682c87ea4
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
@@ -349,12 +349,18 @@ jobs:
         if: always()
         run: |
           mkdir -p evtlog
+          # `log path` returns the LAST command - the dice page-out step
+          # runs between build and collection, so that grabbed 2KB
+          # hydration logs instead of the builds (healing5). Copy every
+          # invocation's log from the isolation dir instead.
           for name in win linux mac; do
             EL=$(buck2 --isolation-dir "$name" log path 2>/dev/null | tail -1 || true)
-            if [ -n "$EL" ] && [ -f "$EL" ]; then
-              cp "$EL" "evtlog/$name-$(basename "$EL")"
+            if [ -n "$EL" ] && [ -d "$(dirname "$EL")" ]; then
+              for f in "$(dirname "$EL")"/*.pb.zst; do
+                [ -f "$f" ] && cp "$f" "evtlog/$name-$(basename "$f")"
+              done
             else
-              echo "no event log for leg $name"
+              echo "no event logs for leg $name"
             fi
           done
           ls -lh evtlog/ || true
