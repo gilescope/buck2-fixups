@@ -11,17 +11,23 @@ set -euo pipefail
 store="${1:?store dir required}"
 [ -d "$store/cas" ] || { echo "verify-cas: no cas/ - nothing to verify"; exit 0; }
 
+# Prefer the engine's native verifier: portable, fast (a shell hasher
+# took 31min/95k blobs on windows) and immune to the parallel-pipe
+# interleave that made concurrent shell hashers delete good files.
+if command -v rebuck2 >/dev/null 2>&1; then
+  exec rebuck2 verify-store --store "$store"
+fi
+
 if command -v sha256sum >/dev/null 2>&1; then
   HASHER=sha256sum
 else
   HASHER="shasum -a 256" # macOS
 fi
 
-# Parallel batched hashing: per-file spawns cost ~100s/26k blobs, and a
-# single sequential hasher took 31 MINUTES over 95k blobs on a windows
-# runner (msys per-file open overhead) - which delayed that worker's
-# mesh join past the legs' opening validation storm and made its whole
-# shard range read as unservable. 8 hashers x 256-file batches.
+# Fallback path (no engine on PATH): sequential batched hashing. NEVER
+# parallelize hashers onto one pipe - concurrent writers interleave
+# beyond PIPE_BUF and the parser deleted GOOD files as mismatches
+# (run 29082052036 killed a whole mac fleet that way).
 ok=0 bad=0
 # shellcheck disable=SC2086 # HASHER intentionally word-splits (shasum -a 256)
 while IFS= read -r line; do
@@ -34,7 +40,7 @@ while IFS= read -r line; do
     rm -f "$f"
     bad=$((bad + 1))
   fi
-done < <(find "$store/cas" -type f -print0 | xargs -0 -r -P 8 -n 256 $HASHER)
+done < <(find "$store/cas" -type f -print0 | xargs -0 -r -n 256 $HASHER)
 
 echo "verify-cas: $ok verified, $bad rejected"
 [ "$bad" -eq 0 ] || echo "verify-cas: WARNING - rejected blobs suggest a poisoned or corrupt shard artifact" >&2
