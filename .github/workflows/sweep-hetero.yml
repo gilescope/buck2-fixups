@@ -54,7 +54,7 @@ env:
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
   # missing platform still stalls only its own leg's queue.
-  QUORUM_WORKERS: "3"
+  QUORUM_WORKERS: "8"
 
 jobs:
   driver:
@@ -255,7 +255,7 @@ jobs:
             fi
             env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="$name" \
             BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat" \
-              timeout 15000 ./build-all.sh //third-party:serde_json //third-party:tokio //third-party:spin //third-party:ahash //third-party:hex \
+              timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... \
               > "leg-$name.log" 2>&1
             local rc=$?
             # 124 = the 250-min checkpoint cap: progress banks in teardown
