@@ -49,7 +49,7 @@ env:
   # (index entries are HasMany-verified hints; serve path walks index ->
   # bloom claimants -> fan-out probe; failed hints evict). Pin to the
   # fixed engine.
-  REBUCK2_REV_PIN: e2bc99bde69b2c99bf80b6ef5f4f0459849f60de
+  REBUCK2_REV_PIN: 08db7dc30325e34fe4362787b5ae8400a2cdd5f0
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
@@ -316,7 +316,7 @@ jobs:
         if: always()
         run: |
           touch finalize.signal
-          for _ in $(seq 1 200); do
+          for _ in $(seq 1 40); do
             [ -f finalize.signal.done ] && { echo "finalized: $(cat finalize.signal.done) workers"; exit 0; }
             kill -0 "$(cat driver.pid)" 2>/dev/null || { echo "driver gone before finalize"; exit 0; }
             sleep 5
