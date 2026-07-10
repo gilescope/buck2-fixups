@@ -1,4 +1,6 @@
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
+# WARM READER on the first clean-era pool (banked by 29089941213,
+# 68m52s: quorum 50s / legs 64m33s / finalize 2m05s).
 # Lap N+1: parallel verify-cas (the 31-min windows sequential hash was
 # the join race behind BOTH the 23k-unservable class and the 31-min
 # win-leg stall) + engine 835401b-era (memo + sync-24).
