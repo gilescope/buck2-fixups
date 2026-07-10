@@ -17,8 +17,11 @@ else
   HASHER="shasum -a 256" # macOS
 fi
 
-# One hasher invocation per batch, not per file: 26k per-file process
-# spawns cost ~100s/lap; batched xargs hashes the same store in seconds.
+# Parallel batched hashing: per-file spawns cost ~100s/26k blobs, and a
+# single sequential hasher took 31 MINUTES over 95k blobs on a windows
+# runner (msys per-file open overhead) - which delayed that worker's
+# mesh join past the legs' opening validation storm and made its whole
+# shard range read as unservable. 8 hashers x 256-file batches.
 ok=0 bad=0
 # shellcheck disable=SC2086 # HASHER intentionally word-splits (shasum -a 256)
 while IFS= read -r line; do
@@ -31,7 +34,7 @@ while IFS= read -r line; do
     rm -f "$f"
     bad=$((bad + 1))
   fi
-done < <(find "$store/cas" -type f -print0 | xargs -0 -r $HASHER)
+done < <(find "$store/cas" -type f -print0 | xargs -0 -r -P 8 -n 256 $HASHER)
 
 echo "verify-cas: $ok verified, $bad rejected"
 [ "$bad" -eq 0 ] || echo "verify-cas: WARNING - rejected blobs suggest a poisoned or corrupt shard artifact" >&2
