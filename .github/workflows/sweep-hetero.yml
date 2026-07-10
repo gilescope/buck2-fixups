@@ -1,5 +1,8 @@
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
-# MEASUREMENT lap: era = 29052524702 (57m55s banking lap, first FLEET-COMPLETE pool via union sync).
+# ITERATION MODE: tiny curated target list (serde_json/tokio/spin/ahash/
+# hex closures, ~150 crates) so a lap is minutes, not an hour - optimise
+# the machinery here, then crank the list back to //third-party: +
+# conflict rigs for the full sweep.
 # The driver box runs three concurrent buck2 invocations (one per target OS,
 # separate isolation dirs) against the same localhost driver; rebuck2 routes
 # each action to a worker whose OS/arch matches the exec platform's REAPI
@@ -43,12 +46,12 @@ env:
   # (index entries are HasMany-verified hints; serve path walks index ->
   # bloom claimants -> fan-out probe; failed hints evict). Pin to the
   # fixed engine.
-  REBUCK2_REV_PIN: 2206cb6012851e18a07c51f91e481518164f4059
+  REBUCK2_REV_PIN: ddc23543785d124ade28892a9157234255e4cb4b
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
   # missing platform still stalls only its own leg's queue.
-  QUORUM_WORKERS: "8"
+  QUORUM_WORKERS: "3"
 
 jobs:
   driver:
@@ -249,7 +252,7 @@ jobs:
             fi
             env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="$name" \
             BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat" \
-              timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... \
+              timeout 15000 ./build-all.sh //third-party:serde_json //third-party:tokio //third-party:spin //third-party:ahash //third-party:hex \
               > "leg-$name.log" 2>&1
             local rc=$?
             # 124 = the 250-min checkpoint cap: progress banks in teardown
