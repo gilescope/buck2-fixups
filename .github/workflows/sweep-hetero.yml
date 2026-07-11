@@ -51,7 +51,7 @@ env:
   # (index entries are HasMany-verified hints; serve path walks index ->
   # bloom claimants -> fan-out probe; failed hints evict). Pin to the
   # fixed engine.
-  REBUCK2_REV_PIN: 08db7dc30325e34fe4362787b5ae8400a2cdd5f0
+  REBUCK2_REV_PIN: d3a031d9e4a39cce306a73d62c90d2d6f60cc9a4
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
@@ -198,7 +198,7 @@ jobs:
       - name: Start driver (barrier on the full mixed fleet)
         run: |
           STORE="$HOME/.cache/rebuck2"
-          rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures \
+          rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures --locality \
             --session "hetero-$GITHUB_RUN_ID" \
             --addr-file driver-addr.json \
             --finalize-file finalize.signal \
