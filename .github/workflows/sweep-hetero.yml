@@ -1,4 +1,4 @@
-# Reliable-finalize lap: redundant shard banking (keeps era clean lap-over-lap). Prefetch REVERTED (over-pulled 572k=monolith).
+# Re-bank lap: 180s finalize deadline for complete 8/8 (was 4/8). AC clean (94u); shards 5-7 missing -> re-bank this lap.
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
 # WARM READER on the first clean-era pool (banked by 29089941213,
 # 68m52s: quorum 50s / legs 64m33s / finalize 2m05s).
@@ -52,7 +52,7 @@ env:
   # (index entries are HasMany-verified hints; serve path walks index ->
   # bloom claimants -> fan-out probe; failed hints evict). Pin to the
   # fixed engine.
-  REBUCK2_REV_PIN: 2cd60e0fec3d5462c7591a4e4113e781e5246691
+  REBUCK2_REV_PIN: 54bcf70bfacdc2227143f2e401bdaf5113752dc7
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
