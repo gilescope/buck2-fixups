@@ -1,4 +1,4 @@
-# Convergence lap 2: 41m->23m22s (mac 6m40s, linux 18m41s pole). unservable 770, remote ~130. Richer hot-CAS each lap.
+# Convergence lap 3: 23m->14m01s (legs 9m50s ALL sub-10; finalize 140s was the overhead). + scrub-via-memo + 45s ack.
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
 # WARM READER on the first clean-era pool (banked by 29089941213,
 # 68m52s: quorum 50s / legs 64m33s / finalize 2m05s).
@@ -52,7 +52,7 @@ env:
   # (index entries are HasMany-verified hints; serve path walks index ->
   # bloom claimants -> fan-out probe; failed hints evict). Pin to the
   # fixed engine.
-  REBUCK2_REV_PIN: f9de30f3b90a14fbe972cfb305391b84ebfd50cd
+  REBUCK2_REV_PIN: e23f466dc2a9e2ab02bb8dce5fc62bd42a79fbf2
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
