@@ -1,3 +1,4 @@
+# Warm locality reader (era from 29146935983: served_total 0.12 GiB).
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
 # WARM READER on the first clean-era pool (banked by 29089941213,
 # 68m52s: quorum 50s / legs 64m33s / finalize 2m05s).
