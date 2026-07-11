@@ -1,4 +1,4 @@
-# HOT-CAS READING lap: driver seeds metadata local (banked by 29150517612); client downloads should be local-disk not 84 KiB/s.
+# Convergence lap: clean era (unservable 1374) + richer hot-CAS. mac hit 11m31s; chasing all-legs-fast.
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
 # WARM READER on the first clean-era pool (banked by 29089941213,
 # 68m52s: quorum 50s / legs 64m33s / finalize 2m05s).
