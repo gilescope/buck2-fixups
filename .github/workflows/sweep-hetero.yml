@@ -1,4 +1,4 @@
-# Warm locality reader (era from 29146935983: served_total 0.12 GiB).
+# Warm lap 2: engine f9de30f (memo+scrub+locality); watch metadata-download convergence.
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
 # WARM READER on the first clean-era pool (banked by 29089941213,
 # 68m52s: quorum 50s / legs 64m33s / finalize 2m05s).
@@ -52,7 +52,7 @@ env:
   # (index entries are HasMany-verified hints; serve path walks index ->
   # bloom claimants -> fan-out probe; failed hints evict). Pin to the
   # fixed engine.
-  REBUCK2_REV_PIN: d3a031d9e4a39cce306a73d62c90d2d6f60cc9a4
+  REBUCK2_REV_PIN: f9de30f3b90a14fbe972cfb305391b84ebfd50cd
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
