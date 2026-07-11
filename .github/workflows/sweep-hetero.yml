@@ -176,17 +176,28 @@ jobs:
           key: rebuck2-store-hetero-${{ github.run_id }}
           restore-keys: rebuck2-store-hetero-
 
+      # Driver hot-CAS: the small pipelining metadata (rmetas, dirs
+      # argsfiles) the driver relayed to buck2 clients last lap. Seeding
+      # it locally turns client downloads from 84 KiB/s cross-mesh relays
+      # into local-disk reads - the client-download bottleneck.
+      - name: Restore driver hot-CAS
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot-hotcas
+          key: rebuck2-hotcas-${{ github.run_id }}
+          restore-keys: rebuck2-hotcas-
+
       - name: Seed the driver store
         run: |
           STORE="$HOME/.cache/rebuck2"
           mkdir -p "$STORE/driver"
-          for t in snapshot-ac/ac.tar.zst snapshot-hetero/bulk.tar.zst snapshot-hetero/tail.tar.zst; do
+          for t in snapshot-ac/ac.tar.zst snapshot-hotcas/hotcas.tar.zst snapshot-hetero/bulk.tar.zst snapshot-hetero/tail.tar.zst; do
             if [ -f "$t" ]; then
               zstd -d --long=27 < "$t" | tar -x -C "$STORE/driver"
               echo "seeded from $t ($(du -h "$t" | cut -f1))"
             fi
           done
-          rm -rf snapshot-ac snapshot-hetero
+          rm -rf snapshot-ac snapshot-hotcas snapshot-hetero
           # AC-only manifest: unchanged AC at run end = skip pack + upload.
           ./ci/store-snapshot.sh manifest "$STORE/driver" ac > seeded.manifest
           echo "seeded AC manifest: $(cat seeded.manifest)"
@@ -346,6 +357,27 @@ jobs:
         with:
           path: snapshot-ac
           key: rebuck2-ac2-${{ github.run_id }}
+
+      # Bank the driver's accumulated hot metadata (CAS blobs <= 256KB:
+      # rmetas + dirs argsfiles, never the MB-scale rlibs which live on
+      # worker shards). ~70MB, compresses tiny.
+      - name: Pack driver hot-CAS
+        id: hotpack
+        if: always()
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          if [ ! -d "$STORE/driver/cas" ]; then echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
+          mkdir -p snapshot-hotcas
+          ( cd "$STORE/driver" && find cas -type f -size -262144c -print0 \
+            | tar --null -c -T - ) | zstd -T0 --long=27 -8 > snapshot-hotcas/hotcas.tar.zst
+          ls -lh snapshot-hotcas/ || true
+
+      - name: Save driver hot-CAS
+        if: always() && steps.hotpack.outputs.skip != '1'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot-hotcas
+          key: rebuck2-hotcas-${{ github.run_id }}
 
       - name: Dispatch stats
         if: always()
