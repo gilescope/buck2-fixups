@@ -1,4 +1,4 @@
-# Convergence lap: clean era (unservable 1374) + richer hot-CAS. mac hit 11m31s; chasing all-legs-fast.
+# Convergence lap 2: 41m->23m22s (mac 6m40s, linux 18m41s pole). unservable 770, remote ~130. Richer hot-CAS each lap.
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
 # WARM READER on the first clean-era pool (banked by 29089941213,
 # 68m52s: quorum 50s / legs 64m33s / finalize 2m05s).
