@@ -1,4 +1,4 @@
-# Convergence lap 3: 23m->14m01s (legs 9m50s ALL sub-10; finalize 140s was the overhead). + scrub-via-memo + 45s ack.
+# Eager-prefetch lap: driver bulk-pulls metadata at startup (kills the mesh-latency variance). Lap 4 regressed to 27m (era re-poison + slow mesh).
 # Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
 # WARM READER on the first clean-era pool (banked by 29089941213,
 # 68m52s: quorum 50s / legs 64m33s / finalize 2m05s).
@@ -52,7 +52,7 @@ env:
   # (index entries are HasMany-verified hints; serve path walks index ->
   # bloom claimants -> fan-out probe; failed hints evict). Pin to the
   # fixed engine.
-  REBUCK2_REV_PIN: e23f466dc2a9e2ab02bb8dce5fc62bd42a79fbf2
+  REBUCK2_REV_PIN: f1243e48c4b7b5c94ae2158463a2c74390f5bef2
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
@@ -210,7 +210,7 @@ jobs:
       - name: Start driver (barrier on the full mixed fleet)
         run: |
           STORE="$HOME/.cache/rebuck2"
-          rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures --locality \
+          rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures --locality --prefetch-metadata \
             --session "hetero-$GITHUB_RUN_ID" \
             --addr-file driver-addr.json \
             --finalize-file finalize.signal \
