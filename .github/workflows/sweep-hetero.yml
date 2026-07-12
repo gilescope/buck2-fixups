@@ -263,20 +263,23 @@ jobs:
         env:
           SKIP_EXPECTED: "1"
         run: |
+          # SINGLE DAEMON: one isolation dir + one exec-platform
+          # registration (hetero-all) for all three legs. Routing comes
+          # from per-target exec-compatibility (toolchain anchors +
+          # archive unpack pin), not per-invocation registration. One
+          # buck-out means the legs share unpack action digests - the
+          # completion of the cross-leg dedupe (the per-leg isolation
+          # prefix split them; run 29200907975).
           leg() {
             local name="$1" plat="$2" tplat="$3" explat="$4"
             local dice=()
             if [ -n "${FORK_REV:-}" ]; then
-              mkdir -p "dice-snap/$name"
-              dice=(BUCK2_DICE_DB_PATH="$GITHUB_WORKSPACE/dice-snap/$name/db"
-                    BUCK2_DICE_SNAPSHOT_PATH="$GITHUB_WORKSPACE/dice-snap/$name/graph.meta"
-                    BUCK2_DICE_SNAPSHOT_SEED="$FORK_REV-$name-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}")
+              mkdir -p "dice-snap/sweep"
+              dice=(BUCK2_DICE_DB_PATH="$GITHUB_WORKSPACE/dice-snap/sweep/db"
+                    BUCK2_DICE_SNAPSHOT_PATH="$GITHUB_WORKSPACE/dice-snap/sweep/graph.meta"
+                    BUCK2_DICE_SNAPSHOT_SEED="$FORK_REV-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**') }}")
             fi
-            # archive_unpack_constraints: dedupe crate downloads/unpacks
-            # across the three legs (prelude//http_archive:cfg.bzl) - the
-            # hetero-* registrations carry the shared re-exec-unpack
-            # platform those actions pin to.
-            env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="$name" \
+            env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="sweep" \
             BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat -c buck2.archive_unpack_constraints=fixups//platforms:unpack-exec-linux" \
               timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... \
               > "leg-$name.log" 2>&1
@@ -290,9 +293,9 @@ jobs:
           touch leg-win.log leg-linux.log leg-mac.log
           tail -F leg-win.log leg-linux.log leg-mac.log &
           TAIL=$!
-          leg win   Windows-x86_64 t-win   hetero-win & WIN=$!
-          leg linux Linux-x86_64   t-linux hetero-linux & LIN=$!
-          leg mac   Darwin-arm64   t-mac   hetero-mac   & MAC=$!
+          leg win   Windows-x86_64 t-win   hetero-all & WIN=$!
+          leg linux Linux-x86_64   t-linux hetero-all & LIN=$!
+          leg mac   Darwin-arm64   t-mac   hetero-all   & MAC=$!
           rc=0
           wait $WIN || { echo "WIN LEG FAILED"; rc=1; }
           wait $LIN || { echo "LINUX LEG FAILED"; rc=1; }
@@ -307,9 +310,7 @@ jobs:
       - name: Save dice snapshots (page-out per leg)
         if: always() && steps.forkbin.outputs.rev != ''
         run: |
-          for name in win linux mac; do
-            buck2 --isolation-dir "$name" debug hydration page-out || echo "page-out $name failed (non-fatal)"
-          done
+          buck2 --isolation-dir sweep debug hydration page-out || echo "page-out failed (non-fatal)"
           du -sh dice-snap/* 2>/dev/null || true
 
       - name: Save dice snapshot cache
@@ -404,16 +405,15 @@ jobs:
           # runs between build and collection, so that grabbed 2KB
           # hydration logs instead of the builds (healing5). Copy every
           # invocation's log from the isolation dir instead.
-          for name in win linux mac; do
-            EL=$(buck2 --isolation-dir "$name" log path 2>/dev/null | tail -1 || true)
-            if [ -n "$EL" ] && [ -d "$(dirname "$EL")" ]; then
-              for f in "$(dirname "$EL")"/*.pb.zst; do
-                [ -f "$f" ] && cp "$f" "evtlog/$name-$(basename "$f")"
-              done
-            else
-              echo "no event logs for leg $name"
-            fi
-          done
+          # Single daemon: every leg's invocations share one isolation dir.
+          EL=$(buck2 --isolation-dir sweep log path 2>/dev/null | tail -1 || true)
+          if [ -n "$EL" ] && [ -d "$(dirname "$EL")" ]; then
+            for f in "$(dirname "$EL")"/*.pb.zst; do
+              [ -f "$f" ] && cp "$f" "evtlog/sweep-$(basename "$f")"
+            done
+          else
+            echo "no event logs"
+          fi
           ls -lh evtlog/ || true
 
       - name: Upload logs

@@ -159,3 +159,18 @@ re_execution_platforms(
     platforms = [":re-exec-mac", ":re-exec-unpack"],
     visibility = ["PUBLIC"],
 )
+
+# ── Single-daemon experiment: one registration for all legs ─────────────
+# Routing must come from per-target exec-compatibility (toolchains, unpack
+# pin), NOT registration order: order only breaks ties among compatible
+# platforms.
+re_execution_platforms(
+    name = "hetero-all",
+    platforms = [
+        ":re-exec-win-remote",
+        ":re-exec-linux",
+        ":re-exec-mac",
+        ":re-exec-unpack",
+    ],
+    visibility = ["PUBLIC"],
+)
