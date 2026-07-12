@@ -47,12 +47,11 @@ env:
   USE_DEV_DRIVE: "1"
   REBUCK2_GIT: https://github.com/gilescope/rebuck
   REBUCK2_BRANCH: giles-iroh-re-punch
-  # healing5 (same storm on e3a985f) exonerated canonical exec dirs; the
-  # true cause was the stale provider index, fixed engine-side in 82f99b3
-  # (index entries are HasMany-verified hints; serve path walks index ->
-  # bloom claimants -> fan-out probe; failed hints evict). Pin to the
-  # fixed engine.
-  REBUCK2_REV_PIN: 25a57e1ebc5293f997673baf8111d7aeaf135c52
+  # Parallel-staging engine: batched GetMany prefetch + 64-wide
+  # materialize (36a67ad) and the six-site batching sweep (ce0c544) -
+  # the 10-22min silent staging stalls behind run 29160244348's 72min
+  # mac leg. Staging is now logged: [action] staging <label> (n files).
+  REBUCK2_REV_PIN: ce0c5440ea7e1cadda05deca57a04adda46e7cf7
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
