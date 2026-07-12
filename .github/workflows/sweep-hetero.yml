@@ -155,6 +155,11 @@ jobs:
           git -C "$RUNNER_TEMP/fork-src" checkout --quiet FETCH_HEAD
           rm -rf prelude
           cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
+          # The fork prelude just REPLACED the vendored one, discarding
+          # repo-local prelude changes. Re-apply them; fail loudly rather
+          # than silently building without (run 29198759978 no-op'd the
+          # unpack dedupe exactly this way).
+          git apply --verbose ci/prelude-unpack-dedupe.patch
 
       # Roadmap #9: the driver seeds only the ACTION CACHE. CAS shards
       # restore on the WORKERS (parallel, during the join window); bloom
