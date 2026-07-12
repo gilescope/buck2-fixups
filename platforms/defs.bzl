@@ -8,6 +8,9 @@ def _re_execution_platform_impl(ctx: AnalysisContext) -> list[Provider]:
     constraints = dict()
     constraints.update(ctx.attrs.cpu_configuration[ConfigurationInfo].constraints)
     constraints.update(ctx.attrs.os_configuration[ConfigurationInfo].constraints)
+    for c in ctx.attrs.extra_constraints:
+        info = c[ConstraintValueInfo]
+        constraints[info.setting.label] = info
     cfg = ConfigurationInfo(constraints = constraints, values = {})
 
     name = ctx.label.raw_target()
@@ -50,5 +53,31 @@ re_execution_platform = rule(
             value = attrs.string(),
             default = {},
         ),
+        # Marker constraint values baked into this platform's configuration
+        # (e.g. the archive-unpack pin, so exec_compatible_with can select
+        # exactly this platform out of a multi-platform registration).
+        "extra_constraints": attrs.list(
+            attrs.dep(providers = [ConstraintValueInfo]),
+            default = [],
+        ),
+    },
+)
+
+def _re_execution_platforms_impl(ctx: AnalysisContext) -> list[Provider]:
+    return [
+        DefaultInfo(),
+        ExecutionPlatformRegistrationInfo(
+            platforms = [d[ExecutionPlatformInfo] for d in ctx.attrs.platforms],
+        ),
+    ]
+
+# Ordered multi-platform registration: resolution picks the FIRST platform
+# compatible with a target's exec constraints. Legs list their own platform
+# first (business as usual for unconstrained actions) and the shared unpack
+# platform after it (reached only via exec_compatible_with pinning).
+re_execution_platforms = rule(
+    impl = _re_execution_platforms_impl,
+    attrs = {
+        "platforms": attrs.list(attrs.dep(providers = [ExecutionPlatformInfo])),
     },
 )

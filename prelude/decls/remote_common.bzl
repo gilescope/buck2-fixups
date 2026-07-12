@@ -11,6 +11,7 @@
 # the generated docs, and so those should be verified to be accurate and
 # well-formatted (and then delete this TODO)
 
+load("@prelude//http_archive:cfg.bzl", "archive_exec_deps_default")
 load("@prelude//http_archive:exec_deps.bzl", "HttpArchiveExecDeps")
 load(":common.bzl", "validate_uri")
 
@@ -65,7 +66,7 @@ def _unarchive_args():
         ),
         "exec_deps": attrs.exec_dep(
             providers = [HttpArchiveExecDeps],
-            default = "prelude//http_archive/tools:exec_deps",
+            default = archive_exec_deps_default(),
             doc = """
             When using http_archive as an anon target, the rule invoking the
             anon target needs to mirror this attribute into its own
