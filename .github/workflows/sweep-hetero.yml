@@ -47,11 +47,12 @@ env:
   USE_DEV_DRIVE: "1"
   REBUCK2_GIT: https://github.com/gilescope/rebuck
   REBUCK2_BRANCH: giles-iroh-re-punch
-  # Parallel-staging engine: batched GetMany prefetch + 64-wide
-  # materialize (36a67ad) and the six-site batching sweep (ce0c544) -
-  # the 10-22min silent staging stalls behind run 29160244348's 72min
-  # mac leg. Staging is now logged: [action] staging <label> (n files).
-  REBUCK2_REV_PIN: ce0c5440ea7e1cadda05deca57a04adda46e7cf7
+  # Win-leg staging fs-latency fixes (58bd7fa): concurrent mkdir pass
+  # (windows ships __srcs dereferenced - 172 huge-input actions at
+  # ~15ms/fs-op) + rename-aside background delete of the previous
+  # flavour's forest. Prior lap 29194749613: 24m48s, mac 5m35s,
+  # win 15m25s (long pole), first 8/8 shard bank.
+  REBUCK2_REV_PIN: 58bd7fa50a872ca093f60010e405355f75d018ce
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
