@@ -12,6 +12,7 @@
 # well-formatted (and then delete this TODO)
 
 load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
+load("@prelude//http_archive:cfg.bzl", "archive_unpack_transition")
 load("@prelude//transitions:constraint_overrides.bzl", "constraint_overrides")
 load(":common.bzl", "OnDuplicateEntry", "buck", "prelude_rule", "validate_uri")
 load(":genrule_common.bzl", "genrule_common")
@@ -951,6 +952,10 @@ http_archive = prelude_rule(
         | buck.labels_arg()
         | buck.contacts_arg()
     ),
+    # Archive bytes are configuration-independent; dedupe the download and
+    # unpack across target platforms (no-op unless
+    # buck2.archive_unpack_constraints is set). See http_archive/cfg.bzl.
+    cfg = archive_unpack_transition,
 )
 
 http_file = prelude_rule(
