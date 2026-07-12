@@ -47,12 +47,12 @@ env:
   USE_DEV_DRIVE: "1"
   REBUCK2_GIT: https://github.com/gilescope/rebuck
   REBUCK2_BRANCH: giles-iroh-re-punch
-  # Win-leg staging fs-latency fixes (58bd7fa): concurrent mkdir pass
-  # (windows ships __srcs dereferenced - 172 huge-input actions at
-  # ~15ms/fs-op) + rename-aside background delete of the previous
-  # flavour's forest. Prior lap 29194749613: 24m48s, mac 5m35s,
-  # win 15m25s (long pole), first 8/8 shard bank.
-  REBUCK2_REV_PIN: 58bd7fa50a872ca093f60010e405355f75d018ce
+  # Concurrent output-tree ingestion (4c402ee: the 78-254s http_archive
+  # mega-unpack tails on every leg's critical path) + worker liveness
+  # watchdog / driver exit broadcast (6c676dc: win worker 1 idled 1h+
+  # past the driver, run 29194749613). Prior lap 29195973667: build
+  # 8m44s, win staging p90 18.7s -> 3s, second straight 8/8 bank.
+  REBUCK2_REV_PIN: 6c676dc957c5ed73d7b6f976a9e47c263f429a66
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
