@@ -267,8 +267,12 @@ jobs:
                     BUCK2_DICE_SNAPSHOT_PATH="$GITHUB_WORKSPACE/dice-snap/$name/graph.meta"
                     BUCK2_DICE_SNAPSHOT_SEED="$FORK_REV-$name-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}")
             fi
+            # archive_unpack_constraints: dedupe crate downloads/unpacks
+            # across the three legs (prelude//http_archive:cfg.bzl) - the
+            # hetero-* registrations carry the shared re-exec-unpack
+            # platform those actions pin to.
             env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="$name" \
-            BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat" \
+            BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat -c buck2.archive_unpack_constraints=fixups//platforms:unpack-exec-linux" \
               timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... \
               > "leg-$name.log" 2>&1
             local rc=$?
@@ -281,9 +285,9 @@ jobs:
           touch leg-win.log leg-linux.log leg-mac.log
           tail -F leg-win.log leg-linux.log leg-mac.log &
           TAIL=$!
-          leg win   Windows-x86_64 t-win   re-exec-win-remote & WIN=$!
-          leg linux Linux-x86_64   t-linux re-exec-linux & LIN=$!
-          leg mac   Darwin-arm64   t-mac   re-exec-mac   & MAC=$!
+          leg win   Windows-x86_64 t-win   hetero-win & WIN=$!
+          leg linux Linux-x86_64   t-linux hetero-linux & LIN=$!
+          leg mac   Darwin-arm64   t-mac   hetero-mac   & MAC=$!
           rc=0
           wait $WIN || { echo "WIN LEG FAILED"; rc=1; }
           wait $LIN || { echo "LINUX LEG FAILED"; rc=1; }
