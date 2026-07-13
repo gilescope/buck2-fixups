@@ -355,6 +355,17 @@ def _cargo_buildscript_impl(ctx: AnalysisContext) -> list[Provider]:
         cmd,
         env = env,
         category = "buildscript",
+        # Build scripts are non-hermetic: they probe the host (openssl version,
+        # compiler features), shell out to cc/cmake, and read absolute system
+        # paths (/usr/bin/clang, /usr/include/openssl) that aren't declared
+        # inputs. Under distributed remote execution they run on a worker with a
+        # different/sandboxed environment and misbehave -- openssl-sys's version
+        # probe misdetects and downstream `openssl` references absent ffi symbols;
+        # secp256k1-sys's vendored wasm C compile fails. Pin them to the driver so
+        # they see a consistent toolchain; the hermetic rustc/cxx compiles they
+        # feed still distribute, and their outputs upload to the RE cache for the
+        # remote consumers.
+        local_only = True,
     )
 
     return [
