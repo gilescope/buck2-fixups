@@ -205,8 +205,14 @@ jobs:
           mkdir -p "$STORE/driver"
           for t in snapshot-ac/ac.tar.zst snapshot-hotcas/hotcas.tar.zst snapshot-hetero/bulk.tar.zst snapshot-hetero/tail.tar.zst; do
             if [ -f "$t" ]; then
-              zstd -d --long=27 < "$t" | tar -x -C "$STORE/driver"
-              echo "seeded from $t ($(du -h "$t" | cut -f1))"
+              # Corrupt snapshot (a failed lap's always()-pack banked a
+              # truncated file) = cold start for that piece, never job
+              # death: run 29280964336 died seeding a 312-BYTE ac.tar.zst.
+              if zstd -d --long=27 < "$t" | tar -x -C "$STORE/driver"; then
+                echo "seeded from $t ($(du -h "$t" | cut -f1))"
+              else
+                echo "WARNING: corrupt snapshot $t - skipping (cold start)"
+              fi
             fi
           done
           rm -rf snapshot-ac snapshot-hotcas snapshot-hetero
@@ -359,6 +365,14 @@ jobs:
         if: always()
         run: |
           STORE="$HOME/.cache/rebuck2"
+          # always() exists to bank checkpoint-capped laps - but a lap that
+          # died before SEEDING has nothing to bank, and packing its empty
+          # store published 300-byte snapshots that shadowed the good ones
+          # via restore-keys (poisoned four laps' successors).
+          if [ ! -f seeded.manifest ]; then
+            echo "[snapshot] store was never seeded - nothing to bank"
+            exit 0
+          fi
           if ./ci/store-snapshot.sh unchanged "$STORE/driver" seeded.manifest ac; then
             echo "[snapshot] AC unchanged since seed — skipping pack + upload"
             echo "skip=1" >> "$GITHUB_OUTPUT"
