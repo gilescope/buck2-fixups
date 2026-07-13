@@ -108,7 +108,14 @@ jobs:
         if: steps.rebuck2bin.outputs.cache-hit != 'true'
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
-        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+        # Codeload tarball, not a git clone: a pin bump makes every runner
+        # install at once, and 13 simultaneous git-protocol clones of one
+        # small repo hit spurious EOFs fleet-wide (run 29279904483). The
+        # tarball path is plain HTTPS with honest curl retries.
+        run: |
+          curl -fsSL --retry 8 --retry-all-errors             "${REBUCK2_GIT/github.com/codeload.github.com}/tar.gz/$REBUCK2_REV" | tar xz
+          cargo install --locked --path "rebuck-$REBUCK2_REV/rebuck2"
+          rm -rf "rebuck-$REBUCK2_REV"
 
       # DICE ladder, hetero edition: the driver box is linux, so one linux
       # fork binary serves all three legs (target platforms differ; the
@@ -473,7 +480,14 @@ jobs:
         if: steps.rebuck2bin.outputs.cache-hit != 'true'
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
-        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+        # Codeload tarball, not a git clone: a pin bump makes every runner
+        # install at once, and 13 simultaneous git-protocol clones of one
+        # small repo hit spurious EOFs fleet-wide (run 29279904483). The
+        # tarball path is plain HTTPS with honest curl retries.
+        run: |
+          curl -fsSL --retry 8 --retry-all-errors             "${REBUCK2_GIT/github.com/codeload.github.com}/tar.gz/$REBUCK2_REV" | tar xz
+          cargo install --locked --path "rebuck-$REBUCK2_REV/rebuck2"
+          rm -rf "rebuck-$REBUCK2_REV"
       - name: Mount ReFS Dev Drive
         if: env.USE_DEV_DRIVE == '1'
         uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
@@ -641,7 +655,14 @@ jobs:
         if: steps.rebuck2bin.outputs.cache-hit != 'true'
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
-        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+        # Codeload tarball, not a git clone: a pin bump makes every runner
+        # install at once, and 13 simultaneous git-protocol clones of one
+        # small repo hit spurious EOFs fleet-wide (run 29279904483). The
+        # tarball path is plain HTTPS with honest curl retries.
+        run: |
+          curl -fsSL --retry 8 --retry-all-errors             "${REBUCK2_GIT/github.com/codeload.github.com}/tar.gz/$REBUCK2_REV" | tar xz
+          cargo install --locked --path "rebuck-$REBUCK2_REV/rebuck2"
+          rm -rf "rebuck-$REBUCK2_REV"
       # Roadmap #9: preload this worker's slice of the CAS during the join
       # window; bloom gossip announces it, the driver's HasMany verifies it.
       - name: Restore cas shard ${{ matrix.shard }} (newest artifact, any run)
@@ -798,7 +819,14 @@ jobs:
         if: steps.rebuck2bin.outputs.cache-hit != 'true'
         env:
           REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
-        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+        # Codeload tarball, not a git clone: a pin bump makes every runner
+        # install at once, and 13 simultaneous git-protocol clones of one
+        # small repo hit spurious EOFs fleet-wide (run 29279904483). The
+        # tarball path is plain HTTPS with honest curl retries.
+        run: |
+          curl -fsSL --retry 8 --retry-all-errors             "${REBUCK2_GIT/github.com/codeload.github.com}/tar.gz/$REBUCK2_REV" | tar xz
+          cargo install --locked --path "rebuck-$REBUCK2_REV/rebuck2"
+          rm -rf "rebuck-$REBUCK2_REV"
       # Roadmap #9: preload this worker's slice of the CAS during the join
       # window; bloom gossip announces it, the driver's HasMany verifies it.
       - name: Restore cas shard ${{ matrix.shard }} (newest artifact, any run)
