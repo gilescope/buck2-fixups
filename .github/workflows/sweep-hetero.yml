@@ -137,7 +137,7 @@ jobs:
         with:
           path: dice-snap
           key: dice-snap-hetero-never-matches
-          restore-keys: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-
+          restore-keys: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}-
 
       - name: Enable dice persistence (fork binary + matched prelude)
         if: steps.forkbin.outputs.rev != ''
@@ -277,7 +277,7 @@ jobs:
               mkdir -p "dice-snap/sweep"
               dice=(BUCK2_DICE_DB_PATH="$GITHUB_WORKSPACE/dice-snap/sweep/db"
                     BUCK2_DICE_SNAPSHOT_PATH="$GITHUB_WORKSPACE/dice-snap/sweep/graph.meta"
-                    BUCK2_DICE_SNAPSHOT_SEED="$FORK_REV-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**') }}")
+                    BUCK2_DICE_SNAPSHOT_SEED="$FORK_REV-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}")
             fi
             env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="sweep" \
             BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat -c buck2.archive_unpack_constraints=fixups//platforms:unpack-exec-linux" \
@@ -318,7 +318,7 @@ jobs:
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: dice-snap
-          key: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-${{ github.run_id }}
+          key: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}-${{ github.run_id }}
 
       - name: Prune superseded dice snapshots (1GB each; they evicted the CAS)
         if: always() && steps.forkbin.outputs.rev != ''
