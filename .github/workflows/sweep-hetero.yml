@@ -383,7 +383,14 @@ jobs:
           # banking it, every lap's canon rows die with the runner and
           # cross-lap twins can never hit (2,902 rows lost, run 29281833627).
           mkdir -p "$STORE/driver/acn"
-          tar -c -C "$STORE/driver" ac acn | zstd -T0 --long=27 -8 > snapshot-ac/ac.tar.zst
+          # The driver is still serving while we pack: per-row writes are
+          # tmp+rename atomic (reads always see whole files), but GNU tar
+          # exits 1 on ANY concurrent dir change and pipefail killed the
+          # step AFTER zstd wrote a truncated snapshot that then got banked
+          # (run 29288045948). Exit 1 = benign here; >=2 is real.
+          tar --warning=no-file-changed --warning=no-file-removed             -c -C "$STORE/driver" ac acn | zstd -T0 --long=27 -8 > snapshot-ac/ac.tar.zst
+          rc=${PIPESTATUS[0]}
+          [ "$rc" -le 1 ] || exit "$rc"
           ls -lh snapshot-ac/
 
       - name: Save AC snapshot
