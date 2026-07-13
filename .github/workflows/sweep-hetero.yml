@@ -52,7 +52,7 @@ env:
   # watchdog / driver exit broadcast (6c676dc: win worker 1 idled 1h+
   # past the driver, run 29194749613). Prior lap 29195973667: build
   # 8m44s, win staging p90 18.7s -> 3s, second straight 8/8 bank.
-  REBUCK2_REV_PIN: 91e60af5dde69aec594d0a6c844c066231a2a597
+  REBUCK2_REV_PIN: 924f7f065bd3caf3061ef78b6c0ecb1a72c473ac
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
