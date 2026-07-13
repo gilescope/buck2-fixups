@@ -5,10 +5,10 @@
 # Lap N+1: parallel verify-cas (the 31-min windows sequential hash was
 # the join race behind BOTH the 23k-unservable class and the 31-min
 # win-leg stall) + engine 835401b-era (memo + sync-24).
-# ITERATION MODE: tiny curated target list (serde_json/tokio/spin/ahash/
-# hex closures, ~150 crates) so a lap is minutes, not an hour - optimise
-# the machinery here, then crank the list back to //third-party: +
-# conflict rigs for the full sweep.
+# Scope: full //third-party: (2,185 crates) + conflict rigs + snapshot
+# rigs re-entering one per lap (2024-11 in; 2025-05/2025-11/2026-05
+# pending). ~53-73% of each rig's crate versions are content-identical
+# with base, so the CAS serves their sources; compiles are per-rig work.
 # The driver box runs three concurrent buck2 invocations (one per target OS,
 # separate isolation dirs) against the same localhost driver; rebuck2 routes
 # each action to a worker whose OS/arch matches the exec platform's REAPI
@@ -281,7 +281,7 @@ jobs:
             fi
             env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="sweep" \
             BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat -c buck2.archive_unpack_constraints=fixups//platforms:unpack-exec-linux" \
-              timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... \
+              timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... //third-party/snapshots/2024-11/... \
               > "leg-$name.log" 2>&1
             local rc=$?
             # 124 = the 250-min checkpoint cap: progress banks in teardown
