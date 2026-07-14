@@ -31,8 +31,21 @@ system_rust_toolchain(
     # aarch64-pc-windows-msvc unwinding needs the C++ EH personality
     # (__CxxFrameHandler3) from vcruntime.lib, which the explicit native-lib
     # list omits; x86_64 uses SEH and doesn't. Harmless where unneeded.
+    #
+    # /Brepro + /pdbaltpath: link.exe stamps every PE (proc-macro dlls,
+    # cdylibs, exes) with a timestamp, a fresh PDB GUID, and the absolute
+    # PDB path - so a re-executed link emits different bytes and every
+    # downstream action re-keys. Measured on the hetero sweep: ~100 win
+    # roots re-executing (lost CAS shards) cascaded into 2,269 re-keyed
+    # win actions per lap (~25 min). The cxx side already passes /Brepro
+    # (prelude cxx compiler.bzl/archive.bzl); this covers rustc-driven
+    # links. /pdbaltpath:%_PDB% embeds just the pdb filename, not its path.
     rustc_flags = select({
-        "config//os:windows": ["-Clink-arg=vcruntime.lib"],
+        "config//os:windows": [
+            "-Clink-arg=vcruntime.lib",
+            "-Clink-arg=/Brepro",
+            "-Clink-arg=/pdbaltpath:%_PDB%",
+        ],
         "DEFAULT": [],
     }),
     visibility = ["PUBLIC"],
