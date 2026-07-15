@@ -58,6 +58,11 @@ env:
   # sweep proceed (late joiners still connect - 30min window) while a whole
   # missing platform still stalls only its own leg's queue.
   QUORUM_WORKERS: "8"
+  # CAS bank (ci/cas-bank-design.md): lineage = the branch. Artifact
+  # names embed it, and restore's provenance check requires the
+  # publishing run's head_branch to equal it.
+  CAS_LINEAGE: ${{ github.ref_name }}
+  SEG_MAX_MB: "64"
 
 jobs:
   driver:
@@ -220,6 +225,19 @@ jobs:
           ./ci/store-snapshot.sh manifest "$STORE/driver" "ac acn" > seeded.manifest
           echo "seeded AC manifest: $(cat seeded.manifest)"
 
+      # Empty-range bank restore: fetches no segments, but leaves the
+      # bank's manifest + full blob list in $BANK_WORK so the post-build
+      # pack steps diff store-minus-bank exactly. Exit 3 = cold bank
+      # (the pack then diffs against /dev/null and publishes everything
+      # new - the bootstrap path).
+      - name: Fetch bank blob list (empty-range restore)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          rc=0; ./ci/cas-bank-restore.sh "$(mktemp -d)" "" || rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
+
       - name: Reclaim runner ballast in the background
         run: |
           (sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
@@ -231,7 +249,6 @@ jobs:
           rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures --locality \
             --session "hetero-$GITHUB_RUN_ID" \
             --addr-file driver-addr.json \
-            --finalize-file finalize.signal \
             --store "$STORE/driver" > driver.log 2>&1 &
           echo $! > driver.pid
           rebuck2 worker --session "hetero-$GITHUB_RUN_ID" --slots $(($(nproc) / 2)) \
@@ -347,18 +364,19 @@ jobs:
             done
           true
 
-      # Hand CAS persistence to the fleet: driver assigns shards, workers
-      # sync + save them in their own teardown (parallel, off our path).
-      - name: Finalize shards across the fleet
+      # Banking no longer rides the mesh: the GH job graph is the
+      # barrier (banker job below references only containers that
+      # verifiably landed). Stopping the driver here broadcasts exit to
+      # the fleet, so workers start their own pack steps in parallel
+      # with ours.
+      - name: Stop driver (fleet packs in its own teardown)
         if: always()
         run: |
-          touch finalize.signal
-          for _ in $(seq 1 40); do
-            [ -f finalize.signal.done ] && { echo "finalized: $(cat finalize.signal.done) workers"; exit 0; }
-            kill -0 "$(cat driver.pid)" 2>/dev/null || { echo "driver gone before finalize"; exit 0; }
+          kill "$(cat driver.pid)" 2>/dev/null || true
+          for _ in $(seq 1 24); do
+            pgrep -f "rebuck2 worker" > /dev/null 2>&1 || { echo "co-worker exited"; break; }
             sleep 5
           done
-          echo "finalize timed out (workers save what they synced)"
 
       - name: Pack AC snapshot
         id: acpack
@@ -383,11 +401,11 @@ jobs:
           # banking it, every lap's canon rows die with the runner and
           # cross-lap twins can never hit (2,902 rows lost, run 29281833627).
           mkdir -p "$STORE/driver/acn"
-          # The driver is still serving while we pack: per-row writes are
-          # tmp+rename atomic (reads always see whole files), but GNU tar
-          # exits 1 on ANY concurrent dir change and pipefail killed the
-          # step AFTER zstd wrote a truncated snapshot that then got banked
-          # (run 29288045948). Exit 1 = benign here; >=2 is real.
+          # The driver is stopped before this pack, but keep the tar
+          # tolerance: a straggler flush can still land mid-walk, GNU tar
+          # exits 1 on ANY concurrent dir change, and pipefail once killed
+          # the step AFTER zstd wrote a truncated snapshot that then got
+          # banked (run 29288045948). Exit 1 = benign here; >=2 is real.
           tar --warning=no-file-changed --warning=no-file-removed             -c -C "$STORE/driver" ac acn | zstd -T0 --long=27 -8 > snapshot-ac/ac.tar.zst
           rc=${PIPESTATUS[0]}
           [ "$rc" -le 1 ] || exit "$rc"
@@ -421,10 +439,57 @@ jobs:
           path: snapshot-hotcas
           key: rebuck2-hotcas-${{ github.run_id }}
 
+      - name: Pack new blobs for the bank (driver)
+        id: bankdriver
+        if: always()
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          STORE="$HOME/.cache/rebuck2"
+          ./ci/cas-bank-publish.sh "$STORE/driver" driver
+
+      - name: Upload bank container (driver)
+        if: always() && steps.bankdriver.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-driver
+          path: ${{ runner.temp }}/bank/bank-container
+          compression-level: 0
+
+      - name: Upload bank report (driver)
+        if: always() && steps.bankdriver.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-report-${{ github.run_id }}-driver
+          path: ${{ runner.temp }}/bank/bank-report
+
+      # Sequenced after the driver-role uploads: publish reuses the same
+      # $BANK_WORK staging dirs and wipes them on entry.
+      - name: Pack new blobs for the bank (co-worker)
+        id: bankcoworker
+        if: always()
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          STORE="$HOME/.cache/rebuck2"
+          ./ci/cas-bank-publish.sh "$STORE/co-worker" co-worker
+
+      - name: Upload bank container (co-worker)
+        if: always() && steps.bankcoworker.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-co-worker
+          path: ${{ runner.temp }}/bank/bank-container
+          compression-level: 0
+
+      - name: Upload bank report (co-worker)
+        if: always() && steps.bankcoworker.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-report-${{ github.run_id }}-co-worker
+          path: ${{ runner.temp }}/bank/bank-report
+
       - name: Dispatch stats
         if: always()
         run: |
-          kill -0 "$(cat driver.pid)" 2>/dev/null || echo "*** DRIVER PROCESS DIED — check driver.log tail below ***"
           echo "jobs dispatched: $(grep -c -- '-> worker ' driver.log || true)"
           grep -o -- '-> worker [0-9]*' driver.log | sort | uniq -c || true
           tail -5 driver.log
@@ -457,10 +522,6 @@ jobs:
             driver.log
             leg-*.log
             evtlog/
-
-      - name: Stop driver
-        if: always()
-        run: kill "$(cat driver.pid)" 2>/dev/null || true
 
     # A lost worker must not redden the run - the driver job is the
     # verdict, and the mesh tolerates stragglers.
@@ -519,9 +580,29 @@ jobs:
         with:
           drive-size: 24GB
           drive-format: ReFS
-      # Roadmap #9: preload this worker's slice of the CAS during the join
-      # window; bloom gossip announces it, the driver's HasMany verifies it.
-      - name: Restore cas shard ${{ matrix.shard }} (newest artifact, any run)
+      # Roadmap #9 v2: preload this worker's prefix range from the CAS
+      # bank (ci/cas-bank-design.md); bloom gossip announces it, the
+      # driver's HasMany verifies it. Exit 3 = cold bank -> bootstrap
+      # from the legacy monolithic shard artifact below.
+      - name: Restore CAS bank (owned prefixes)
+        id: bank
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # BANK_WORK outside the repo root: stray files in the
+          # workspace churn buck2's file watcher.
+          BANK_WORK="$(cygpath -u "$RUNNER_TEMP")/bank"; export BANK_WORK
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
+          rc=0; ./ci/cas-bank-restore.sh "$STORE/worker" "$a$b" || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            echo "cold=1" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+
+      - name: Seed from legacy shard (cold-bank bootstrap)
+        if: steps.bank.outputs.cold == '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -538,9 +619,6 @@ jobs:
           else
             echo "no cas-shard-${{ matrix.shard }} artifact yet - cold start"
           fi
-
-      - name: Seed the worker store from the shard
-        run: |
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           mkdir -p "$STORE/worker"
           for t in shard-in/bulk.tar.zst shard-in/tail.tar.zst; do
@@ -550,11 +628,11 @@ jobs:
             fi
           done
           rm -rf shard-in
-          # Record the restored shard's manifest — if finalize assigns this
-          # same shard back and nothing changed, the re-save is skipped.
-          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
-          ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
-          echo "seeded shard manifest: $(cat seeded.manifest)"
+
+      - name: Verify seeded blobs
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          mkdir -p "$STORE/worker"
           # Blobs that crossed the artifact wall must prove themselves:
           # a CAS filename IS the content sha256; mismatches are deleted.
           ./ci/verify-cas.sh "$STORE/worker"
@@ -592,50 +670,32 @@ jobs:
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
-      - name: Read assigned shard
-        id: sid
+      # Bank pack: exact diff against the restored bank blob list - a
+      # worker with nothing new uploads nothing (have=0). A worker that
+      # dies mid-upload loses only its own <=SEG_MAX_MB segments; the
+      # banker admits only containers that verifiably landed.
+      - name: Pack new blobs for the bank
+        id: bankpack
         if: always()
         run: |
+          BANK_WORK="$(cygpath -u "$RUNNER_TEMP")/bank"; export BANK_WORK
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          # shard.id has no trailing newline: read returns rc=1 at EOF even
-          # after assigning - under bash -e that killed this step on EVERY
-          # worker, so shards were never published (not evicted: never saved).
-          shard=""; of=""
-          [ -f "$STORE/worker/shard.id" ] && { read -r shard of < "$STORE/worker/shard.id" || true; }
-          if [ -n "$shard" ]; then
-            echo "shard=$shard" >> "$GITHUB_OUTPUT"
-            echo "assigned shard $shard of $of"
-          else
-            echo "no shard assigned (driver died pre-finalize?)"
-          fi
+          ./ci/cas-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}"
 
-      - name: Pack + save assigned shard
-        id: shardpack
-        if: always() && steps.sid.outputs.shard != ''
-        run: |
-          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          i=${{ steps.sid.outputs.shard }}
-          a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
-          if [ "$i" = "${{ matrix.shard }}" ] \
-             && ./ci/store-snapshot.sh unchanged "$STORE/worker" seeded.manifest "cas/$a* cas/$b*"; then
-            echo "[shard] shard $i unchanged since seed — skipping pack + upload"
-            echo "skip=1" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          mkdir -p shard-out
-          cd "$STORE/worker"
-          find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
-            | tar -c -T - | zstd -T0 --long=27 -8 \
-            > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
-          ls -lh "$GITHUB_WORKSPACE/shard-out/"
-
-      - name: Publish assigned shard (artifact)
-        if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
+      - name: Upload bank container
+        if: always() && steps.bankpack.outputs.have == '1'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cas-shard-${{ steps.sid.outputs.shard }}
-          path: shard-out/bulk.tar.zst
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank/bank-container
           compression-level: 0
+
+      - name: Upload bank report
+        if: always() && steps.bankpack.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-report-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank/bank-report
 
 
     # A lost worker must not redden the run - the driver job is the
@@ -688,9 +748,29 @@ jobs:
           curl -fsSL --retry 8 --retry-all-errors             "${REBUCK2_GIT/github.com/codeload.github.com}/tar.gz/$REBUCK2_REV" | tar xz
           cargo install --locked --path "rebuck-$REBUCK2_REV/rebuck2"
           rm -rf "rebuck-$REBUCK2_REV"
-      # Roadmap #9: preload this worker's slice of the CAS during the join
-      # window; bloom gossip announces it, the driver's HasMany verifies it.
-      - name: Restore cas shard ${{ matrix.shard }} (newest artifact, any run)
+      # Roadmap #9 v2: preload this worker's prefix range from the CAS
+      # bank (ci/cas-bank-design.md); bloom gossip announces it, the
+      # driver's HasMany verifies it. Exit 3 = cold bank -> bootstrap
+      # from the legacy monolithic shard artifact below.
+      - name: Restore CAS bank (owned prefixes)
+        id: bank
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # BANK_WORK outside the repo root: stray files in the
+          # workspace churn buck2's file watcher.
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          STORE="$HOME/.cache/rebuck2"
+          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
+          rc=0; ./ci/cas-bank-restore.sh "$STORE/worker" "$a$b" || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            echo "cold=1" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+
+      - name: Seed from legacy shard (cold-bank bootstrap)
+        if: steps.bank.outputs.cold == '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -707,9 +787,6 @@ jobs:
           else
             echo "no cas-shard-${{ matrix.shard }} artifact yet - cold start"
           fi
-
-      - name: Seed the worker store from the shard
-        run: |
           STORE="$HOME/.cache/rebuck2"
           mkdir -p "$STORE/worker"
           for t in shard-in/bulk.tar.zst shard-in/tail.tar.zst; do
@@ -719,11 +796,11 @@ jobs:
             fi
           done
           rm -rf shard-in
-          # Record the restored shard's manifest — if finalize assigns this
-          # same shard back and nothing changed, the re-save is skipped.
-          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
-          ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
-          echo "seeded shard manifest: $(cat seeded.manifest)"
+
+      - name: Verify seeded blobs
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          mkdir -p "$STORE/worker"
           # Blobs that crossed the artifact wall must prove themselves:
           # a CAS filename IS the content sha256; mismatches are deleted.
           ./ci/verify-cas.sh "$STORE/worker"
@@ -755,50 +832,32 @@ jobs:
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
-      - name: Read assigned shard
-        id: sid
+      # Bank pack: exact diff against the restored bank blob list - a
+      # worker with nothing new uploads nothing (have=0). A worker that
+      # dies mid-upload loses only its own <=SEG_MAX_MB segments; the
+      # banker admits only containers that verifiably landed.
+      - name: Pack new blobs for the bank
+        id: bankpack
         if: always()
         run: |
+          export BANK_WORK="$RUNNER_TEMP/bank"
           STORE="$HOME/.cache/rebuck2"
-          # shard.id has no trailing newline: read returns rc=1 at EOF even
-          # after assigning - under bash -e that killed this step on EVERY
-          # worker, so shards were never published (not evicted: never saved).
-          shard=""; of=""
-          [ -f "$STORE/worker/shard.id" ] && { read -r shard of < "$STORE/worker/shard.id" || true; }
-          if [ -n "$shard" ]; then
-            echo "shard=$shard" >> "$GITHUB_OUTPUT"
-            echo "assigned shard $shard of $of"
-          else
-            echo "no shard assigned (driver died pre-finalize?)"
-          fi
+          ./ci/cas-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}"
 
-      - name: Pack + save assigned shard
-        id: shardpack
-        if: always() && steps.sid.outputs.shard != ''
-        run: |
-          STORE="$HOME/.cache/rebuck2"
-          i=${{ steps.sid.outputs.shard }}
-          a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
-          if [ "$i" = "${{ matrix.shard }}" ] \
-             && ./ci/store-snapshot.sh unchanged "$STORE/worker" seeded.manifest "cas/$a* cas/$b*"; then
-            echo "[shard] shard $i unchanged since seed — skipping pack + upload"
-            echo "skip=1" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          mkdir -p shard-out
-          cd "$STORE/worker"
-          find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
-            | tar -c -T - | zstd -T0 --long=27 -8 \
-            > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
-          ls -lh "$GITHUB_WORKSPACE/shard-out/"
-
-      - name: Publish assigned shard (artifact)
-        if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
+      - name: Upload bank container
+        if: always() && steps.bankpack.outputs.have == '1'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cas-shard-${{ steps.sid.outputs.shard }}
-          path: shard-out/bulk.tar.zst
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank/bank-container
           compression-level: 0
+
+      - name: Upload bank report
+        if: always() && steps.bankpack.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-report-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank/bank-report
 
 
     # A lost worker must not redden the run - the driver job is the
@@ -852,9 +911,29 @@ jobs:
           curl -fsSL --retry 8 --retry-all-errors             "${REBUCK2_GIT/github.com/codeload.github.com}/tar.gz/$REBUCK2_REV" | tar xz
           cargo install --locked --path "rebuck-$REBUCK2_REV/rebuck2"
           rm -rf "rebuck-$REBUCK2_REV"
-      # Roadmap #9: preload this worker's slice of the CAS during the join
-      # window; bloom gossip announces it, the driver's HasMany verifies it.
-      - name: Restore cas shard ${{ matrix.shard }} (newest artifact, any run)
+      # Roadmap #9 v2: preload this worker's prefix range from the CAS
+      # bank (ci/cas-bank-design.md); bloom gossip announces it, the
+      # driver's HasMany verifies it. Exit 3 = cold bank -> bootstrap
+      # from the legacy monolithic shard artifact below.
+      - name: Restore CAS bank (owned prefixes)
+        id: bank
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # BANK_WORK outside the repo root: stray files in the
+          # workspace churn buck2's file watcher.
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          STORE="$HOME/.cache/rebuck2"
+          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
+          rc=0; ./ci/cas-bank-restore.sh "$STORE/worker" "$a$b" || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            echo "cold=1" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+
+      - name: Seed from legacy shard (cold-bank bootstrap)
+        if: steps.bank.outputs.cold == '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -871,9 +950,6 @@ jobs:
           else
             echo "no cas-shard-${{ matrix.shard }} artifact yet - cold start"
           fi
-
-      - name: Seed the worker store from the shard
-        run: |
           STORE="$HOME/.cache/rebuck2"
           mkdir -p "$STORE/worker"
           for t in shard-in/bulk.tar.zst shard-in/tail.tar.zst; do
@@ -883,11 +959,11 @@ jobs:
             fi
           done
           rm -rf shard-in
-          # Record the restored shard's manifest — if finalize assigns this
-          # same shard back and nothing changed, the re-save is skipped.
-          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
-          ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
-          echo "seeded shard manifest: $(cat seeded.manifest)"
+
+      - name: Verify seeded blobs
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          mkdir -p "$STORE/worker"
           # Blobs that crossed the artifact wall must prove themselves:
           # a CAS filename IS the content sha256; mismatches are deleted.
           ./ci/verify-cas.sh "$STORE/worker"
@@ -922,47 +998,85 @@ jobs:
             --connect-wait-secs 1800 \
             --store "$STORE/worker" | tee worker.log
 
-      - name: Read assigned shard
-        id: sid
+      # Bank pack: exact diff against the restored bank blob list - a
+      # worker with nothing new uploads nothing (have=0). A worker that
+      # dies mid-upload loses only its own <=SEG_MAX_MB segments; the
+      # banker admits only containers that verifiably landed.
+      - name: Pack new blobs for the bank
+        id: bankpack
         if: always()
         run: |
+          export BANK_WORK="$RUNNER_TEMP/bank"
           STORE="$HOME/.cache/rebuck2"
-          # shard.id has no trailing newline: read returns rc=1 at EOF even
-          # after assigning - under bash -e that killed this step on EVERY
-          # worker, so shards were never published (not evicted: never saved).
-          shard=""; of=""
-          [ -f "$STORE/worker/shard.id" ] && { read -r shard of < "$STORE/worker/shard.id" || true; }
-          if [ -n "$shard" ]; then
-            echo "shard=$shard" >> "$GITHUB_OUTPUT"
-            echo "assigned shard $shard of $of"
-          else
-            echo "no shard assigned (driver died pre-finalize?)"
-          fi
+          ./ci/cas-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}"
 
-      - name: Pack + save assigned shard
-        id: shardpack
-        if: always() && steps.sid.outputs.shard != ''
-        run: |
-          STORE="$HOME/.cache/rebuck2"
-          i=${{ steps.sid.outputs.shard }}
-          a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
-          if [ "$i" = "${{ matrix.shard }}" ] \
-             && ./ci/store-snapshot.sh unchanged "$STORE/worker" seeded.manifest "cas/$a* cas/$b*"; then
-            echo "[shard] shard $i unchanged since seed — skipping pack + upload"
-            echo "skip=1" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          mkdir -p shard-out
-          cd "$STORE/worker"
-          find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
-            | tar -c -T - | zstd -T0 --long=27 -8 \
-            > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
-          ls -lh "$GITHUB_WORKSPACE/shard-out/"
-
-      - name: Publish assigned shard (artifact)
-        if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
+      - name: Upload bank container
+        if: always() && steps.bankpack.outputs.have == '1'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: cas-shard-${{ steps.sid.outputs.shard }}
-          path: shard-out/bulk.tar.zst
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank/bank-container
           compression-level: 0
+
+      - name: Upload bank report
+        if: always() && steps.bankpack.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-report-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank/bank-report
+
+  # The bank barrier: the GH job graph replaces the mesh finalize (the
+  # ack-loss/orphaned-shard failure class is deleted, not handled).
+  # Verifies every reported container actually landed this run, then
+  # publishes the lap's manifest atomically - it appears whole or not
+  # at all.
+  banker:
+    name: banker
+    needs: [driver, worker-win, worker-linux, worker-mac]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Download worker reports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p reports merged
+          gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --pattern "cas-report-$GITHUB_RUN_ID-*" --dir reports \
+            || echo "no reports this lap (idle or failed fleet)"
+          # gh nests each artifact in its own dir; the banker wants a
+          # flat cas-seg-*/ view (segment names are content-unique, so
+          # merging cannot collide).
+          find reports -mindepth 2 -maxdepth 2 -type d -name 'cas-seg-*' \
+            -exec cp -r {} merged/ \;
+          ls merged/ || true
+
+      - name: Assemble + stage manifest
+        id: bank
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          ./ci/cas-bank-banker.sh merged
+          segs=$(jq '.segments|length' "$BANK_WORK/bank-manifest-out/manifest.json")
+          # A cold bank + zero admitted segments would publish an EMPTY
+          # manifest, which reads as "warm" next lap and skips the
+          # legacy bootstrap - keep the bank cold instead.
+          echo "publish=$([ "$segs" -gt 0 ] && echo 1 || echo 0)" >> "$GITHUB_OUTPUT"
+          echo "staged manifest: $segs segments"
+
+      - name: Publish manifest
+        if: steps.bank.outputs.publish == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-manifest-${{ env.CAS_LINEAGE }}
+          path: ${{ runner.temp }}/bank/bank-manifest-out

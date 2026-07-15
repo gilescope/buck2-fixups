@@ -177,26 +177,35 @@ faked `gh`, including a straggler whose container never lands):
 - [x] `ci/cas-bank-banker.sh` - verify containers landed, assemble +
       stage the new manifest
 
-Remaining (wiring):
+Wired (same commit as this note; `actionlint` clean, both local test
+suites green):
 
-- [ ] `sweep-hetero.yml`: replace the 3x "Restore cas shard"/"Seed the
-      worker store" blocks and 3x "Read assigned shard"/"Pack + save"/
-      "Publish assigned shard" blocks (win differs only by the cygpath
-      STORE line); role = `<runner.os>-w<matrix.n>`; `BANK_WORK` =
-      `$RUNNER_TEMP/bank` (never the repo root - watcher churn)
-- [ ]   legacy fallback in the restore step: on exit 3, seed from the
+- [x] `sweep-hetero.yml`: the 3x restore/seed and 3x read/pack/publish
+      shard blocks replaced with `cas-bank-restore.sh` +
+      `cas-bank-publish.sh` + two uploads per node (win differs only by
+      the cygpath STORE/BANK_WORK lines); role =
+      `<runner.os>-w<matrix.n>`; `BANK_WORK` = `$RUNNER_TEMP/bank`
+      (never the repo root - watcher churn)
+- [x]   legacy fallback in the restore step: on exit 3, seed from the
       old `cas-shard-N` artifact so the first bank lap bootstraps warm
-- [ ] driver job: publish `$STORE/driver` and `$STORE/co-worker` as
-      roles `driver`/`co-worker` (restore with empty range first, for
-      the bank blob list); drop the "Finalize shards across the fleet"
-      step - banking no longer rides the mesh
-- [ ] banker job: `needs: [driver, <worker jobs>]`, `if: always()`,
-      download `cas-report-<run>-*` (merge-multiple), run banker,
-      upload `cas-manifest-<lineage>`
-- [ ] `cas-compact.yml`: dispatch + weekly; single job, packs grouped
-      into 8 prefix-pair containers (8 fixed upload steps), fresh
-      manifest; delete the old `cas-shard-N` save path in the same
-      change
+- [x] driver job: publishes `$STORE/driver` and `$STORE/co-worker` as
+      roles `driver`/`co-worker` (empty-range restore up front for the
+      bank blob list); "Finalize shards across the fleet" deleted -
+      the driver now just stops early so the fleet packs in parallel
+- [x] banker job: `needs: [driver, worker-*]`, `if: always()`;
+      `gh run download --pattern` then flatten (segment names are
+      content-unique); skips publishing an all-empty manifest so a
+      dead lap cannot mask the legacy bootstrap
+- [x] `cas-compact.yml`: dispatch + weekly (schedule re-dispatches on
+      the lineage ref - provenance requires head_branch == lineage);
+      8 fixed prefix-pair container uploads, manifest uploaded last
+      (atomicity), blob-count monotonicity gate before publishing;
+      rewarm folded into the compaction trigger (any referenced
+      container older than REWARM_DAYS forces a re-bin). Old
+      `cas-shard-N` save path deleted in the same change.
+
+Remaining:
+
 - [ ] first live lap: verify bank bootstrap + steady-state segment
       sizes; then remove the legacy fallback after a few green laps
 
