@@ -40,6 +40,17 @@ system_rust_toolchain(
     # win actions per lap (~25 min). The cxx side already passes /Brepro
     # (prelude cxx compiler.bzl/archive.bzl); this covers rustc-driven
     # links. /pdbaltpath:%_PDB% embeds just the pdb filename, not its path.
+    # Belt-and-braces beside /Brepro below: rustc >=1.69 passes /Brepro
+    # itself under SOURCE_DATE_EPOCH, and timestamp-embedding buildscript
+    # crates emit a fixed epoch. Win-only: it enters every rustc action
+    # key, and win re-keys this cycle anyway (the /Brepro flags); mac and
+    # linux caches stay warm. Requires fork prelude >= a2fc3cbf8
+    # (rustc_env on system_rust_toolchain) - i.e. fork release manifest
+    # must carry it BEFORE this lands in a sweep.
+    rustc_env = select({
+        "config//os:windows": {"SOURCE_DATE_EPOCH": "0"},
+        "DEFAULT": {},
+    }),
     rustc_flags = select({
         "config//os:windows": [
             "-Clink-arg=vcruntime.lib",
