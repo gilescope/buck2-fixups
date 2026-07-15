@@ -120,6 +120,29 @@ res=$(COMPACT_MIN_MB=0 COMPACT_DELTA_PCT=20 COMPACT_HYSTERESIS_PCT=5 \
 [ "$res" = "no" ] || fail "freshly compacted bank should not re-fire: $res"
 ok "compact: full packs, blob set preserved, trigger quiesces"
 
+# ── pack at fleet scale: single pass, no per-blob forks ─────────────
+# Red run was live: lap 29435672672 stalled all 11 workers 30min+ in
+# the per-blob awk+wc loop (O(n^2), 2 forks per blob) this guards.
+S5="$T/store5"
+python3 - "$S5" <<'PY'
+import hashlib, os, sys
+store = sys.argv[1]
+for i in range(10000):
+    h = hashlib.sha256(str(i).encode()).hexdigest()
+    d = os.path.join(store, "cas", h[:2])
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, h), "wb") as f:
+        f.write(str(i).encode())
+PY
+start=$SECONDS
+$BANK pack_segments "$S5" /dev/null "$T/segs5" > "$T/segs5.names"
+elapsed=$((SECONDS - start))
+n=$(zstd -dq -c "$T/segs5"/cas-seg-*/blobs.txt.zst | wc -l | tr -d ' ')
+[ "$n" -eq 10000 ] || fail "scale pack lost blobs: $n/10000"
+[ "$elapsed" -lt 60 ] \
+  || fail "scale pack took ${elapsed}s - O(n^2) regression?"
+ok "pack: 10k blobs in ${elapsed}s (single pass)"
+
 # ── segment split honours SEG_MAX ───────────────────────────────────
 S4="$T/store4"
 for i in 1 2 3 4 5 6; do

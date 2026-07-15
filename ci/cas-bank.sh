@@ -37,19 +37,33 @@ pack_segments() {
   mkdir -p "$out"
   [ -d "$store/cas" ] || return 0
 
-  local new_list="$out/.new-blobs"
-  # Store layout: cas/<2-hex>/<full-hash>. Blob id = basename.
-  (cd "$store" && find cas -mindepth 2 -maxdepth 2 -type f | sort) \
-    > "$out/.store-paths"
-  awk -F/ '{print $NF"\t"$0}' "$out/.store-paths" | sort -k1,1 \
-    > "$out/.store-idx"
+  local new_list="$out/.new-blobs" tab
+  tab=$(printf '\t')
+  # Store layout: cas/<2-hex>/<full-hash>. Blob id = basename. One
+  # python pass indexes blob\tpath\tbytes: sizing per blob inside the
+  # batching loop (an awk scan + wc fork each) was O(n^2) and stalled
+  # every worker 30min+ at fleet scale (run 29435672672).
+  python3 - "$store" <<'PY' | sort -t "$tab" -k1,1 > "$out/.store-idx"
+import os, sys
+cas = os.path.join(sys.argv[1], "cas")
+for d in sorted(os.listdir(cas)):
+    dp = os.path.join(cas, d)
+    if not os.path.isdir(dp):
+        continue
+    for f in sorted(os.listdir(dp)):
+        fp = os.path.join(dp, f)
+        if os.path.isfile(fp):
+            print(f"{f}\tcas/{d}/{f}\t{os.path.getsize(fp)}")
+PY
   # bank blob list: plain sorted hashes (possibly zstd'd by caller).
   comm -23 <(cut -f1 "$out/.store-idx") <(sort -u "$bank_blobs") \
     > "$new_list"
   if ! [ -s "$new_list" ]; then
-    rm -f "$out/.new-blobs" "$out/.store-paths" "$out/.store-idx"
+    rm -f "$out/.new-blobs" "$out/.store-idx"
     return 0
   fi
+  # New blobs joined back to their path+size, still hash-sorted.
+  join -t "$tab" "$new_list" "$out/.store-idx" > "$out/.new-idx"
 
   # Greedy split by cumulative file size.
   local max_bytes=$((SEG_MAX_MB * 1024 * 1024))
@@ -99,20 +113,17 @@ PY
     echo "cas-seg-$sha"
     seg_i=$((seg_i + 1)); batch_bytes=0; batch_n=0; : > "$batch"
   }
-  local blob path sz
-  while IFS= read -r blob; do
-    path=$(awk -F'\t' -v b="$blob" '$1==b {print $2; exit}' \
-      "$out/.store-idx")
-    sz=$(wc -c < "$store/$path" | tr -d ' ')
+  local path sz
+  while IFS="$tab" read -r _ path sz; do
     if [ "$batch_n" -gt 0 ] \
        && [ $((batch_bytes + sz)) -gt "$max_bytes" ]; then
       _seal
     fi
     echo "$path" >> "$batch"
     batch_bytes=$((batch_bytes + sz)); batch_n=$((batch_n + 1))
-  done < "$new_list"
+  done < "$out/.new-idx"
   _seal
-  rm -f "$new_list" "$out/.store-paths" "$out/.store-idx" "$batch"
+  rm -f "$new_list" "$out/.store-idx" "$out/.new-idx" "$batch"
 }
 
 # ── write_manifest <lineage> <generation> <parent_lineage|-> \
