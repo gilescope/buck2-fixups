@@ -159,3 +159,48 @@ confuse restores.
 - Engine-native write-through (rebuck2 store backend speaking
   segment/manifest directly); this format is designed so that can
   adopt it unchanged.
+
+## Implementation status (2026-07-15)
+
+Done (committed `4c80786`, all tested locally - `ci/cas-bank-test.sh`
+unit groups + `ci/cas-bank-integration-test.sh` end-to-end against a
+faked `gh`, including a straggler whose container never lands):
+
+- [x] `ci/cas-bank.sh` - pack/manifest/fetch-matching/seed/compaction
+      library (deterministic python-tar so mac/win/linux packs agree;
+      segments named by raw-tar sha so zstd version bumps cannot fork
+      names)
+- [x] `ci/cas-bank-restore.sh` - manifest fetch (provenance-checked) +
+      prefix-subset segment restore; exit 3 = cold bank
+- [x] `ci/cas-bank-publish.sh` - pack store-minus-bank into container +
+      report dirs for upload
+- [x] `ci/cas-bank-banker.sh` - verify containers landed, assemble +
+      stage the new manifest
+
+Remaining (wiring):
+
+- [ ] `sweep-hetero.yml`: replace the 3x "Restore cas shard"/"Seed the
+      worker store" blocks and 3x "Read assigned shard"/"Pack + save"/
+      "Publish assigned shard" blocks (win differs only by the cygpath
+      STORE line); role = `<runner.os>-w<matrix.n>`; `BANK_WORK` =
+      `$RUNNER_TEMP/bank` (never the repo root - watcher churn)
+- [ ]   legacy fallback in the restore step: on exit 3, seed from the
+      old `cas-shard-N` artifact so the first bank lap bootstraps warm
+- [ ] driver job: publish `$STORE/driver` and `$STORE/co-worker` as
+      roles `driver`/`co-worker` (restore with empty range first, for
+      the bank blob list); drop the "Finalize shards across the fleet"
+      step - banking no longer rides the mesh
+- [ ] banker job: `needs: [driver, <worker jobs>]`, `if: always()`,
+      download `cas-report-<run>-*` (merge-multiple), run banker,
+      upload `cas-manifest-<lineage>`
+- [ ] `cas-compact.yml`: dispatch + weekly; single job, packs grouped
+      into 8 prefix-pair containers (8 fixed upload steps), fresh
+      manifest; delete the old `cas-shard-N` save path in the same
+      change
+- [ ] first live lap: verify bank bootstrap + steady-state segment
+      sizes; then remove the legacy fallback after a few green laps
+
+Gotchas already paid for (do not rediscover): `gh api --jq` accepts no
+`--arg`/`--argjson` (interpolate); `upload-artifact` is one artifact
+per step, hence the container-per-worker model; `local a="$1" b="$a"`
+breaks on macOS bash 3.2.
