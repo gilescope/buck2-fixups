@@ -212,4 +212,56 @@ n=$(wc -l < "$T/segs4.names" | tr -d ' ')
 [ "$n" -ge 3 ] || fail "3.6MB at 1MB cap should split >=3 ways, got $n"
 ok "pack: SEG_MAX split ($n segments for 3.6MB at 1MB cap)"
 
+# ── dice bank: pack/merge the pagable sqlite rows ────────────────────
+# Fixture: 2 shards with rows whose key_lo & 15 matches the shard file
+# (the engine's shard_for is key.0 % 16 = key_lo & 15).
+D1="$T/dice1"
+mkdir -p "$D1"
+mkrow() { # <shard> <key_hi> <key_lo> <hex>
+  sqlite3 "$D1/pagable.$1.db" \
+    "CREATE TABLE IF NOT EXISTS pagable_data (
+       key_lo INTEGER NOT NULL, key_hi INTEGER NOT NULL,
+       value BLOB NOT NULL, UNIQUE(key_hi, key_lo));
+     INSERT OR IGNORE INTO pagable_data VALUES($3, $2, X'$4');"
+}
+mkrow 0 100 16 DEADBEEF
+mkrow 0 101 32 CAFE
+mkrow 3 -200 19 0BADF00D
+$BANK dice_pack "$D1" /dev/null "$T/dsegs1" > "$T/dsegs1.names"
+[ "$(wc -l < "$T/dsegs1.names" | tr -d ' ')" -eq 1 ] \
+  || fail "dice cold pack segment count"
+dseg1=$(cat "$T/dsegs1.names")
+[ "$(zstd -dq -c "$T/dsegs1/$dseg1/blobs.txt.zst" | wc -l | tr -d ' ')" -eq 3 ] \
+  || fail "dice pack key count"
+# determinism
+$BANK dice_pack "$D1" /dev/null "$T/dsegs1b" > "$T/dsegs1b.names"
+diff "$T/dsegs1.names" "$T/dsegs1b.names" || fail "dice pack nondeterministic"
+ok "dice: cold pack, content-named and deterministic"
+
+# delta: only the new row packs
+$BANK dice_keys "$D1" > "$T/dice-banked"
+mkrow 5 300 21 ABCD
+$BANK dice_pack "$D1" "$T/dice-banked" "$T/dsegs2" > "$T/dsegs2.names"
+dseg2=$(cat "$T/dsegs2.names")
+[ "$(zstd -dq -c "$T/dsegs2/$dseg2/blobs.txt.zst")" = "300 21" ] \
+  || fail "dice delta packed old rows"
+ok "dice: delta packs only new rows"
+
+# merge into a fresh db dir; placement + idempotence + round-trip
+D2="$T/dice2"
+$BANK dice_merge "$D2" "$T/dsegs1/$dseg1" "$T/dsegs2/$dseg2"
+got=$(sqlite3 "$D2/pagable.0.db" \
+  "SELECT hex(value) FROM pagable_data ORDER BY key_hi;" | tr '\n' ' ')
+[ "$got" = "DEADBEEF CAFE " ] || fail "dice merge shard 0 wrong: $got"
+got=$(sqlite3 "$D2/pagable.3.db" "SELECT hex(value) FROM pagable_data;")
+[ "$got" = "0BADF00D" ] || fail "dice merge shard 3 wrong: $got"
+got=$(sqlite3 "$D2/pagable.5.db" "SELECT hex(value) FROM pagable_data;")
+[ "$got" = "ABCD" ] || fail "dice merge shard 5 wrong: $got"
+$BANK dice_merge "$D2" "$T/dsegs1/$dseg1"
+n=$(sqlite3 "$D2/pagable.0.db" "SELECT count(*) FROM pagable_data;")
+[ "$n" -eq 2 ] || fail "dice re-merge not idempotent: $n rows"
+diff <($BANK dice_keys "$D1") <($BANK dice_keys "$D2") \
+  || fail "dice key sets diverge after merge"
+ok "dice: merge places by key_lo&15, idempotent, key sets match"
+
 echo "PASS: $pass groups"

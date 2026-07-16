@@ -250,6 +250,21 @@ per-iteration inside the batching loop (awk scan + wc fork each) was
 O(n^2) - lap 29435672672 stalled all 11 workers 30min+. Index once,
 join(1), then loop.
 
+## Dice bank (2026-07-16)
+
+The dice value store is a CAS in sqlite clothing - `pagable.{0..15}.db`,
+one table of content-addressed 128-bit keys with `INSERT OR IGNORE`
+writes (shard = `key_lo & 15`) - so it banks like one: deltas export
+as deterministic text segments (`dice_pack`), restores replay them
+idempotently (`dice_merge`), and the 19MB byte-stable graph skeleton
+rides the manifest whole. Manifest name carries a hash of the
+fork-rev+seed (`cas-manifest-<lineage>-dice-<seed8>`): banked rows are
+only valid within one reuse gate; a rev bump orphans them and
+retention reaps. Replaces the 1.1GB-per-lap monolithic cache save
+(delta laps cost tens of MB); the cache restore stays as the cold
+bootstrap fallback. The driver is the only consumer, so there is no
+range logic - fetch everything, merge, done.
+
 Monotonicity protections (both live-lap incidents, both now tested):
 the own-range head always MERGES the global manifest's slice (a thin
 manifest published after a flaky restore would otherwise pin its

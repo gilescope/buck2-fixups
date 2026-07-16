@@ -207,4 +207,46 @@ r0gen=$(jq -r .generation "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json"
 [ "$r0gen" = "500-1" ] || fail "lap6: r0 HEAD moved to $r0gen"
 echo "ok - lap6: lookup flake -> spill-only, fat manifest stands"
 
+# ── lap 7: dice bank round-trip (bootstrap + delta + reload) ────────
+export DICE_SEED="rev1-sweep-treehash1"
+DS="$T/dice-sweep"
+mkdir -p "$DS/db"
+sqlite3 "$DS/db/pagable.2.db" \
+  "CREATE TABLE pagable_data (key_lo INTEGER NOT NULL,
+     key_hi INTEGER NOT NULL, value BLOB NOT NULL,
+     UNIQUE(key_hi, key_lo));
+   INSERT INTO pagable_data VALUES(18, 7, X'AA11');"
+printf 'skeleton-gen-1' > "$DS/graph.meta"
+rc=0; BANK_WORK="$T/dwk1" ci/dice-bank-restore.sh "$T/dice-cold" || rc=$?
+[ "$rc" -eq 3 ] || fail "dice lap7: expected cold bank, rc=$rc"
+BANK_WORK="$T/dwk1" GITHUB_RUN_ID=700 ci/dice-bank-publish.sh "$DS"
+publish_to_fake "cas-dice-segs-$CAS_LINEAGE-700" "$T/dwk1/dice-container"
+dm="cas-manifest-$CAS_LINEAGE-dice-$(printf '%s' "$DICE_SEED" | shasum -a 256 | cut -c1-8)"
+publish_to_fake "$dm" "$T/dwk1/dice-manifest-out"
+
+DS2="$T/dice-sweep2"
+BANK_WORK="$T/dwk2" ci/dice-bank-restore.sh "$DS2"
+[ "$(cat "$DS2/graph.meta")" = "skeleton-gen-1" ] \
+  || fail "dice lap7: graph.meta did not round-trip"
+got=$(sqlite3 "$DS2/db/pagable.2.db" "SELECT hex(value) FROM pagable_data;")
+[ "$got" = "AA11" ] || fail "dice lap7: row did not round-trip: $got"
+# delta lap: one new row, publish, reload sees both
+sqlite3 "$DS2/db/pagable.9.db" \
+  "INSERT INTO pagable_data VALUES(25, 8, X'BB22');"
+printf 'skeleton-gen-2' > "$DS2/graph.meta"
+BANK_WORK="$T/dwk2" GITHUB_RUN_ID=701 ci/dice-bank-publish.sh "$DS2"
+n=$(zstd -dq -c "$T/dwk2/dice-container"/cas-seg-*/rows.txt.zst | wc -l | tr -d ' ')
+[ "$n" -eq 1 ] || fail "dice lap7: delta should be 1 row, got $n"
+publish_to_fake "cas-dice-segs-$CAS_LINEAGE-701" "$T/dwk2/dice-container"
+publish_to_fake "$dm" "$T/dwk2/dice-manifest-out"
+DS3="$T/dice-sweep3"
+BANK_WORK="$T/dwk3" ci/dice-bank-restore.sh "$DS3"
+[ "$(cat "$DS3/graph.meta")" = "skeleton-gen-2" ] \
+  || fail "dice lap7: newest skeleton should win"
+total=$(( $(sqlite3 "$DS3/db/pagable.2.db" "SELECT count(*) FROM pagable_data;") \
+        + $(sqlite3 "$DS3/db/pagable.9.db" "SELECT count(*) FROM pagable_data;") ))
+[ "$total" -eq 2 ] || fail "dice lap7: reload row count $total"
+unset DICE_SEED
+echo "ok - lap7: dice bank bootstrap, delta, and reload"
+
 echo "PASS: integration"

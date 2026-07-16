@@ -149,8 +149,29 @@ jobs:
             rm -rf fork-bin
           fi
 
-      - name: Restore dice snapshots (all legs)
+      # Dice bank: append-only row segments + a manifest carrying the
+      # graph skeleton whole (19MB; the 4GB is the sqlite value shards,
+      # content-addressed and INSERT OR IGNORE-mergeable). Replaces the
+      # 1.1GB monolithic cache save; the cache step below remains as
+      # the cold-bank bootstrap fallback.
+      - name: Restore dice bank
+        id: dicebank
         if: steps.forkbin.outputs.rev != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DICE_SEED: ${{ steps.forkbin.outputs.rev }}-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}
+        run: |
+          echo "seed8=$(printf '%s' "$DICE_SEED" | sha256sum | cut -c1-8)"             >> "$GITHUB_OUTPUT"
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          rc=0; ./ci/dice-bank-restore.sh dice-snap/sweep || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            echo "cold=1" >> "$GITHUB_OUTPUT"
+          elif [ "$rc" -ne 0 ]; then
+            exit "$rc"
+          fi
+
+      - name: Restore dice snapshots (cold-bank bootstrap fallback)
+        if: steps.forkbin.outputs.rev != '' && steps.dicebank.outputs.cold == '1'
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: dice-snap
@@ -414,26 +435,33 @@ jobs:
           du -sh dice-snap/sweep/* 2>/dev/null || true
           du -sh dice-snap/* 2>/dev/null || true
 
-      - name: Save dice snapshot cache
-        if: always() && steps.forkbin.outputs.rev != ''
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: dice-snap
-          key: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}-${{ github.run_id }}
-
-      - name: Prune superseded dice snapshots (1GB each; they evicted the CAS)
+      # Dice delta -> bank (replaces the 1.1GB cache save + prune; a
+      # barely-changed graph now costs tens of MB). Self-verified by
+      # step order: manifest only uploads after its container landed.
+      - name: Publish dice bank (delta)
+        id: diceout
         if: always() && steps.forkbin.outputs.rev != ''
         env:
-          GH_TOKEN: ${{ github.token }}
+          DICE_SEED: ${{ steps.forkbin.outputs.rev }}-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/actions/caches?per_page=100" \
-            --jq '.actions_caches[] | select(.key | startswith("dice-snap-hetero-")) | .key' 2>/dev/null |
-            grep -v -- "-${GITHUB_RUN_ID}$" |
-            while read -r k; do
-              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches?key=$k" > /dev/null \
-                && echo "pruned $k" || true
-            done
-          true
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          ./ci/dice-bank-publish.sh dice-snap/sweep
+
+      - name: Upload dice container
+        id: updice
+        if: always() && steps.diceout.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-dice-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/bank/dice-container
+          compression-level: 0
+
+      - name: Publish dice manifest
+        if: always() && steps.diceout.outputs.have == '1' && steps.updice.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-manifest-${{ env.CAS_LINEAGE }}-dice-${{ steps.dicebank.outputs.seed8 }}
+          path: ${{ runner.temp }}/bank/dice-manifest-out
 
       # Banking no longer rides the mesh: each range owner publishes
       # its own manifest, self-verified by step order. Stopping the
