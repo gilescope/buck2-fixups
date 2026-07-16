@@ -370,6 +370,9 @@ jobs:
         if: always() && steps.forkbin.outputs.rev != ''
         run: |
           buck2 --isolation-dir sweep debug hydration page-out || echo "page-out failed (non-fatal)"
+          # Split matters for delta-banking dice: the sqlite value
+          # shards dominate; graph.meta is the small byte-stable part.
+          du -sh dice-snap/sweep/* 2>/dev/null || true
           du -sh dice-snap/* 2>/dev/null || true
 
       - name: Save dice snapshot cache
