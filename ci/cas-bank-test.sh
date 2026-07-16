@@ -107,6 +107,21 @@ for b in 1111aaaa 2222bbbb 99ffcccc eeee0123; do
 done
 ok "seed: byte-identical round-trip"
 
+# ── executables survive the bank ────────────────────────────────────
+# Red run was live: lap 29507595376's 29 linux "failures" were ONE bug
+# - mode 0644 on every USTAR entry stripped exec bits, and rebuck2
+# hardlinks store files into exec dirs, so bank-seeded build scripts
+# died with EACCES.
+SX="$T/storex"
+mkblob "$SX" ab120001 40
+chmod 755 "$SX/cas/ab/ab120001"
+$BANK pack_segments "$SX" /dev/null "$T/segsx" > "$T/segsx.names"
+SX2="$T/storex2"
+$BANK seed_store "$SX2" "$T/segsx/$(cat "$T/segsx.names")"
+[ -x "$SX2/cas/ab/ab120001" ] \
+  || fail "exec bit lost through pack/seed round-trip"
+ok "seed: executables stay executable"
+
 # ── needs_compaction thresholds ─────────────────────────────────────
 res=$(COMPACT_MIN_MB=0 $BANK needs_compaction "$T/m2/manifest.json")
 case "$res" in yes\ cold-bank*) ;; *) fail "cold bank should compact: $res";;

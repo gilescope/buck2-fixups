@@ -81,10 +81,14 @@ fn octal(field: &mut [u8], val: u64) {
     field[s.len()] = 0;
 }
 
-/// Deterministic USTAR: fixed mode 0644, uid/gid 0, mtime 0, empty
+/// Deterministic USTAR: fixed mode 0755, uid/gid 0, mtime 0, empty
 /// uname/gname, entries sorted by path. The segment NAME is the sha256
 /// of this raw tar, so any nondeterminism here forks segment names for
-/// identical content.
+/// identical content - hence 0755 for EVERYTHING rather than
+/// preserving source modes (windows has none to preserve). Spurious
+/// exec bits on data blobs are harmless; a MISSING exec bit is not:
+/// rebuck2 hardlinks store files into exec dirs, so a 0644 build
+/// script dies with EACCES (lap 29507595376, 29 targets).
 fn tar(store: &Path, batch: &Path, out: &Path) -> std::io::Result<()> {
     let mut paths: Vec<String> = BufReader::new(fs::File::open(batch)?)
         .lines()
@@ -103,7 +107,7 @@ fn tar(store: &Path, batch: &Path, out: &Path) -> std::io::Result<()> {
 
         let mut h = [0u8; 512];
         h[..rel.len()].copy_from_slice(rel.as_bytes()); // cas/xx/<64hex> = 71 <= 100
-        octal(&mut h[100..108], 0o644); // mode
+        octal(&mut h[100..108], 0o755); // mode: see doc comment
         octal(&mut h[108..116], 0); // uid
         octal(&mut h[116..124], 0); // gid
         octal(&mut h[124..136], size);
