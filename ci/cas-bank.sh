@@ -180,15 +180,18 @@ write_manifest() {
 # overlap owned_prefixes (e.g. "89"). '*' means fetch everything.
 segments_to_fetch() {
   local manifest="$1" owned="$2"
+  # tr: jq.exe emits CRLF on windows; a stray \r in a segment name made
+  # every [ -d ] test fail except the last line's (run 29491383253:
+  # "seeded 1 segments" against a 16-segment head).
   if [ "$owned" = '*' ]; then
-    jq -r '.segments[].name' "$manifest"
+    jq -r '.segments[].name' "$manifest" | tr -d '\r'
     return 0
   fi
   jq -r --arg owned "$owned" '
     .segments[]
     | select(.prefixes | split("") | any(. as $p
         | ($owned | contains($p))))
-    | .name' "$manifest"
+    | .name' "$manifest" | tr -d '\r'
 }
 
 # ── seed_store <store_dir> <segment_dir>... ─────────────────────────

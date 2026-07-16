@@ -73,7 +73,7 @@ if [ -n "$owned" ]; then
     prev_gen="-"
     if [ -f "$BANK_WORK/own-range/manifest.json" ]; then
       head_dir="$BANK_WORK/own-range"
-      prev_gen=$(jq -r .generation "$head_dir/manifest.json")
+      prev_gen=$(jq -r .generation "$head_dir/manifest.json" | tr -d '\r')
     fi
     ci/cas-bank.sh write_manifest "$CAS_LINEAGE" "$RUN-1" - "$prev_gen" \
       "$RUN" "$head_dir" "$BANK_WORK/bank-segs" "$BANK_WORK/bank-manifest-out"

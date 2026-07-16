@@ -147,7 +147,7 @@ _seed_from_manifest() { # <manifest.json> <owned_prefixes>
   containers=$(printf '%s\n' "$needed" \
     | jq -rR --slurpfile m "$manifest" \
         '. as $n | $m[0].segments[] | select(.name == $n) | .artifact' \
-    | sort -u)
+    | tr -d '\r' | sort -u)
   for c in $containers; do
     aid=$(gh api \
       "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$c&per_page=1" \

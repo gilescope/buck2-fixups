@@ -269,4 +269,6 @@ Gotchas already paid for (do not rediscover): `gh api --jq` accepts no
 per step, hence the container-per-worker model; `local a="$1" b="$a"`
 breaks on macOS bash 3.2; process substitution into native win
 binaries fails (jq.exe cannot open MSYS /proc/N/fd paths) - use real
-temp files.
+temp files; jq.exe emits CRLF - `tr -d '\r'` any jq output consumed
+as filenames/values on a win path (a stray \r failed every [ -d ]
+seed test except the final line's).

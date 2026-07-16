@@ -7,6 +7,15 @@ BANK=ci/cas-bank.sh
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 fail() { echo "FAIL: $*" >&2; exit 1; }
+# Child CPU seconds so far (user+sys): scale guards bound CPU, not
+# wall clock - fork amplification burns CPU regardless of host load,
+# while a loaded box (load 18 happens here) stretches wall arbitrarily.
+child_cpu() {
+  times | awk 'NR==2 { s = 0
+    for (i = 1; i <= 2; i++) { split($i, a, "m"); sub("s", "", a[2])
+      s += a[1] * 60 + a[2] }
+    print int(s) }'
+}
 pass=0
 ok() { pass=$((pass + 1)); echo "ok $pass - $*"; }
 
@@ -137,44 +146,44 @@ ok "compact: full packs, blob set preserved, trigger quiesces"
 # the per-blob awk+wc loop (O(n^2), 2 forks per blob) this guards.
 S5="$T/store5"
 $BANK _tool gen-store "$S5" 10000
-start=$SECONDS
+start=$(child_cpu)
 $BANK pack_segments "$S5" /dev/null "$T/segs5" > "$T/segs5.names"
-elapsed=$((SECONDS - start))
+elapsed=$(( $(child_cpu) - start ))
 n=$(zstd -dq -c "$T/segs5"/cas-seg-*/blobs.txt.zst | wc -l | tr -d ' ')
 [ "$n" -eq 10000 ] || fail "scale pack lost blobs: $n/10000"
 [ "$elapsed" -lt 60 ] \
-  || fail "scale pack took ${elapsed}s - O(n^2) regression?"
+  || fail "scale pack burned ${elapsed}s CPU - O(n^2) regression?"
 ok "pack: 10k blobs in ${elapsed}s (single pass)"
 
 # ── compact at fleet scale: no per-blob forks in the re-bin ─────────
 # Same failure class as the pack loop: the mini-store hardlink loop
 # forked mkdir+ln per blob - hours at the bank's 2.27M blobs.
-start=$SECONDS
+start=$(child_cpu)
 $BANK compact "$S5" "$T/packs5" > "$T/packs5.names"
-elapsed=$((SECONDS - start))
+elapsed=$(( $(child_cpu) - start ))
 n=$(zstd -dq -c "$T/packs5"/cas-seg-*/blobs.txt.zst | sort -u | wc -l | tr -d ' ')
 [ "$n" -eq 10000 ] || fail "scale compact lost blobs: $n/10000"
 [ "$elapsed" -lt 60 ] \
-  || fail "scale compact took ${elapsed}s - per-blob forks?"
+  || fail "scale compact burned ${elapsed}s CPU - per-blob forks?"
 ok "compact: 10k blobs re-binned in ${elapsed}s (single pass)"
 
 # ── manifest assembly + prefix matching at fleet scale ──────────────
 # 600 segments approximates a few uncompacted laps (476 seen live).
 $BANK _tool gen-segments "$T/segs6" 600
 for d in "$T/segs6"/cas-seg-*/; do zstd -q --rm "$d/blobs.txt"; done
-start=$SECONDS
+start=$(child_cpu)
 $BANK write_manifest lin-b gen-1 - - 1006 - "$T/segs6" "$T/m6"
-elapsed=$((SECONDS - start))
+elapsed=$(( $(child_cpu) - start ))
 [ "$(jq '.segments | length' "$T/m6/manifest.json")" -eq 600 ] \
   || fail "scale manifest segment count"
 [ "$(zstd -dq -c "$T/m6/blobs.txt.zst" | wc -l | tr -d ' ')" -eq 12000 ] \
   || fail "scale manifest blob union"
-[ "$elapsed" -lt 60 ] || fail "scale manifest took ${elapsed}s"
-start=$SECONDS
+[ "$elapsed" -lt 60 ] || fail "scale manifest burned ${elapsed}s CPU"
+start=$(child_cpu)
 hits=$($BANK segments_to_fetch "$T/m6/manifest.json" "01" | wc -l | tr -d ' ')
-elapsed=$((SECONDS - start))
+elapsed=$(( $(child_cpu) - start ))
 [ "$hits" -gt 0 ] || fail "scale fetch matched nothing"
-[ "$elapsed" -lt 10 ] || fail "scale segments_to_fetch took ${elapsed}s"
+[ "$elapsed" -lt 10 ] || fail "scale segments_to_fetch burned ${elapsed}s CPU"
 ok "manifest+fetch: 600 segments in bounds (write ok, match ${hits} segs)"
 
 # ── segment split honours SEG_MAX ───────────────────────────────────
