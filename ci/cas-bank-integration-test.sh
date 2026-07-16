@@ -19,6 +19,11 @@ set -euo pipefail
 if [ -n "${GH_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$GH_CALL_LOG"; fi
 [ "$1" = "api" ] || { echo "fake gh: not api: $*" >&2; exit 1; }
 url="$2"
+if [ -n "${FAKE_FAIL_NAME:-}" ] \
+   && [[ "$url" == *"artifacts?name=$FAKE_FAIL_NAME"* ]]; then
+  echo "fake gh: injected failure for $FAKE_FAIL_NAME" >&2
+  exit 1
+fi
 jq_expr=""
 prev=""
 for a in "$@"; do
@@ -163,5 +168,43 @@ done
 [ -f "$W4/cas/2c/2ccc0003" ] && fail "lap4: foreign range blob seeded"
 [ -f "$W4/cas/0d/0ddd0004" ] && fail "lap4: unreferenced straggler blob seeded"
 echo "ok - lap4: prefix-subset restore, referenced blobs only"
+
+# ── lap 5: a THIN range manifest heals via the global merge ─────────
+# The r3 field incident: a manifest published without history pins its
+# range cold. The merged head must re-seed and re-reference the slice.
+thin="$T/thin-r0"; mkdir -p "$thin"
+jq --arg s "$gseg" '. + {segments: [.segments[] | select(.name != $s)]}' \
+  "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json" > "$thin/manifest.json"
+zstd -dq -c "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/blobs.txt.zst" \
+  | grep -v 00go1d99 | zstd -q -o "$thin/blobs.txt.zst" -f
+publish_to_fake "cas-manifest-$CAS_LINEAGE-r0" "$thin"
+W5="$T/lap5-w1"
+work "$W5" w1c 500 0
+[ -f "$W5/cas/00/00go1d99" ] || fail "lap5: thin manifest not healed on seed"
+mkb "$W5" 0e5e0005 "new"
+BANK_WORK="$T/wk-500-w1c" GITHUB_RUN_ID=500 ci/cas-bank-publish.sh "$W5" w1c 0
+jq -e --arg s "$gseg" '.segments[] | select(.name == $s)' \
+  "$T/wk-500-w1c/bank-manifest-out/manifest.json" > /dev/null \
+  || fail "lap5: healed manifest dropped the global slice segment"
+zstd -dq -c "$T/wk-500-w1c/bank-manifest-out/blobs.txt.zst" \
+  | grep -q 00go1d99 || fail "lap5: healed manifest lost the sliced blob"
+up 500 w1c container; up_manifest 500 w1c 0
+echo "ok - lap5: thin manifest healed by the global-slice merge"
+
+# ── lap 6: own-manifest lookup FAILURE demotes to spill-only ────────
+# A flake must not read as "absent": a thin manifest would clobber the
+# fat one via newest-wins.
+W6="$T/lap6-w1"
+FAKE_FAIL_NAME="cas-manifest-$CAS_LINEAGE-r0" work "$W6" w1d 600 0
+mkb "$W6" 0f0f0006 "flaky-lap"
+FAKE_FAIL_NAME="cas-manifest-$CAS_LINEAGE-r0" BANK_WORK="$T/wk-600-w1d" \
+  GITHUB_RUN_ID=600 ci/cas-bank-publish.sh "$W6" w1d 0
+[ ! -d "$T/wk-600-w1d/bank-manifest-out" ] \
+  || fail "lap6: staged a manifest despite unknown own-range state"
+zstd -dq -c "$T/wk-600-w1d/bank-spill"/cas-seg-*/blobs.txt.zst \
+  | grep -q 0f0f0006 || fail "lap6: new blob not spilled on demotion"
+r0gen=$(jq -r .generation "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json")
+[ "$r0gen" = "500-1" ] || fail "lap6: r0 HEAD moved to $r0gen"
+echo "ok - lap6: lookup flake -> spill-only, fat manifest stands"
 
 echo "PASS: integration"

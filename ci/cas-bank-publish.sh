@@ -42,6 +42,16 @@ if [ "$SHARD" != "-" ]; then
   spillset=$(echo "$spillset" | tr -d "$owned")
 fi
 
+# A failed own-manifest lookup at restore must not let this lap stage
+# a thin manifest that newest-wins would put over the fat one: demote
+# to spill-only (the range owner re-banks from spill next lap).
+if [ -f "$BANK_WORK/.own-range-unknown" ] && [ "$SHARD" != "-" ]; then
+  echo "[bank] $ROLE r$SHARD: own manifest state unknown - spill-only lap"
+  SHARD="-"
+  owned=""
+  spillset='0123456789abcdef'
+fi
+
 # ── own range: segments + staged manifest ───────────────────────────
 if [ -n "$owned" ]; then
   ci/cas-bank.sh pack_segments "$STORE_DIR" "$bank_list" \

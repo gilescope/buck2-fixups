@@ -45,10 +45,28 @@ _fetch_zip() { # <artifact_id> <dest_dir>
 # ── all range manifests: union blob list + own head ────────────────
 found=0
 : > "$BANK_WORK/.union"
-own_manifest=""
 own_created=""
+rm -f "$BANK_WORK/.own-range-unknown"
 for n in 0 1 2 3 4 5 6 7; do
-  row=$(_artifact_row "cas-manifest-$CAS_LINEAGE-r$n")
+  # For the OWN range, a lookup ERROR must not read as "absent": the
+  # publish would stage a thin manifest and newest-wins would clobber
+  # the fat one - monotonicity broken by a network flake. Flag it so
+  # publish skips manifest staging (spill-only lap, self-heals).
+  if [ "$SHARD" != "-" ] && [ "$n" = "$SHARD" ]; then
+    if ! row=$(gh api \
+      "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-manifest-$CAS_LINEAGE-r$n&per_page=20" \
+      --jq "[.artifacts[]
+        | select(.expired == false
+                 and .workflow_run.head_repository_id == .workflow_run.repository_id
+                 and .workflow_run.head_branch == \"$CAS_LINEAGE\")][0]
+        | select(. != null) | \"\(.id) \(.created_at)\"" 2>/dev/null); then
+      echo "[bank] WARN own-range manifest lookup FAILED - publish will spill-only"
+      touch "$BANK_WORK/.own-range-unknown"
+      continue
+    fi
+  else
+    row=$(_artifact_row "cas-manifest-$CAS_LINEAGE-r$n")
+  fi
   [ -n "$row" ] || continue
   aid="${row%% *}"
   _fetch_zip "$aid" "$BANK_WORK/.m$n"
@@ -56,7 +74,6 @@ for n in 0 1 2 3 4 5 6 7; do
   zstd -dq -c "$BANK_WORK/.m$n/blobs.txt.zst" >> "$BANK_WORK/.union"
   found=$((found + 1))
   if [ "$SHARD" != "-" ] && [ "$n" = "$SHARD" ]; then
-    own_manifest="$BANK_WORK/bank-manifest-r$n.json"
     own_created="${row#* }"
     rm -rf "$BANK_WORK/own-range" && mkdir -p "$BANK_WORK/own-range"
     cp "$BANK_WORK/.m$n/manifest.json" "$BANK_WORK/own-range/manifest.json"
@@ -88,20 +105,36 @@ echo "[bank] $found manifests, union $(wc -l < "$BANK_WORK/bank-blobs.txt" | tr 
 [ "$SHARD" != "-" ] || exit 0
 a=$(printf '%x' $((SHARD * 2))); b=$(printf '%x' $((SHARD * 2 + 1)))
 
-# First federated publish for a range INHERITS the global manifest's
-# slice of it as the head - otherwise the range's pre-migration blobs
-# stay union-visible (never re-banked) but manifest-invisible (never
-# seeded again): cold stores forever. After one publish per range the
-# global manifest is dead weight and can expire.
-if [ -z "$own_manifest" ] && [ -n "$global_manifest" ]; then
-  rm -rf "$BANK_WORK/own-range" && mkdir -p "$BANK_WORK/own-range"
-  jq --arg p "[$a$b]" \
-    '. + {segments: [.segments[] | select(.prefixes | test($p))]}' \
-    "$global_manifest" > "$BANK_WORK/own-range/manifest.json"
+# The own-range head MERGES the global manifest's slice in - always,
+# not just on first publish. A thin range manifest (published after a
+# flaky restore, or before the global existed) would otherwise pin the
+# range's pre-migration blobs union-visible (never re-banked) but
+# manifest-invisible (never seeded): cold stores forever. The merge is
+# idempotent and monotonic; once the global expires it contributes
+# nothing and the fallback can go.
+if [ -n "$global_manifest" ] && [ ! -f "$BANK_WORK/.own-range-unknown" ]; then
+  mkdir -p "$BANK_WORK/own-range"
+  own_json="$BANK_WORK/own-range/manifest.json"
+  # Base is the own manifest when it exists (its generation chains);
+  # otherwise the global with its segments cleared (pure inheritance).
+  [ -f "$own_json" ] \
+    || jq '. + {segments: []}' "$global_manifest" > "$own_json"
+  jq --arg p "[$a$b]" --slurpfile g "$global_manifest" \
+    '. + {segments: ((.segments + [$g[0].segments[]
+                        | select(.prefixes | test($p))])
+                     | unique_by(.name))}' \
+    "$own_json" > "$own_json.tmp" && mv "$own_json.tmp" "$own_json"
   { zstd -dq -c "$BANK_WORK/.g/blobs.txt.zst" | grep "^[$a$b]" || true; } \
+    > "$BANK_WORK/.gslice"
+  if [ -f "$BANK_WORK/own-range/blobs.txt.zst" ]; then
+    zstd -dq -c "$BANK_WORK/own-range/blobs.txt.zst" >> "$BANK_WORK/.gslice"
+  fi
+  sort -u "$BANK_WORK/.gslice" \
     | zstd -q -o "$BANK_WORK/own-range/blobs.txt.zst" -f
-  echo "[bank] range $SHARD inherits $(jq '.segments|length' \
-    "$BANK_WORK/own-range/manifest.json") segments from the global manifest"
+  rm -f "$BANK_WORK/.gslice"
+  echo "[bank] range $SHARD head merged with the global slice:" \
+    "$(jq '.segments|length' "$own_json") segments," \
+    "$(zstd -dq -c "$BANK_WORK/own-range/blobs.txt.zst" | wc -l | tr -d ' ') blobs"
 fi
 
 # ── seed own range: containers named by the manifest(s) ────────────
@@ -138,10 +171,10 @@ _seed_from_manifest() { # <manifest.json> <owned_prefixes>
 
 seeded=0
 mkdir -p "$STORE_DIR"
-if [ -n "$own_manifest" ]; then
-  _seed_from_manifest "$own_manifest" "$a$b"
-elif [ -n "$global_manifest" ]; then
-  _seed_from_manifest "$global_manifest" "$a$b"
+# The merged own-range head names every segment this range should hold
+# (own manifest + global slice); seed straight from it.
+if [ -f "$BANK_WORK/own-range/manifest.json" ]; then
+  _seed_from_manifest "$BANK_WORK/own-range/manifest.json" "$a$b"
 fi
 echo "[bank] seeded $seeded segments for range $a$b"
 

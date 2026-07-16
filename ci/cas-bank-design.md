@@ -250,7 +250,23 @@ per-iteration inside the batching loop (awk scan + wc fork each) was
 O(n^2) - lap 29435672672 stalled all 11 workers 30min+. Index once,
 join(1), then loop.
 
+Monotonicity protections (both live-lap incidents, both now tested):
+the own-range head always MERGES the global manifest's slice (a thin
+manifest published after a flaky restore would otherwise pin its
+range's history manifest-invisible - the r3 incident, lap
+29488124767); and an own-manifest lookup ERROR demotes the lap to
+spill-only rather than reading as "absent" (newest-wins would let a
+thin manifest clobber the fat one).
+
+Known hole, self-healing: the global bank has ZERO prefix-6/7 blobs -
+the bootstrap lap's shell-era pack silently no-opped on every win
+worker ("nothing new to publish" after verifying 299k blobs), and
+shard 3 is the only win-exclusive range. Those blobs are union-absent,
+so every one that reappears on any node is re-banked automatically.
+
 Gotchas already paid for (do not rediscover): `gh api --jq` accepts no
 `--arg`/`--argjson` (interpolate); `upload-artifact` is one artifact
 per step, hence the container-per-worker model; `local a="$1" b="$a"`
-breaks on macOS bash 3.2.
+breaks on macOS bash 3.2; process substitution into native win
+binaries fails (jq.exe cannot open MSYS /proc/N/fd paths) - use real
+temp files.
