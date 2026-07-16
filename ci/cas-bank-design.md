@@ -167,9 +167,10 @@ unit groups + `ci/cas-bank-integration-test.sh` end-to-end against a
 faked `gh`, including a straggler whose container never lands):
 
 - [x] `ci/cas-bank.sh` - pack/manifest/fetch-matching/seed/compaction
-      library (deterministic python-tar so mac/win/linux packs agree;
-      segments named by raw-tar sha so zstd version bumps cannot fork
-      names)
+      library (deterministic USTAR via `ci/cas-bank-tool`, a zero-dep
+      rust bin that owns every per-blob hot path - index/tar/link -
+      so mac/win/linux packs agree; segments named by raw-tar sha so
+      zstd version bumps cannot fork names)
 - [x] `ci/cas-bank-restore.sh` - manifest fetch (provenance-checked) +
       prefix-subset segment restore; exit 3 = cold bank
 - [x] `ci/cas-bank-publish.sh` - pack store-minus-bank into container +

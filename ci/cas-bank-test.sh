@@ -124,16 +124,7 @@ ok "compact: full packs, blob set preserved, trigger quiesces"
 # Red run was live: lap 29435672672 stalled all 11 workers 30min+ in
 # the per-blob awk+wc loop (O(n^2), 2 forks per blob) this guards.
 S5="$T/store5"
-python3 - "$S5" <<'PY'
-import hashlib, os, sys
-store = sys.argv[1]
-for i in range(10000):
-    h = hashlib.sha256(str(i).encode()).hexdigest()
-    d = os.path.join(store, "cas", h[:2])
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, h), "wb") as f:
-        f.write(str(i).encode())
-PY
+$BANK _tool gen-store "$S5" 10000
 start=$SECONDS
 $BANK pack_segments "$S5" /dev/null "$T/segs5" > "$T/segs5.names"
 elapsed=$((SECONDS - start))
@@ -157,20 +148,7 @@ ok "compact: 10k blobs re-binned in ${elapsed}s (single pass)"
 
 # ── manifest assembly + prefix matching at fleet scale ──────────────
 # 600 segments approximates a few uncompacted laps (476 seen live).
-python3 - "$T/segs6" <<'PY'
-import hashlib, json, os, sys
-out = sys.argv[1]
-for i in range(600):
-    h = hashlib.sha256(f"seg{i}".encode()).hexdigest()
-    d = os.path.join(out, f"cas-seg-{h}")
-    os.makedirs(d, exist_ok=True)
-    blobs = [hashlib.sha256(f"{i}.{j}".encode()).hexdigest() for j in range(20)]
-    with open(os.path.join(d, "meta.json"), "w") as f:
-        json.dump({"name": f"cas-seg-{h}", "bytes": 1000, "blobs": 20,
-                   "prefixes": h[0]}, f)
-    with open(os.path.join(d, "blobs.txt"), "w") as f:
-        f.write("\n".join(sorted(blobs)) + "\n")
-PY
+$BANK _tool gen-segments "$T/segs6" 600
 for d in "$T/segs6"/cas-seg-*/; do zstd -q --rm "$d/blobs.txt"; done
 start=$SECONDS
 $BANK write_manifest lin-b gen-1 - - 1006 - "$T/segs6" "$T/m6"

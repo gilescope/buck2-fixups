@@ -26,6 +26,26 @@ _sha256() {
   fi
 }
 
+# Rust helper for the per-blob hot paths (index/tar/link): shell loops
+# fork per item and melt at fleet scale. Zero deps, so the on-demand
+# build works offline; CAS_BANK_TOOL overrides (e.g. a prebuilt path).
+_tool() {
+  if [ -z "${CAS_BANK_TOOL:-}" ]; then
+    local dir
+    dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cas-bank-tool"
+    if [ -x "$dir/target/release/cas-bank-tool" ]; then
+      CAS_BANK_TOOL="$dir/target/release/cas-bank-tool"
+    elif [ -x "$dir/target/release/cas-bank-tool.exe" ]; then
+      CAS_BANK_TOOL="$dir/target/release/cas-bank-tool.exe"
+    else
+      cargo build --release --quiet --manifest-path "$dir/Cargo.toml"
+      CAS_BANK_TOOL="$dir/target/release/cas-bank-tool"
+      [ -x "$CAS_BANK_TOOL" ] || CAS_BANK_TOOL="$CAS_BANK_TOOL.exe"
+    fi
+  fi
+  "$CAS_BANK_TOOL" "$@"
+}
+
 # ── pack_segments <store_dir> <bank_blobs_file> <out_dir> ───────────
 # Diff the store against the bank's blob list; pack new blobs into
 # <=SEG_MAX_MB tar.zst segments under out_dir, one subdir per segment:
@@ -40,21 +60,10 @@ pack_segments() {
   local new_list="$out/.new-blobs" tab
   tab=$(printf '\t')
   # Store layout: cas/<2-hex>/<full-hash>. Blob id = basename. One
-  # python pass indexes blob\tpath\tbytes: sizing per blob inside the
-  # batching loop (an awk scan + wc fork each) was O(n^2) and stalled
-  # every worker 30min+ at fleet scale (run 29435672672).
-  python3 - "$store" <<'PY' | sort -t "$tab" -k1,1 > "$out/.store-idx"
-import os, sys
-cas = os.path.join(sys.argv[1], "cas")
-for d in sorted(os.listdir(cas)):
-    dp = os.path.join(cas, d)
-    if not os.path.isdir(dp):
-        continue
-    for f in sorted(os.listdir(dp)):
-        fp = os.path.join(dp, f)
-        if os.path.isfile(fp):
-            print(f"{f}\tcas/{d}/{f}\t{os.path.getsize(fp)}")
-PY
+  # tool pass indexes blob\tpath\tbytes (blob-sorted): sizing per blob
+  # inside the batching loop (an awk scan + wc fork each) was O(n^2)
+  # and stalled every worker 30min+ at fleet scale (run 29435672672).
+  _tool index "$store" > "$out/.store-idx"
   # bank blob list: plain sorted hashes (possibly zstd'd by caller).
   comm -23 <(cut -f1 "$out/.store-idx") <(sort -u "$bank_blobs") \
     > "$new_list"
@@ -73,32 +82,12 @@ PY
     [ -s "$batch" ] || return 0
     local tmp="$out/.seg-$seg_i"
     mkdir -p "$tmp"
-    # Deterministic tar via python3 (bsdtar on mac lacks --mtime etc).
-    # Segment name = sha256 of the RAW tar, so a zstd version bump
-    # cannot fork the name of identical content.
+    # Deterministic USTAR via the rust tool (bsdtar on mac lacks
+    # --mtime etc). Segment name = sha256 of the RAW tar, so a zstd
+    # version bump cannot fork the name of identical content.
+    _tool tar "$store" "$batch" "$tmp/bulk.tar"
     local sha
-    sha=$(python3 - "$store" "$batch" "$tmp/bulk.tar" <<'PY'
-import hashlib, sys, tarfile
-store, batch, out = sys.argv[1:4]
-with open(batch) as f:
-    paths = sorted(line.strip() for line in f if line.strip())
-with open(out, "wb") as raw:
-    with tarfile.open(fileobj=raw, mode="w", format=tarfile.USTAR_FORMAT) as t:
-        for rel in paths:
-            ti = t.gettarinfo(f"{store}/{rel}", arcname=rel)
-            ti.uid = ti.gid = 0
-            ti.uname = ti.gname = ""
-            ti.mtime = 0
-            ti.mode = 0o644
-            with open(f"{store}/{rel}", "rb") as src:
-                t.addfile(ti, src)
-h = hashlib.sha256()
-with open(out, "rb") as f:
-    for chunk in iter(lambda: f.read(1 << 20), b""):
-        h.update(chunk)
-print(h.hexdigest())
-PY
-    )
+    sha=$(_sha256 "$tmp/bulk.tar")
     zstd -q -8 --rm "$tmp/bulk.tar" -o "$tmp/bulk.tar.zst"
     awk -F/ '{print $NF}' "$batch" | sort > "$tmp/blobs.txt"
     zstd -q --rm "$tmp/blobs.txt"
@@ -251,26 +240,11 @@ compact() {
         -path "cas/$p*" | sort) > "$sub/paths" || true
     [ -s "$sub/paths" ] || { rm -rf "$sub"; continue; }
     # Reuse pack_segments' sealing by faking a mini-store view: one
-    # python pass hardlinks the prefix's blobs (a per-blob mkdir+ln
+    # tool pass hardlinks the prefix's blobs (a per-blob mkdir+ln
     # shell loop here was the pack loop's O(n*forks) class again -
     # 170s at 10k blobs, hours at the live bank's 2.27M).
     local mini="$sub/store"
-    python3 - "$store" "$sub/paths" "$mini" <<'PY'
-import os, shutil, sys
-store, paths, mini = sys.argv[1:4]
-with open(paths) as f:
-    for line in f:
-        rel = line.strip()
-        if not rel:
-            continue
-        dst = os.path.join(mini, rel)
-        os.makedirs(os.path.dirname(dst), exist_ok=True)
-        src = os.path.join(store, rel)
-        try:
-            os.link(src, dst)
-        except OSError:
-            shutil.copy2(src, dst)
-PY
+    _tool link "$store" "$sub/paths" "$mini"
     pack_segments "$mini" /dev/null "$out" > /dev/null
     rm -rf "$sub"
   done

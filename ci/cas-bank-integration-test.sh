@@ -12,39 +12,31 @@ mkdir -p "$FAKE_ART" "$T/bin"
 
 # fake gh: understands the three shapes the bank scripts use.
 cat > "$T/bin/gh" <<'FAKE'
-#!/usr/bin/env python3
-import io, json, os, re, sys, zipfile
-root = os.environ["FAKE_ART"]
-argv = sys.argv[1:]
-log = os.environ.get("GH_CALL_LOG")
-if log:
-    with open(log, "a") as f:
-        f.write(" ".join(argv) + "\n")
-assert argv[0] == "api", argv
-url = argv[1]
-m = re.search(r"artifacts\?name=([^&]+)", url)
-if m:
-    name = m.group(1)
-    d = os.path.join(root, name)
-    jq = argv[argv.index("--jq") + 1] if "--jq" in argv else ""
-    if "length" in jq:  # banker verification: count for this run
-        print(1 if os.path.isdir(d) else 0)
-    else:               # restore: newest artifact id (id == name here)
-        if os.path.isdir(d):
-            print(name)
-    sys.exit(0)
-m = re.search(r"artifacts/([^/]+)/zip", url)
-if m:
-    d = os.path.join(root, m.group(1))
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w") as z:
-        for base, _, files in os.walk(d):
-            for f in files:
-                p = os.path.join(base, f)
-                z.write(p, os.path.relpath(p, d))
-    sys.stdout.buffer.write(buf.getvalue())
-    sys.exit(0)
-sys.exit(f"fake gh: unhandled {url}")
+#!/usr/bin/env bash
+set -euo pipefail
+if [ -n "${GH_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$GH_CALL_LOG"; fi
+[ "$1" = "api" ] || { echo "fake gh: not api: $*" >&2; exit 1; }
+url="$2"
+case "$url" in
+  *artifacts\?name=*)
+    name="${url#*artifacts\?name=}"; name="${name%%\&*}"
+    jq_expr=""
+    prev=""
+    for a in "$@"; do
+      if [ "$prev" = "--jq" ]; then jq_expr="$a"; fi
+      prev="$a"
+    done
+    if [[ "$jq_expr" == *length* ]]; then # banker verification: count
+      if [ -d "$FAKE_ART/$name" ]; then echo 1; else echo 0; fi
+    else                                  # restore: newest id (id == name)
+      if [ -d "$FAKE_ART/$name" ]; then echo "$name"; fi
+    fi ;;
+  *artifacts/*/zip)
+    id="${url#*artifacts/}"; id="${id%/zip}"
+    (cd "$FAKE_ART/$id" && zip -qr - .) ;;
+  *)
+    echo "fake gh: unhandled $url" >&2; exit 1 ;;
+esac
 FAKE
 chmod +x "$T/bin/gh"
 export PATH="$T/bin:$PATH"
@@ -133,16 +125,13 @@ echo "ok - lap3: prefix-subset restore"
 # Live lap 29441912158 carried 476 segments in 13 containers; the
 # per-segment probe shape was 476 gh calls a lap.
 W6="$T/lap4-w6"
-python3 - "$W6" <<'PY'
-import hashlib, os, sys
-store = sys.argv[1]
-for i in range(12):
-    h = hashlib.sha256(f"big{i}".encode()).hexdigest()
-    d = os.path.join(store, "cas", h[:2])
-    os.makedirs(d, exist_ok=True)
-    with open(os.path.join(d, h), "wb") as f:
-        f.write(bytes([i % 256]) * (700 * 1024))
-PY
+pad="beef0000000000000000000000000000000000000000000000000000000000" # 62 hex -> 64 with the %02x
+for i in 0 1 2 3 4 5 6 7 8 9 10 11; do
+  name="$(printf '%02x' "$i")$pad"
+  mkdir -p "$W6/cas/${name:0:2}"
+  head -c $((700 * 1024)) /dev/zero | tr '\0' "$(printf '%x' "$i")" \
+    > "$W6/cas/${name:0:2}/$name"
+done
 BANK_WORK="$T/wk-400-w6" GITHUB_RUN_ID=400 SEG_MAX_MB=1 \
   ci/cas-bank-publish.sh "$W6" w6
 publish_to_fake "cas-segs-$CAS_LINEAGE-400-w6" "$T/wk-400-w6/bank-container"

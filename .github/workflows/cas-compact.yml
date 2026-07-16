@@ -76,6 +76,12 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
+      # The re-bin's per-blob hot paths live in ci/cas-bank-tool (rust,
+      # zero deps, built on demand by cas-bank.sh).
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
       # Re-binning holds container zips + the unpacked store + fresh
       # packs simultaneously (~35GB at today's 8GB bank) - reclaim the
       # runner ballast up front.
