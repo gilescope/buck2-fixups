@@ -313,9 +313,11 @@ jobs:
               timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... //third-party/snapshots/2024-11/... \
               > "leg-$name.log" 2>&1
             local rc=$?
-            # 124 = the 250-min checkpoint cap: progress banks in teardown
-            # (finalize + shard/AC saves), the next run continues from it.
-            [ $rc -eq 124 ] && echo "leg $name hit the checkpoint cap (banked)"
+            # 124 = the 250-min checkpoint cap; 143 = the memory
+            # watchdog. Either way progress banks in teardown and the
+            # next run continues from it.
+            { [ $rc -eq 124 ] || [ $rc -eq 143 ]; } \
+              && echo "leg $name checkpointed rc=$rc (banks in teardown)"
             echo "leg $name exited rc=$rc"
             return $rc
           }
@@ -325,11 +327,28 @@ jobs:
           leg win   Windows-x86_64 t-win   hetero-all & WIN=$!
           leg linux Linux-x86_64   t-linux hetero-all & LIN=$!
           leg mac   Darwin-arm64   t-mac   hetero-all   & MAC=$!
+          # Memory watchdog: checkpoint the legs BEFORE the runner
+          # agent OOMs. A SIGTERM'd build exits this step normally, so
+          # the always() teardown banks the AC/dice progress; an OOM'd
+          # runner skips teardown entirely - the AC stayed pinned at
+          # run 29398083498 for a full day of laps exactly that way
+          # (cold build -> OOM -> nothing banked -> still cold).
+          (
+            while sleep 15; do
+              avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
+              if [ "$avail" -lt 1500 ]; then
+                echo "[watchdog] MemAvailable=${avail}MB - checkpointing all legs"
+                kill $WIN $LIN $MAC 2>/dev/null || true
+                break
+              fi
+            done
+          ) &
+          WATCHDOG=$!
           rc=0
-          wait $WIN || { echo "WIN LEG FAILED"; rc=1; }
-          wait $LIN || { echo "LINUX LEG FAILED"; rc=1; }
-          wait $MAC || { echo "MAC LEG FAILED"; rc=1; }
-          kill $TAIL 2>/dev/null || true
+          wait $WIN || { echo "WIN LEG ENDED rc=$?"; rc=1; }
+          wait $LIN || { echo "LINUX LEG ENDED rc=$?"; rc=1; }
+          wait $MAC || { echo "MAC LEG ENDED rc=$?"; rc=1; }
+          kill $WATCHDOG $TAIL 2>/dev/null || true
           for l in win linux mac; do
             echo "=== leg $l tail ==="
             tail -30 "leg-$l.log"
