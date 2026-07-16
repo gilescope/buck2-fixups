@@ -1,0 +1,251 @@
+# CAS bank compaction (ci/cas-bank-design.md): re-bin a lineage's
+# segments into prefix-grouped full packs and publish a fresh manifest.
+# Runs OUTSIDE the sweep (a long pack window inside finalize is exactly
+# the exposure the bank removed), but shares the sweep's concurrency
+# group so writers to a lineage stay serialized - v1's whole race story.
+#
+# Provenance: restore only trusts a manifest whose publishing run has
+# head_branch == lineage. schedule events always run on the default
+# branch, so the weekly tick re-dispatches this workflow on the lineage
+# ref instead of compacting directly.
+name: cas-compact
+on:
+  workflow_dispatch:
+    inputs:
+      lineage:
+        description: Lineage (branch) to compact; defaults to the dispatched ref
+        required: false
+        default: ""
+      force:
+        description: Compact even if thresholds say no
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 5 * * 1" # weekly, Monday 05:17 UTC
+
+permissions:
+  contents: read
+
+# Same group as sweep-hetero: manifests for a lineage have exactly one
+# writer at a time (newest-artifact HEAD is then race-free).
+concurrency:
+  group: sweep-hetero
+  cancel-in-progress: false
+
+env:
+  CAS_LINEAGE: ${{ inputs.lineage || github.ref_name }}
+  SEG_MAX_MB: "64"
+  COMPACT_DELTA_PCT: "20"
+  COMPACT_HYSTERESIS_PCT: "5"
+  COMPACT_MIN_MB: "256"
+  COMPACT_MAX_SEGMENTS: "64"
+  # Referenced containers older than this force a re-bin: fresh uploads
+  # reset the 90d artifact-retention clock (the bank's only GC).
+  REWARM_DAYS: "60"
+  BANK_LINEAGE_REF: giles-rebuck2-sweep
+
+jobs:
+  # Weekly tick lands on the default branch - bounce to the lineage ref
+  # so the compacted manifest passes the provenance check.
+  redispatch:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Dispatch on the lineage ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run cas-compact.yml --repo "$GITHUB_REPOSITORY" \
+            --ref "$BANK_LINEAGE_REF"
+          echo "dispatched cas-compact on $BANK_LINEAGE_REF"
+
+  compact:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # Re-binning holds container zips + the unpacked store + fresh
+      # packs simultaneously (~35GB at today's 8GB bank) - reclaim the
+      # runner ballast up front.
+      - name: Reclaim runner ballast in the background
+        run: |
+          (sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+             /opt/hostedtoolcache/CodeQL /usr/local/.ghcup 2>/dev/null; df -h /) &
+
+      # Manifest + blob list only (empty range fetches no segments):
+      # enough to decide, cheap when the answer is no.
+      - name: Decide (thresholds + rewarm)
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          rc=0; ./ci/cas-bank-restore.sh "$(mktemp -d)" "" || rc=$?
+          if [ "$rc" -eq 3 ]; then
+            echo "cold bank - nothing to compact"
+            echo "go=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [ "$rc" -eq 0 ] || exit "$rc"
+          verdict=$(./ci/cas-bank.sh needs_compaction "$BANK_WORK/bank-manifest.json")
+          echo "needs_compaction: $verdict"
+          go=0
+          case "$verdict" in yes*) go=1 ;; esac
+          if [ "$go" -eq 0 ]; then
+            cutoff=$(date -u -d "$REWARM_DAYS days ago" +%s)
+            for c in $(jq -r '[.segments[].artifact] | unique | .[]' \
+                "$BANK_WORK/bank-manifest.json"); do
+              created=$(gh api \
+                "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$c&per_page=1" \
+                --jq '[.artifacts[] | select(.expired == false)][0].created_at // empty' \
+                2>/dev/null || true)
+              [ -n "$created" ] || continue
+              if [ "$(date -u -d "$created" +%s)" -lt "$cutoff" ]; then
+                echo "rewarm: $c created $created is older than ${REWARM_DAYS}d"
+                go=1; break
+              fi
+            done
+          fi
+          [ "$FORCE" = "true" ] && { echo "forced"; go=1; }
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+
+      - name: Re-bin into prefix-grouped full packs
+        if: steps.decide.outputs.go == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank"
+          ./ci/cas-bank-restore.sh "$RUNNER_TEMP/bank-store" '*'
+          ./ci/cas-bank.sh compact "$RUNNER_TEMP/bank-store" "$RUNNER_TEMP/packs" \
+            > "$RUNNER_TEMP/packs.names"
+          echo "packed $(wc -l < "$RUNNER_TEMP/packs.names" | tr -d ' ') full segments"
+          # Bin each pack into one of 8 fixed prefix-pair containers
+          # (upload-artifact is one artifact per step) and tag its meta
+          # with the container name for the manifest.
+          mkdir -p "$RUNNER_TEMP/verified"
+          for d in "$RUNNER_TEMP"/packs/cas-seg-*/; do
+            seg=$(basename "$d")
+            p=$(jq -r '.prefixes' "$d/meta.json" | cut -c1)
+            case "$p" in
+              0|1) g="01" ;; 2|3) g="23" ;; 4|5) g="45" ;; 6|7) g="67" ;;
+              8|9) g="89" ;; a|b) g="ab" ;; c|d) g="cd" ;; e|f) g="ef" ;;
+              *) echo "unexpected prefix '$p' in $seg"; exit 1 ;;
+            esac
+            mkdir -p "$RUNNER_TEMP/grp-$g/$seg" "$RUNNER_TEMP/verified/$seg"
+            mv "$d/bulk.tar.zst" "$RUNNER_TEMP/grp-$g/$seg/"
+            jq -c --arg a "cas-segs-$CAS_LINEAGE-$GITHUB_RUN_ID-compact-$g" \
+              '. + {artifact: $a}' "$d/meta.json" \
+              > "$RUNNER_TEMP/verified/$seg/meta.json"
+            cp "$d/blobs.txt.zst" "$RUNNER_TEMP/verified/$seg/"
+          done
+          parent_l=$(jq -r '.parent_lineage // "-"' "$BANK_WORK/bank-manifest.json")
+          parent_g=$(jq -r '.parent_generation // "-"' "$BANK_WORK/bank-manifest.json")
+          ./ci/cas-bank.sh write_manifest "$CAS_LINEAGE" "$GITHUB_RUN_ID-1" \
+            "$parent_l" "$parent_g" "$GITHUB_RUN_ID" - \
+            "$RUNNER_TEMP/verified" "$RUNNER_TEMP/manifest-out"
+          # Monotonicity gate: compaction re-bins, it never sheds blobs.
+          # A count drop means a referenced container failed to restore -
+          # fail here and leave the old manifest as HEAD.
+          in=$(wc -l < "$BANK_WORK/bank-blobs.txt" | tr -d ' ')
+          out=$(zstd -dq -c "$RUNNER_TEMP/manifest-out/blobs.txt.zst" | wc -l | tr -d ' ')
+          if [ "$in" -ne "$out" ]; then
+            echo "blob count mismatch: bank=$in repacked=$out - refusing to publish"
+            exit 1
+          fi
+          echo "manifest staged: $out blobs"
+
+      # 8 fixed container uploads; empty groups upload nothing and no
+      # segment references them. The manifest goes up LAST - if any
+      # container upload fails, the job dies first and the old manifest
+      # stays HEAD (atomicity).
+      - name: Upload container 01
+        if: steps.decide.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-compact-01
+          path: ${{ runner.temp }}/grp-01
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Upload container 23
+        if: steps.decide.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-compact-23
+          path: ${{ runner.temp }}/grp-23
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Upload container 45
+        if: steps.decide.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-compact-45
+          path: ${{ runner.temp }}/grp-45
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Upload container 67
+        if: steps.decide.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-compact-67
+          path: ${{ runner.temp }}/grp-67
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Upload container 89
+        if: steps.decide.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-compact-89
+          path: ${{ runner.temp }}/grp-89
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Upload container ab
+        if: steps.decide.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-compact-ab
+          path: ${{ runner.temp }}/grp-ab
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Upload container cd
+        if: steps.decide.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-compact-cd
+          path: ${{ runner.temp }}/grp-cd
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Upload container ef
+        if: steps.decide.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-compact-ef
+          path: ${{ runner.temp }}/grp-ef
+          compression-level: 0
+          if-no-files-found: ignore
+
+      - name: Publish manifest
+        if: steps.decide.outputs.go == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-manifest-${{ env.CAS_LINEAGE }}
+          path: ${{ runner.temp }}/manifest-out
