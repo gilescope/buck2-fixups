@@ -308,9 +308,13 @@ jobs:
                     BUCK2_DICE_SNAPSHOT_PATH="$GITHUB_WORKSPACE/dice-snap/sweep/graph.meta"
                     BUCK2_DICE_SNAPSHOT_SEED="$FORK_REV-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}")
             fi
+            # choom: if the OOM killer fires despite the watchdog, it
+            # must pick the build (daemon inherits the score from its
+            # first client), never the runner agent - a dead agent
+            # skips every remaining step, always() included.
             env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="sweep" \
             BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat -c buck2.archive_unpack_constraints=fixups//platforms:unpack-exec-linux" \
-              timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... //third-party/snapshots/2024-11/... \
+              choom -n 900 -- timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... //third-party/snapshots/2024-11/... \
               > "leg-$name.log" 2>&1
             local rc=$?
             # 124 = the 250-min checkpoint cap; 143 = the memory
