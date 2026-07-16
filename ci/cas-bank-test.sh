@@ -212,6 +212,20 @@ n=$(wc -l < "$T/segs4.names" | tr -d ' ')
 [ "$n" -ge 3 ] || fail "3.6MB at 1MB cap should split >=3 ways, got $n"
 ok "pack: SEG_MAX split ($n segments for 3.6MB at 1MB cap)"
 
+# ── AC failure purge: exit_code != 0 rows die, success rows stay ────
+# Minimal encoded REAPI ActionResult: field 4 (exit_code) varint. A
+# banked failure row (--cache-failures) replays forever otherwise.
+AC="$T/ac/ab"
+mkdir -p "$AC"
+printf '\x20\x01' > "$AC/failrow"        # exit_code = 1
+printf '\x20\x00' > "$AC/okrow"          # exit_code = 0
+printf '\x12\x03abc' > "$AC/norow"       # field 2 only (exit_code absent)
+$BANK _tool ac-purge-failures "$T/ac" | grep -q 'purged 1' \
+  || fail "purge count wrong"
+[ ! -f "$AC/failrow" ] || fail "failure row survived purge"
+[ -f "$AC/okrow" ] && [ -f "$AC/norow" ] || fail "purge ate a success row"
+ok "ac purge: failures die, successes stay"
+
 # ── dice bank: pack/merge the pagable sqlite rows ────────────────────
 # Fixture: 2 shards with rows whose key_lo & 15 matches the shard file
 # (the engine's shard_for is key.0 % 16 = key_lo & 15).

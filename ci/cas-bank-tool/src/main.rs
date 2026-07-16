@@ -26,10 +26,12 @@ fn main() -> ExitCode {
         ["link", store, paths, dst] => link(Path::new(store), Path::new(paths), Path::new(dst)),
         ["gen-store", dir, n] => gen_store(Path::new(dir), n.parse().unwrap_or(0)),
         ["gen-segments", dir, n] => gen_segments(Path::new(dir), n.parse().unwrap_or(0)),
+        ["ac-purge-failures", dir] => ac_purge_failures(Path::new(dir)),
         _ => {
             eprintln!(
                 "usage: cas-bank-tool index <store> | tar <store> <batch> <out> \
-                 | link <store> <paths> <dst> | gen-store <dir> <n> | gen-segments <dir> <n>"
+                 | link <store> <paths> <dst> | gen-store <dir> <n> \
+                 | gen-segments <dir> <n> | ac-purge-failures <ac_dir>"
             );
             return ExitCode::from(2);
         }
@@ -162,6 +164,90 @@ fn link(store: &Path, paths: &Path, dst: &Path) -> std::io::Result<()> {
             fs::copy(&from, &to)?;
         }
     }
+    Ok(())
+}
+
+/// Does this encoded REAPI `ActionResult` record a FAILURE (top-level
+/// field 4 `exit_code` != 0)? Conservative: malformed input reads as
+/// "not a failure" so we never delete what we cannot parse.
+fn is_failure_row(buf: &[u8]) -> bool {
+    fn varint(buf: &[u8], mut i: usize) -> Option<(u64, usize)> {
+        let mut v: u64 = 0;
+        let mut shift = 0;
+        loop {
+            let b = *buf.get(i)?;
+            v |= u64::from(b & 0x7f) << shift;
+            i += 1;
+            if b & 0x80 == 0 {
+                return Some((v, i));
+            }
+            shift += 7;
+            if shift > 63 {
+                return None;
+            }
+        }
+    }
+    let mut i = 0;
+    while i < buf.len() {
+        let Some((tag, next)) = varint(buf, i) else {
+            return false;
+        };
+        i = next;
+        let (field, wire) = (tag >> 3, tag & 7);
+        match wire {
+            0 => {
+                let Some((v, next)) = varint(buf, i) else {
+                    return false;
+                };
+                i = next;
+                if field == 4 && v != 0 {
+                    return true;
+                }
+            }
+            1 => i += 8,
+            2 => {
+                let Some((len, next)) = varint(buf, i) else {
+                    return false;
+                };
+                i = next + usize::try_from(len).unwrap_or(usize::MAX);
+            }
+            5 => i += 4,
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// Delete AC rows that cache FAILURES. The driver's --cache-failures
+/// usefully dedupes repeated failures WITHIN a lap, but the AC write
+/// path caches them and the read path serves them unconditionally
+/// (rebuck2 rpc.rs) - so a banked environmental failure (the exec-bit
+/// EACCES class) replays forever. Purging at seed time keeps in-lap
+/// caching and stops the poison crossing laps.
+fn ac_purge_failures(dir: &Path) -> std::io::Result<()> {
+    let mut purged = 0u64;
+    let mut kept = 0u64;
+    if dir.is_dir() {
+        for d in fs::read_dir(dir)? {
+            let d = d?;
+            if !d.file_type()?.is_dir() {
+                continue;
+            }
+            for f in fs::read_dir(d.path())? {
+                let f = f?;
+                if !f.file_type()?.is_file() {
+                    continue;
+                }
+                if is_failure_row(&fs::read(f.path())?) {
+                    fs::remove_file(f.path())?;
+                    purged += 1;
+                } else {
+                    kept += 1;
+                }
+            }
+        }
+    }
+    println!("purged {purged} failure rows, kept {kept}");
     Ok(())
 }
 

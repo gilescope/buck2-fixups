@@ -177,14 +177,6 @@ if [ -f "$BANK_WORK/own-range/manifest.json" ]; then
   _seed_from_manifest "$BANK_WORK/own-range/manifest.json" "$a$b"
 fi
 echo "[bank] seeded $seeded segments for range $a$b"
-# Heal segments packed before 1701c70's successor stamped 0755: a
-# 0644 store file hardlinked into an exec dir kills build scripts
-# with EACCES. One pass, matches nothing once old segments compact
-# away - remove then.
-if [ -d "$STORE_DIR/cas" ]; then
-  find "$STORE_DIR/cas" -type f ! -perm -100 -print0 2>/dev/null \
-    | xargs -0 chmod a+x 2>/dev/null || true
-fi
 
 # ── absorb recent spills (primary only) ────────────────────────────
 # Out-of-range blobs other nodes produced land in cas-spill-* until
@@ -226,4 +218,13 @@ if [ "${ABSORB_SPILLS:-}" = "1" ]; then
     rm -rf "$BANK_WORK/.spill"
   done
   echo "[bank] absorbed own-range dirs from $absorbed spill segments since $cutoff"
+fi
+
+# Heal segments/spills packed before the tool stamped 0755: a 0644
+# store file hardlinked into an exec dir kills build scripts with
+# EACCES. Runs LAST so spill-absorbed blobs are covered too; matches
+# nothing once pre-fix segments compact away - remove then.
+if [ -d "$STORE_DIR/cas" ]; then
+  find "$STORE_DIR/cas" -type f ! -perm -100 -print0 2>/dev/null \
+    | xargs -0 chmod a+x 2>/dev/null || true
 fi

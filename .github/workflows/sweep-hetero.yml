@@ -248,6 +248,14 @@ jobs:
             fi
           done
           rm -rf snapshot-ac snapshot-hotcas snapshot-hetero
+          # --cache-failures writes failure rows; the read path serves
+          # them unconditionally (rebuck2 rpc.rs), so a banked
+          # environmental failure (exec-bit EACCES, lap 29522220924)
+          # replays forever. Purge failures at seed: in-lap failure
+          # caching keeps working, poison stops crossing laps.
+          for d in "$STORE/driver/ac" "$STORE/driver/acn"; do
+            [ -d "$d" ] && ./ci/cas-bank.sh _tool ac-purge-failures "$d"
+          done
           # AC-only manifest: unchanged AC at run end = skip pack + upload.
           ./ci/store-snapshot.sh manifest "$STORE/driver" "ac acn" > seeded.manifest
           echo "seeded AC manifest: $(cat seeded.manifest)"
