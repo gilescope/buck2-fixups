@@ -248,6 +248,20 @@ jobs:
           (sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
              /opt/hostedtoolcache/CodeQL /usr/local/.ghcup 2>/dev/null; df -h /) &
 
+      # Frozen analysis heaps are write-once-read-rarely - ideal swap
+      # candidates. 16GB on the /mnt SSD lets earlier legs' cold heaps
+      # spill while the live leg's transients keep the RAM (images ship
+      # only 4GB swap).
+      - name: Add swap on /mnt
+        run: |
+          sudo fallocate -l 16G /mnt/swapfile2
+          sudo chmod 600 /mnt/swapfile2
+          sudo mkswap -q /mnt/swapfile2
+          sudo swapon /mnt/swapfile2
+          sudo sysctl -q vm.swappiness=80
+          swapon --show
+          free -h
+
       - name: Start driver (barrier on the full mixed fleet)
         run: |
           STORE="$HOME/.cache/rebuck2"
@@ -343,8 +357,12 @@ jobs:
           (
             while sleep 10; do
               avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
-              if [ "$avail" -lt 2500 ]; then
-                echo "[watchdog] MemAvailable=${avail}MB - checkpointing"
+              # PSI catches swap-thrash that MemAvailable never shows
+              # (run 29499874526 died with "available" memory): full
+              # avg10 > 20 means the box is stalling on memory.
+              psi=$(awk -F'avg10=' '/full/ {print int($2)}' /proc/pressure/memory)
+              if [ "$avail" -lt 2500 ] || [ "${psi:-0}" -gt 20 ]; then
+                echo "[watchdog] MemAvailable=${avail}MB psi_full10=${psi:-0} - checkpointing"
                 pkill -f build-all.sh 2>/dev/null || true
                 sleep 5
                 buck2 --isolation-dir sweep kill 2>/dev/null \
