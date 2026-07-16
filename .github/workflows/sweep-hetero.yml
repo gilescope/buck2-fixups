@@ -63,6 +63,12 @@ env:
   # publishing run's head_branch to equal it.
   CAS_LINEAGE: ${{ github.ref_name }}
   SEG_MAX_MB: "64"
+  # seq: one leg at a time with a daemon page-out+restart between legs
+  # (peak memory = one leg; the 16GB box dies by thrash under three
+  # cold parallel legs - daemon RSS 10GiB, run 29499874526). Flip to
+  # "par" once the fleet is warm enough that legs are mostly cache
+  # replay.
+  LEG_MODE: "seq"
 
 jobs:
   driver:
@@ -328,25 +334,18 @@ jobs:
           touch leg-win.log leg-linux.log leg-mac.log
           tail -F leg-win.log leg-linux.log leg-mac.log &
           TAIL=$!
-          leg win   Windows-x86_64 t-win   hetero-all & WIN=$!
-          leg linux Linux-x86_64   t-linux hetero-all & LIN=$!
-          leg mac   Darwin-arm64   t-mac   hetero-all   & MAC=$!
-          # Memory watchdog: checkpoint the legs BEFORE the runner
-          # agent OOMs. A SIGTERM'd build exits this step normally, so
-          # the always() teardown banks the AC/dice progress; an OOM'd
+          # Memory watchdog: checkpoint BEFORE the VM dies. Kills the
+          # clients then the DAEMON (the daemon holds the RSS and
+          # outlives its clients); the step then exits normally and the
+          # always() teardown banks AC/dice progress. An OOM'd/thrashed
           # runner skips teardown entirely - the AC stayed pinned at
-          # run 29398083498 for a full day of laps exactly that way
-          # (cold build -> OOM -> nothing banked -> still cold).
+          # run 29398083498 for a full day of laps exactly that way.
           (
             while sleep 10; do
               avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
               if [ "$avail" -lt 2500 ]; then
-                echo "[watchdog] MemAvailable=${avail}MB - checkpointing all legs"
-                kill $WIN $LIN $MAC 2>/dev/null || true
-                # The clients are not the whale: the buck2 DAEMON holds
-                # the RSS, and it outlives its clients. Kill it too or
-                # the agent still dies (run 29498770985: no watchdog
-                # rescue, runner logs never even uploaded).
+                echo "[watchdog] MemAvailable=${avail}MB - checkpointing"
+                pkill -f build-all.sh 2>/dev/null || true
                 sleep 5
                 buck2 --isolation-dir sweep kill 2>/dev/null \
                   || pkill -f buck2d 2>/dev/null || true
@@ -355,10 +354,32 @@ jobs:
             done
           ) &
           WATCHDOG=$!
+          # Page-out + daemon restart: drops the accumulated analysis
+          # RSS to zero between legs; the next leg reloads the graph
+          # from the dice snapshot (the persistence feature's day job).
+          checkpoint_daemon() {
+            buck2 --isolation-dir sweep debug hydration page-out \
+              2>/dev/null || echo "[seq] page-out failed (non-fatal)"
+            buck2 --isolation-dir sweep kill 2>/dev/null || true
+          }
           rc=0
-          wait $WIN || { echo "WIN LEG ENDED rc=$?"; rc=1; }
-          wait $LIN || { echo "LINUX LEG ENDED rc=$?"; rc=1; }
-          wait $MAC || { echo "MAC LEG ENDED rc=$?"; rc=1; }
+          if [ "$LEG_MODE" = "par" ]; then
+            leg win   Windows-x86_64 t-win   hetero-all & WIN=$!
+            leg linux Linux-x86_64   t-linux hetero-all & LIN=$!
+            leg mac   Darwin-arm64   t-mac   hetero-all   & MAC=$!
+            wait $WIN || { echo "WIN LEG ENDED rc=$?"; rc=1; }
+            wait $LIN || { echo "LINUX LEG ENDED rc=$?"; rc=1; }
+            wait $MAC || { echo "MAC LEG ENDED rc=$?"; rc=1; }
+          else
+            leg win   Windows-x86_64 t-win   hetero-all \
+              || { echo "WIN LEG ENDED rc=$?"; rc=1; }
+            checkpoint_daemon
+            leg linux Linux-x86_64  t-linux hetero-all \
+              || { echo "LINUX LEG ENDED rc=$?"; rc=1; }
+            checkpoint_daemon
+            leg mac   Darwin-arm64  t-mac   hetero-all \
+              || { echo "MAC LEG ENDED rc=$?"; rc=1; }
+          fi
           kill $WATCHDOG $TAIL 2>/dev/null || true
           for l in win linux mac; do
             echo "=== leg $l tail ==="
