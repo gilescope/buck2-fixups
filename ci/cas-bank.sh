@@ -150,6 +150,11 @@ write_manifest() {
     zstd -dq -c "$d/blobs.txt.zst" >> "$new_blobs"
   done
 
+  # Real file, not <(): native jq.exe on windows cannot open MSYS
+  # /proc/N/fd process-substitution paths (bit win workers the first
+  # lap write_manifest ran outside the ubuntu banker, run 29486020160).
+  jq -s '.' "$new_segments" > "$out/.new-segs.json" 2>/dev/null \
+    || echo '[]' > "$out/.new-segs.json"
   jq -n \
     --arg lineage "$lineage" \
     --arg generation "$generation" \
@@ -157,8 +162,7 @@ write_manifest() {
     --arg parent_generation "$parent_generation" \
     --argjson run_id "$run_id" \
     --argjson old "$old_segments" \
-    --slurpfile new <(jq -s '.' "$new_segments" 2>/dev/null \
-                      || echo '[]') \
+    --slurpfile new "$out/.new-segs.json" \
     '{version: 1, lineage: $lineage, generation: $generation,
       parent_lineage: (if $parent_lineage == "-" then null
                        else $parent_lineage end),
@@ -168,7 +172,7 @@ write_manifest() {
       segments: ($old + $new[0])}' > "$out/manifest.json"
 
   sort -u "$old_blobs" "$new_blobs" | zstd -q -o "$out/blobs.txt.zst" -f
-  rm -f "$old_blobs" "$new_segments" "$new_blobs"
+  rm -f "$old_blobs" "$new_segments" "$new_blobs" "$out/.new-segs.json"
 }
 
 # ── segments_to_fetch <manifest.json> <owned_prefixes> ──────────────
