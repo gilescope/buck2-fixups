@@ -143,6 +143,50 @@ n=$(zstd -dq -c "$T/segs5"/cas-seg-*/blobs.txt.zst | wc -l | tr -d ' ')
   || fail "scale pack took ${elapsed}s - O(n^2) regression?"
 ok "pack: 10k blobs in ${elapsed}s (single pass)"
 
+# ── compact at fleet scale: no per-blob forks in the re-bin ─────────
+# Same failure class as the pack loop: the mini-store hardlink loop
+# forked mkdir+ln per blob - hours at the bank's 2.27M blobs.
+start=$SECONDS
+$BANK compact "$S5" "$T/packs5" > "$T/packs5.names"
+elapsed=$((SECONDS - start))
+n=$(zstd -dq -c "$T/packs5"/cas-seg-*/blobs.txt.zst | sort -u | wc -l | tr -d ' ')
+[ "$n" -eq 10000 ] || fail "scale compact lost blobs: $n/10000"
+[ "$elapsed" -lt 60 ] \
+  || fail "scale compact took ${elapsed}s - per-blob forks?"
+ok "compact: 10k blobs re-binned in ${elapsed}s (single pass)"
+
+# ── manifest assembly + prefix matching at fleet scale ──────────────
+# 600 segments approximates a few uncompacted laps (476 seen live).
+python3 - "$T/segs6" <<'PY'
+import hashlib, json, os, sys
+out = sys.argv[1]
+for i in range(600):
+    h = hashlib.sha256(f"seg{i}".encode()).hexdigest()
+    d = os.path.join(out, f"cas-seg-{h}")
+    os.makedirs(d, exist_ok=True)
+    blobs = [hashlib.sha256(f"{i}.{j}".encode()).hexdigest() for j in range(20)]
+    with open(os.path.join(d, "meta.json"), "w") as f:
+        json.dump({"name": f"cas-seg-{h}", "bytes": 1000, "blobs": 20,
+                   "prefixes": h[0]}, f)
+    with open(os.path.join(d, "blobs.txt"), "w") as f:
+        f.write("\n".join(sorted(blobs)) + "\n")
+PY
+for d in "$T/segs6"/cas-seg-*/; do zstd -q --rm "$d/blobs.txt"; done
+start=$SECONDS
+$BANK write_manifest lin-b gen-1 - - 1006 - "$T/segs6" "$T/m6"
+elapsed=$((SECONDS - start))
+[ "$(jq '.segments | length' "$T/m6/manifest.json")" -eq 600 ] \
+  || fail "scale manifest segment count"
+[ "$(zstd -dq -c "$T/m6/blobs.txt.zst" | wc -l | tr -d ' ')" -eq 12000 ] \
+  || fail "scale manifest blob union"
+[ "$elapsed" -lt 60 ] || fail "scale manifest took ${elapsed}s"
+start=$SECONDS
+hits=$($BANK segments_to_fetch "$T/m6/manifest.json" "01" | wc -l | tr -d ' ')
+elapsed=$((SECONDS - start))
+[ "$hits" -gt 0 ] || fail "scale fetch matched nothing"
+[ "$elapsed" -lt 10 ] || fail "scale segments_to_fetch took ${elapsed}s"
+ok "manifest+fetch: 600 segments in bounds (write ok, match ${hits} segs)"
+
 # ── segment split honours SEG_MAX ───────────────────────────────────
 S4="$T/store4"
 for i in 1 2 3 4 5 6; do

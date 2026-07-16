@@ -250,15 +250,27 @@ compact() {
     (cd "$store" && find cas -mindepth 2 -maxdepth 2 -type f \
         -path "cas/$p*" | sort) > "$sub/paths" || true
     [ -s "$sub/paths" ] || { rm -rf "$sub"; continue; }
-    # Reuse pack_segments' sealing by faking a mini-store view: pack
-    # this prefix's blobs against an empty bank.
+    # Reuse pack_segments' sealing by faking a mini-store view: one
+    # python pass hardlinks the prefix's blobs (a per-blob mkdir+ln
+    # shell loop here was the pack loop's O(n*forks) class again -
+    # 170s at 10k blobs, hours at the live bank's 2.27M).
     local mini="$sub/store"
-    mkdir -p "$mini/cas"
-    while IFS= read -r rel; do
-      mkdir -p "$mini/$(dirname "$rel")"
-      ln -f "$store/$rel" "$mini/$rel" 2>/dev/null \
-        || cp "$store/$rel" "$mini/$rel"
-    done < "$sub/paths"
+    python3 - "$store" "$sub/paths" "$mini" <<'PY'
+import os, shutil, sys
+store, paths, mini = sys.argv[1:4]
+with open(paths) as f:
+    for line in f:
+        rel = line.strip()
+        if not rel:
+            continue
+        dst = os.path.join(mini, rel)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        src = os.path.join(store, rel)
+        try:
+            os.link(src, dst)
+        except OSError:
+            shutil.copy2(src, dst)
+PY
     pack_segments "$mini" /dev/null "$out" > /dev/null
     rm -rf "$sub"
   done

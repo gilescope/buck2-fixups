@@ -16,6 +16,10 @@ cat > "$T/bin/gh" <<'FAKE'
 import io, json, os, re, sys, zipfile
 root = os.environ["FAKE_ART"]
 argv = sys.argv[1:]
+log = os.environ.get("GH_CALL_LOG")
+if log:
+    with open(log, "a") as f:
+        f.write(" ".join(argv) + "\n")
 assert argv[0] == "api", argv
 url = argv[1]
 m = re.search(r"artifacts\?name=([^&]+)", url)
@@ -124,5 +128,37 @@ BANK_WORK="$T/wk-300-w5" ci/cas-bank-restore.sh "$W5" "59"
 [ -f "$W5/cas/55/55cc0607" ] || fail "prefix 5 blob not restored"
 [ -f "$W5/cas/99/99ffee02" ] || fail "prefix 9 blob not restored"
 echo "ok - lap3: prefix-subset restore"
+
+# ── lap 4: banker probes each CONTAINER once, not once per segment ──
+# Live lap 29441912158 carried 476 segments in 13 containers; the
+# per-segment probe shape was 476 gh calls a lap.
+W6="$T/lap4-w6"
+python3 - "$W6" <<'PY'
+import hashlib, os, sys
+store = sys.argv[1]
+for i in range(12):
+    h = hashlib.sha256(f"big{i}".encode()).hexdigest()
+    d = os.path.join(store, "cas", h[:2])
+    os.makedirs(d, exist_ok=True)
+    with open(os.path.join(d, h), "wb") as f:
+        f.write(bytes([i % 256]) * (700 * 1024))
+PY
+BANK_WORK="$T/wk-400-w6" GITHUB_RUN_ID=400 SEG_MAX_MB=1 \
+  ci/cas-bank-publish.sh "$W6" w6
+publish_to_fake "cas-segs-$CAS_LINEAGE-400-w6" "$T/wk-400-w6/bank-container"
+rm -rf "$T/reports-400-w6"
+cp -R "$T/wk-400-w6/bank-report" "$T/reports-400-w6"
+segs=$(find "$T/reports-400-w6" -mindepth 1 -maxdepth 1 -name 'cas-seg-*' | wc -l | tr -d ' ')
+[ "$segs" -ge 6 ] || fail "lap4 wants many segments in one container, got $segs"
+export GH_CALL_LOG="$T/gh-calls.log"
+: > "$GH_CALL_LOG"
+bank 400
+unset GH_CALL_LOG
+probes=$(grep -c "cas-segs-" "$T/gh-calls.log" || true)
+[ "$probes" -eq 1 ] \
+  || fail "banker made $probes container probes for 1 container ($segs segments)"
+n=$(zstd -dq -c "$FAKE_ART/cas-manifest-$CAS_LINEAGE/blobs.txt.zst" | wc -l | tr -d ' ')
+[ "$n" -eq 16 ] || fail "lap4 bank should hold 16 blobs, has $n"
+echo "ok - lap4: $segs segments, one container, one probe"
 
 echo "PASS: integration"

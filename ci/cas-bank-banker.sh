@@ -32,26 +32,42 @@ if [ -f "$BANK_WORK/bank-manifest.json" ]; then
 fi
 
 # Verify each report's container exists as an artifact of THIS run,
-# then admit its segments.
+# then admit its segments. Probe each unique CONTAINER once - the
+# per-segment probe shape was 476 gh calls a lap (same container
+# asked ~37 times) at live fleet scale.
 mkdir -p "$BANK_WORK/.verified"
 admitted=0 dropped=0
+tab=$(printf '\t')
+: > "$BANK_WORK/.seg-containers"
 for meta in "$REPORTS"/cas-seg-*/meta.json; do
   [ -f "$meta" ] || continue
-  seg=$(basename "$(dirname "$meta")")
-  container=$(jq -r .artifact "$meta")
+  printf '%s\t%s\n' "$(basename "$(dirname "$meta")")" \
+    "$(jq -r .artifact "$meta")" >> "$BANK_WORK/.seg-containers"
+done
+: > "$BANK_WORK/.landed"
+cut -f2 "$BANK_WORK/.seg-containers" | sort -u | while IFS= read -r container; do
+  [ -n "$container" ] || continue
   ok=$(gh api \
     "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$container&per_page=5" \
     --jq "[.artifacts[] | select(.workflow_run.id == $RUN)] | length" \
     2>/dev/null || echo 0)
+  # Explicit if: an &&-tail returning 1 on the loop's last iteration
+  # is the whole pipeline's status, and set -e kills the banker.
   if [ "${ok:-0}" -ge 1 ]; then
+    echo "$container" >> "$BANK_WORK/.landed"
+  fi
+done
+while IFS="$tab" read -r seg container; do
+  if grep -qxF "$container" "$BANK_WORK/.landed" 2>/dev/null; then
     mkdir -p "$BANK_WORK/.verified/$seg"
-    cp "$meta" "$(dirname "$meta")/blobs.txt.zst" "$BANK_WORK/.verified/$seg/"
+    cp "$REPORTS/$seg/meta.json" "$REPORTS/$seg/blobs.txt.zst" \
+      "$BANK_WORK/.verified/$seg/"
     admitted=$((admitted + 1))
   else
     echo "[banker] DROP $seg - container $container not found this run"
     dropped=$((dropped + 1))
   fi
-done
+done < "$BANK_WORK/.seg-containers"
 echo "[banker] segments admitted=$admitted dropped=$dropped"
 
 if [ "$head_dir" = "-" ]; then

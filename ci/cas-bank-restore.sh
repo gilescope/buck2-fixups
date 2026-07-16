@@ -48,10 +48,13 @@ if [ -z "$needed" ]; then
   mkdir -p "$STORE_DIR"
   exit 0
 fi
-containers=$(for name in $needed; do
-  jq -r --arg n "$name" \
-    '.segments[] | select(.name == $n) | .artifact' "$BANK_WORK/bank-manifest.json"
-done | sort -u)
+# Single jq pass: a fork per needed segment re-parsed the manifest
+# 476 times at live fleet scale (same O(n*forks) class as the pack
+# loop).
+containers=$(printf '%s\n' "$needed" \
+  | jq -rR --slurpfile m "$BANK_WORK/bank-manifest.json" \
+      '. as $n | $m[0].segments[] | select(.name == $n) | .artifact' \
+  | sort -u)
 
 mkdir -p "$STORE_DIR"
 fetched=0
