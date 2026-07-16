@@ -338,11 +338,18 @@ jobs:
           # run 29398083498 for a full day of laps exactly that way
           # (cold build -> OOM -> nothing banked -> still cold).
           (
-            while sleep 15; do
+            while sleep 10; do
               avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
-              if [ "$avail" -lt 1500 ]; then
+              if [ "$avail" -lt 2500 ]; then
                 echo "[watchdog] MemAvailable=${avail}MB - checkpointing all legs"
                 kill $WIN $LIN $MAC 2>/dev/null || true
+                # The clients are not the whale: the buck2 DAEMON holds
+                # the RSS, and it outlives its clients. Kill it too or
+                # the agent still dies (run 29498770985: no watchdog
+                # rescue, runner logs never even uploaded).
+                sleep 5
+                buck2 --isolation-dir sweep kill 2>/dev/null \
+                  || pkill -f buck2d 2>/dev/null || true
                 break
               fi
             done
