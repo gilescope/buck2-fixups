@@ -1,83 +1,188 @@
 #!/usr/bin/env bash
-# Restore a subset of the CAS bank into a store dir.
-#   ci/cas-bank-restore.sh <store_dir> <owned_prefixes|*>
-# Env: CAS_LINEAGE (required), GH_TOKEN, GITHUB_REPOSITORY.
-# Side effects in $BANK_WORK (default: a fresh temp dir; set it to a
-# persistent NON-REPO dir in CI - stray files in the repo root churn
-# buck2's file watcher): "$BANK_WORK/bank-blobs.txt" (the bank's full blob list,
-# for the pack step's diff) and "$BANK_WORK/bank-manifest.json".
-# Exit 3 = no bank manifest for this lineage (caller may fall back
-# to the legacy monolithic shard artifacts for bootstrap).
+# Restore from the federated CAS bank (8 per-range manifests, one per
+# shard, each published only by its range's primary owner).
+#   ci/cas-bank-restore.sh <store_dir> <shard|->
+# shard: this worker's shard number (owns hex prefixes 2n,2n+1); '-'
+# fetches only the blob-list union (driver/co-worker: no seeding).
+# Env: CAS_LINEAGE (required), GH_TOKEN, GITHUB_REPOSITORY,
+# ABSORB_SPILLS=1 (primaries only: also seed recent spill artifacts'
+# own-range blobs so the next publish banks them properly).
+# Side effects in $BANK_WORK (set it to a persistent NON-REPO dir in
+# CI - stray files in the repo root churn buck2's file watcher):
+#   bank-blobs.txt      union blob list of every manifest found
+#   bank-manifest-rN.json  each range manifest found
+#   own-range/          own manifest + blob list (publish's head dir)
+# Exit 3 = no manifests of any kind for this lineage (caller may fall
+# back to the legacy monolithic shard artifacts for bootstrap).
 set -euo pipefail
 mkdir -p "$1"
-STORE_DIR=$(cd "$1" && pwd); OWNED="$2"
+STORE_DIR=$(cd "$1" && pwd); SHARD="$2"
 cd "$(dirname "$0")/.."
 : "${CAS_LINEAGE:?}"
 BANK_WORK="${BANK_WORK:-$(mktemp -d)}"
 mkdir -p "$BANK_WORK"
 
-# Newest unexpired manifest for this lineage, provenance-checked: the
-# publishing run must have run on the lineage's own branch in this
+# Newest unexpired artifact for an exact name, provenance-checked:
+# the publishing run must have run on the lineage's own branch in this
 # repo (blocks a hostile branch publishing under another lineage's
-# manifest name - see ci/cas-bank-design.md).
-row=$(gh api \
-  "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-manifest-$CAS_LINEAGE&per_page=20" \
-  --jq "[.artifacts[]
-    | select(.expired == false
-             and .workflow_run.head_repository_id == .workflow_run.repository_id
-             and .workflow_run.head_branch == \"$CAS_LINEAGE\")][0]
-    | .id // empty" 2>/dev/null || true)
-if [ -z "$row" ] || [ "$row" = "null" ]; then
-  echo "[bank] no cas-manifest-$CAS_LINEAGE artifact - cold bank"
+# name - see ci/cas-bank-design.md). Prints "id created_at" or nothing.
+_artifact_row() {
+  gh api \
+    "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$1&per_page=20" \
+    --jq "[.artifacts[]
+      | select(.expired == false
+               and .workflow_run.head_repository_id == .workflow_run.repository_id
+               and .workflow_run.head_branch == \"$CAS_LINEAGE\")][0]
+      | select(. != null) | \"\(.id) \(.created_at)\"" 2>/dev/null || true
+}
+
+_fetch_zip() { # <artifact_id> <dest_dir>
+  rm -rf "$2" && mkdir -p "$2"
+  gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$1/zip" > "$2.zip"
+  unzip -o -q "$2.zip" -d "$2" && rm -f "$2.zip"
+}
+
+# ── all range manifests: union blob list + own head ────────────────
+found=0
+: > "$BANK_WORK/.union"
+own_manifest=""
+own_created=""
+for n in 0 1 2 3 4 5 6 7; do
+  row=$(_artifact_row "cas-manifest-$CAS_LINEAGE-r$n")
+  [ -n "$row" ] || continue
+  aid="${row%% *}"
+  _fetch_zip "$aid" "$BANK_WORK/.m$n"
+  cp "$BANK_WORK/.m$n/manifest.json" "$BANK_WORK/bank-manifest-r$n.json"
+  zstd -dq -c "$BANK_WORK/.m$n/blobs.txt.zst" >> "$BANK_WORK/.union"
+  found=$((found + 1))
+  if [ "$SHARD" != "-" ] && [ "$n" = "$SHARD" ]; then
+    own_manifest="$BANK_WORK/bank-manifest-r$n.json"
+    own_created="${row#* }"
+    rm -rf "$BANK_WORK/own-range" && mkdir -p "$BANK_WORK/own-range"
+    cp "$BANK_WORK/.m$n/manifest.json" "$BANK_WORK/own-range/manifest.json"
+    cp "$BANK_WORK/.m$n/blobs.txt.zst" "$BANK_WORK/own-range/blobs.txt.zst"
+  fi
+done
+
+# Transitional: the pre-federation GLOBAL manifest is a read-only
+# parent - its blob list keeps the union complete while ranges are
+# still being established, and it seeds ranges that have no manifest
+# yet. Remove once all 8 ranges are live.
+global_manifest=""
+grow=$(_artifact_row "cas-manifest-$CAS_LINEAGE")
+if [ -n "$grow" ]; then
+  _fetch_zip "${grow%% *}" "$BANK_WORK/.g"
+  global_manifest="$BANK_WORK/.g/manifest.json"
+  zstd -dq -c "$BANK_WORK/.g/blobs.txt.zst" >> "$BANK_WORK/.union"
+  found=$((found + 1))
+fi
+
+if [ "$found" -eq 0 ]; then
+  echo "[bank] no range or global manifests for $CAS_LINEAGE - cold bank"
   exit 3
 fi
-rm -rf "$BANK_WORK/.m" && mkdir -p "$BANK_WORK/.m"
-gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$row/zip" > "$BANK_WORK/.m.zip"
-unzip -o -q "$BANK_WORK/.m.zip" -d "$BANK_WORK/.m" && rm -f "$BANK_WORK/.m.zip"
-cp "$BANK_WORK/.m"/manifest.json "$BANK_WORK/bank-manifest.json"
-zstd -dq -c "$BANK_WORK/.m"/blobs.txt.zst > "$BANK_WORK/bank-blobs.txt"
-gen=$(jq -r .generation "$BANK_WORK/bank-manifest.json")
-echo "[bank] manifest $CAS_LINEAGE@$gen: $(jq '.segments|length' \
-  "$BANK_WORK/bank-manifest.json") segments, $(wc -l < "$BANK_WORK/bank-blobs.txt" | tr -d ' ') blobs"
+sort -u "$BANK_WORK/.union" > "$BANK_WORK/bank-blobs.txt"
+rm -f "$BANK_WORK/.union"
+echo "[bank] $found manifests, union $(wc -l < "$BANK_WORK/bank-blobs.txt" | tr -d ' ') blobs"
 
-# The matching game: segments whose prefix bitmap overlaps our range,
-# grouped by the container artifact that holds them.
-needed=$(ci/cas-bank.sh segments_to_fetch "$BANK_WORK/bank-manifest.json" "$OWNED")
-if [ -z "$needed" ]; then
-  echo "[bank] no segments overlap range '$OWNED'"
-  mkdir -p "$STORE_DIR"
-  exit 0
+[ "$SHARD" != "-" ] || exit 0
+a=$(printf '%x' $((SHARD * 2))); b=$(printf '%x' $((SHARD * 2 + 1)))
+
+# First federated publish for a range INHERITS the global manifest's
+# slice of it as the head - otherwise the range's pre-migration blobs
+# stay union-visible (never re-banked) but manifest-invisible (never
+# seeded again): cold stores forever. After one publish per range the
+# global manifest is dead weight and can expire.
+if [ -z "$own_manifest" ] && [ -n "$global_manifest" ]; then
+  rm -rf "$BANK_WORK/own-range" && mkdir -p "$BANK_WORK/own-range"
+  jq --arg p "[$a$b]" \
+    '. + {segments: [.segments[] | select(.prefixes | test($p))]}' \
+    "$global_manifest" > "$BANK_WORK/own-range/manifest.json"
+  { zstd -dq -c "$BANK_WORK/.g/blobs.txt.zst" | grep "^[$a$b]" || true; } \
+    | zstd -q -o "$BANK_WORK/own-range/blobs.txt.zst" -f
+  echo "[bank] range $SHARD inherits $(jq '.segments|length' \
+    "$BANK_WORK/own-range/manifest.json") segments from the global manifest"
 fi
-# Single jq pass: a fork per needed segment re-parsed the manifest
-# 476 times at live fleet scale (same O(n*forks) class as the pack
-# loop).
-containers=$(printf '%s\n' "$needed" \
-  | jq -rR --slurpfile m "$BANK_WORK/bank-manifest.json" \
-      '. as $n | $m[0].segments[] | select(.name == $n) | .artifact' \
-  | sort -u)
 
-mkdir -p "$STORE_DIR"
-fetched=0
-for c in $containers; do
-  aid=$(gh api \
-    "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$c&per_page=1" \
-    --jq '[.artifacts[] | select(.expired == false)][0].id // empty' \
-    2>/dev/null || true)
-  if [ -z "$aid" ]; then
-    # Referenced-but-missing container: degrade to re-execution (the
-    # affected actions miss the cache) rather than failing the lap.
-    echo "[bank] WARN container $c missing - its blobs will re-derive"
-    continue
-  fi
-  rm -rf "$BANK_WORK/.seg" && mkdir -p "$BANK_WORK/.seg"
-  gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$aid/zip" \
-    > "$BANK_WORK/.seg.zip"
-  unzip -o -q "$BANK_WORK/.seg.zip" -d "$BANK_WORK/.seg" && rm -f "$BANK_WORK/.seg.zip"
-  for name in $needed; do
-    [ -d "$BANK_WORK/.seg/$name" ] || continue
-    ci/cas-bank.sh seed_store "$STORE_DIR" "$BANK_WORK/.seg/$name"
-    fetched=$((fetched + 1))
+# ── seed own range: containers named by the manifest(s) ────────────
+_seed_from_manifest() { # <manifest.json> <owned_prefixes>
+  local manifest="$1" owned="$2" needed containers c aid name
+  needed=$(ci/cas-bank.sh segments_to_fetch "$manifest" "$owned")
+  [ -n "$needed" ] || return 0
+  # Single jq pass: a fork per needed segment re-parsed the manifest
+  # 476 times at live fleet scale.
+  containers=$(printf '%s\n' "$needed" \
+    | jq -rR --slurpfile m "$manifest" \
+        '. as $n | $m[0].segments[] | select(.name == $n) | .artifact' \
+    | sort -u)
+  for c in $containers; do
+    aid=$(gh api \
+      "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$c&per_page=1" \
+      --jq '[.artifacts[] | select(.expired == false)][0].id // empty' \
+      2>/dev/null || true)
+    if [ -z "$aid" ]; then
+      # Referenced-but-missing container: degrade to re-execution (the
+      # affected actions miss the cache) rather than failing the lap.
+      echo "[bank] WARN container $c missing - its blobs will re-derive"
+      continue
+    fi
+    _fetch_zip "$aid" "$BANK_WORK/.seg"
+    for name in $needed; do
+      [ -d "$BANK_WORK/.seg/$name" ] || continue
+      ci/cas-bank.sh seed_store "$STORE_DIR" "$BANK_WORK/.seg/$name"
+      seeded=$((seeded + 1))
+    done
+    rm -rf "$BANK_WORK/.seg"
   done
-  rm -rf "$BANK_WORK/.seg"
-done
-echo "[bank] seeded $fetched segments into $STORE_DIR"
+}
+
+seeded=0
+mkdir -p "$STORE_DIR"
+if [ -n "$own_manifest" ]; then
+  _seed_from_manifest "$own_manifest" "$a$b"
+elif [ -n "$global_manifest" ]; then
+  _seed_from_manifest "$global_manifest" "$a$b"
+fi
+echo "[bank] seeded $seeded segments for range $a$b"
+
+# ── absorb recent spills (primary only) ────────────────────────────
+# Out-of-range blobs other nodes produced land in cas-spill-* until
+# their range owner seeds them; the owner's next publish then diffs
+# them as new and banks them as proper range segments - absorption is
+# a side effect of the ordinary pack, not extra machinery.
+if [ "${ABSORB_SPILLS:-}" = "1" ]; then
+  cutoff="${own_created:-1970-01-01T00:00:00Z}"
+  spills=$(gh api \
+    "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
+    --jq "[.artifacts[]
+      | select(.expired == false
+               and (.name | startswith(\"cas-spill-$CAS_LINEAGE-\"))
+               and .workflow_run.head_repository_id == .workflow_run.repository_id
+               and .workflow_run.head_branch == \"$CAS_LINEAGE\"
+               and .created_at > \"$cutoff\")
+      | .id][:40] | .[]" 2>/dev/null || true)
+  absorbed=0
+  for aid in $spills; do
+    _fetch_zip "$aid" "$BANK_WORK/.spill"
+    # Only this worker's range moves into the store: seeding foreign
+    # prefixes would make a spill-only node re-spill them (ping-pong).
+    for d in "$BANK_WORK/.spill"/cas-seg-*/; do
+      [ -f "$d/bulk.tar.zst" ] || continue
+      rm -rf "$BANK_WORK/.spill-x" && mkdir -p "$BANK_WORK/.spill-x"
+      zstd -dq -c "$d/bulk.tar.zst" | tar -x -C "$BANK_WORK/.spill-x"
+      # Store dirs are TWO hex chars (cas/0f/); the range is the first.
+      for p in "$a" "$b"; do
+        for dd in "$BANK_WORK/.spill-x/cas/$p"*/; do
+          [ -d "$dd" ] || continue
+          base=$(basename "$dd")
+          mkdir -p "$STORE_DIR/cas/$base"
+          cp -R "$dd". "$STORE_DIR/cas/$base/"
+          absorbed=$((absorbed + 1))
+        done
+      done
+      rm -rf "$BANK_WORK/.spill-x"
+    done
+    rm -rf "$BANK_WORK/.spill"
+  done
+  echo "[bank] absorbed own-range dirs from $absorbed spill segments since $cutoff"
+fi

@@ -46,34 +46,42 @@ runs). Everything except the manifest name is content-addressed.
   skips segments with no overlap; over-fetch on overlap is accepted
   (compaction re-bins by prefix to pay it down).
 
-## Lap flow
+## Lap flow (federated: no banker)
+
+Each of the 8 ranges (shard n owns hex prefixes 2n, 2n+1) has ONE
+manifest, `cas-manifest-<lineage>-r<n>`, written only by that range's
+PRIMARY worker. There is no banker job: a worker verifies only itself,
+by step order - the manifest upload step is gated on the container
+upload step succeeding, so a manifest can never reference a container
+that didn't land.
 
 ```text
 restore (per worker, parallel):
-  fetch manifest chain (own lineage, then parent lineage)
-  fetch segments whose prefix bitmap overlaps this worker's ranges
-  untar into store; keep bank blobs.txt as "already banked"
+  fetch all 8 range manifests (provenance-checked); union their blob
+    lists -> "already banked"
+  seed own range from own manifest's segments
+  primaries also absorb recent cas-spill-* artifacts' own-range blobs
 
 build: as today.
 
-pack (per worker, post-build, always()):
-  new = store blobs - bank blobs.txt      # exact diff, no sync needed
-  split new into <=SEG_MAX_MB tars, content-name, upload as artifacts
-  upload a small report artifact: segment names + metas
+publish (per worker, post-build, always()):
+  new = store blobs - union                 # exact diff, no sync
+  own-range new -> segments + container + NEW range manifest
+    (head = restored range manifest; uploaded container-first)
+  everything else -> cas-spill-<lineage>-<run>-<role>; its range
+    owner absorbs it on a later restore, where the ordinary diff
+    banks it properly - absorption is a side effect of the pack,
+    not machinery
 
-bank (single "banker" job, needs: [driver, all workers], if: always()):
-  collect worker reports; verify each named segment artifact exists
-  new manifest = HEAD segments + verified new segments
-  new blobs.txt = old + verified new blob lists
-  upload cas-manifest-<lineage>            # atomic: artifact appears
-                                           # whole or not at all
+driver / co-worker / secondaries: spill-only (owns nothing).
 ```
 
-Failure containment: a worker dying mid-pack loses only its own
-<=64MB segment(s); the banker references only what landed, so the
-manifest never lies. The mesh plays no part in banking - the GH job
-graph is the barrier (this deletes the finalize ack/assignment failure
-class observed in the field: 5/8 and 6/8 "banked" with ack loss and an
+Failure containment: a worker dying anywhere leaves its range's
+previous manifest as HEAD - stale by one lap, self-healing, and no
+other range is affected. There is no job whose failure loses the whole
+lap's banking (the banker had exactly that mode), and the mesh plays
+no part (this deletes the finalize ack/assignment failure class
+observed in the field: 5/8 and 6/8 "banked" with ack loss and an
 orphaned shard).
 
 Blast radius comparison:
@@ -216,13 +224,26 @@ Remaining:
       Driver build failures in both laps are the pre-existing
       driver-overload class (localhost grpc keep-alive timeouts, then
       runner shutdown) - bank steps green throughout.
-- [ ] remove the legacy fallback after a few green laps
+Federated rework (2026-07-16, banker deleted): per-range manifests
+(`cas-manifest-<lineage>-r<n>`, one primary writer each),
+self-verification by step order, spill/absorb for out-of-range blobs;
+`cas-compact.yml` became an 8-range matrix (each range decides,
+re-bins, and publishes independently; compaction is also a spill
+absorption point). Migration: the pre-federation GLOBAL manifest is a
+read-only parent - each range's first publish inherits its slice
+(segments + blob list), after which the global can expire. Both suites
+cover the choreography end-to-end (migration inherit, spill/absorb,
+torn publish, subset restore) against a fake gh that runs the scripts'
+REAL --jq expressions.
+
+- [ ] remove the legacy shard fallback + global-manifest parent after
+      all 8 ranges have published
 - [ ] first compaction: needs cas-compact.yml on the default branch
       (workflow_dispatch resolves there; branch
-      giles-register-cas-compact is pushed and awaits a PR). Today's
-      hash-sorted segments give narrow bitmaps but each WORKER
-      container spans most prefixes, so warm restores over-fetch
-      (~8GB to extract ~1GB) until the first re-bin lands.
+      giles-register-cas-compact is pushed and awaits a PR - refresh
+      it with the federated version before merging). Until each
+      range's first re-bin, restores over-fetch from the fat
+      migration-era containers.
 
 Perf gotcha paid for on the way (fixed 1701c70): sizing blobs
 per-iteration inside the batching loop (awk scan + wc fork each) was

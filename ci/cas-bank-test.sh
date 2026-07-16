@@ -66,6 +66,18 @@ $BANK write_manifest lin-a gen-2 - - 1002 "$T/m1" "$T/segs2" "$T/m2"
   || fail "gen-2 blob union"
 ok "manifest: incremental lap packs only new blobs"
 
+# ── pack prefix filter (federated range/spill split) ────────────────
+$BANK pack_segments "$S1" /dev/null "$T/segsF" "9e" > "$T/segsF.names"
+segF=$(cat "$T/segsF.names")
+got=$(zstd -dq -c "$T/segsF/$segF/blobs.txt.zst" | tr '\n' ' ')
+[ "$got" = "99ffcccc eeee0123 " ] \
+  || fail "prefix filter 9e packed wrong blobs: $got"
+$BANK pack_segments "$S1" /dev/null "$T/segsF2" "12" > "$T/segsF2.names"
+got=$(zstd -dq -c "$T/segsF2/$(cat "$T/segsF2.names")/blobs.txt.zst" | tr '\n' ' ')
+[ "$got" = "1111aaaa 2222bbbb " ] \
+  || fail "prefix filter 12 packed wrong blobs: $got"
+ok "pack: prefix filter splits range from spill"
+
 # ── prefix matching game ────────────────────────────────────────────
 got=$($BANK segments_to_fetch "$T/m2/manifest.json" "9")
 [ "$got" = "$seg1" ] || fail "owner of 9 should fetch only seg1: $got"

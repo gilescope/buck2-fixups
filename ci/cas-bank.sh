@@ -46,14 +46,17 @@ _tool() {
   "$CAS_BANK_TOOL" "$@"
 }
 
-# ── pack_segments <store_dir> <bank_blobs_file> <out_dir> ───────────
+# ── pack_segments <store_dir> <bank_blobs_file> <out_dir> [prefixes] ─
 # Diff the store against the bank's blob list; pack new blobs into
 # <=SEG_MAX_MB tar.zst segments under out_dir, one subdir per segment:
 #   out_dir/cas-seg-<sha256>/{bulk.tar.zst,blobs.txt.zst,meta.json}
 # Prints created segment names, one per line. No new blobs -> no
 # output, exit 0. bank_blobs_file may be /dev/null (cold bank).
+# prefixes: only pack new blobs whose first hex char is in this set
+# (e.g. "01"); '*' or absent = all (federated split: a range owner
+# packs its own prefixes; everything else spills).
 pack_segments() {
-  local store="$1" bank_blobs="$2" out="$3"
+  local store="$1" bank_blobs="$2" out="$3" only="${4:-*}"
   mkdir -p "$out"
   [ -d "$store/cas" ] || return 0
 
@@ -67,6 +70,10 @@ pack_segments() {
   # bank blob list: plain sorted hashes (possibly zstd'd by caller).
   comm -23 <(cut -f1 "$out/.store-idx") <(sort -u "$bank_blobs") \
     > "$new_list"
+  if [ "$only" != '*' ]; then
+    grep "^[$only]" "$new_list" > "$new_list.f" || true
+    mv "$new_list.f" "$new_list"
+  fi
   if ! [ -s "$new_list" ]; then
     rm -f "$out/.new-blobs" "$out/.store-idx"
     return 0
