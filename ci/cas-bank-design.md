@@ -206,8 +206,27 @@ suites green):
 
 Remaining:
 
-- [ ] first live lap: verify bank bootstrap + steady-state segment
-      sizes; then remove the legacy fallback after a few green laps
+- [x] first live laps (2026-07-16): bootstrap lap 29441912158 banked
+      generation 1 - 476 segments, 8.1GB, 2,270,973 blobs (all 64-hex,
+      zero tmp contamination), banker admitted 476 / dropped 0. Warm
+      lap 29473831833: 11/11 workers restored from the bank, legacy
+      fallback skipped everywhere; packs diffed to empty (admitted=0)
+      and the banker carried the manifest forward as a new generation.
+      Driver build failures in both laps are the pre-existing
+      driver-overload class (localhost grpc keep-alive timeouts, then
+      runner shutdown) - bank steps green throughout.
+- [ ] remove the legacy fallback after a few green laps
+- [ ] first compaction: needs cas-compact.yml on the default branch
+      (workflow_dispatch resolves there; branch
+      giles-register-cas-compact is pushed and awaits a PR). Today's
+      hash-sorted segments give narrow bitmaps but each WORKER
+      container spans most prefixes, so warm restores over-fetch
+      (~8GB to extract ~1GB) until the first re-bin lands.
+
+Perf gotcha paid for on the way (fixed 1701c70): sizing blobs
+per-iteration inside the batching loop (awk scan + wc fork each) was
+O(n^2) - lap 29435672672 stalled all 11 workers 30min+. Index once,
+join(1), then loop.
 
 Gotchas already paid for (do not rediscover): `gh api --jq` accepts no
 `--arg`/`--argjson` (interpolate); `upload-artifact` is one artifact
