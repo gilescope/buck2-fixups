@@ -219,7 +219,12 @@ needs_compaction() {
     "$manifest")
   delta_bytes=$(jq '[.segments[] | select(.full != true) | .bytes] | add // 0' \
     "$manifest")
-  segs=$(jq '.segments | length' "$manifest")
+  # Cap counts DELTA segments only: full packs are as binned as they
+  # get - a big range legitimately needs many of them (r0's first
+  # compaction produced 70 at SEG_MAX=64MB, and counting those re-fired
+  # the trigger every lap: 1.3GB of churn re-packing already-compact
+  # content, run 29589478222).
+  segs=$(jq '[.segments[] | select(.full != true)] | length' "$manifest")
   if [ "$segs" -gt "$max_segs" ]; then
     echo "yes segments=$segs>max=$max_segs"; return 0
   fi

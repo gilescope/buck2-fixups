@@ -132,7 +132,16 @@ res=$(COMPACT_MAX_SEGMENTS=1 COMPACT_MIN_MB=999999 $BANK needs_compaction \
   "$T/m2/manifest.json")
 case "$res" in yes\ segments*) ;; *) fail "segment cap should fire: $res";;
 esac
-ok "compaction triggers: floor, cold-bank, segment cap"
+# The cap counts DELTA segments only: a fully-compacted range at its
+# natural pack count must NOT re-fire (70 full packs re-compacted
+# 1.3GB every lap, run 29589478222).
+jq '{version: 1, segments: [range(70) | {name: "cas-seg-x\(.)",
+     bytes: 1000, blobs: 1, prefixes: "0", full: true}]}' -n \
+  > "$T/allfull.json"
+res=$(COMPACT_MAX_SEGMENTS=64 COMPACT_MIN_MB=999999 $BANK needs_compaction \
+  "$T/allfull.json")
+[ "$res" = "no" ] || fail "70 FULL packs must not re-fire the cap: $res"
+ok "compaction triggers: floor, cold-bank, segment cap (delta-only)"
 
 # ── compact: re-bin into full packs; blob set preserved ─────────────
 $BANK compact "$S2" "$T/packs" > "$T/packs.names"
