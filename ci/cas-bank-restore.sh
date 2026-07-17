@@ -149,10 +149,20 @@ _seed_from_manifest() { # <manifest.json> <owned_prefixes>
         '. as $n | $m[0].segments[] | select(.name == $n) | .artifact' \
     | tr -d '\r' | sort -u)
   for c in $containers; do
-    aid=$(gh api \
+    row=$(gh api \
       "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$c&per_page=1" \
-      --jq '[.artifacts[] | select(.expired == false)][0].id // empty' \
+      --jq '[.artifacts[] | select(.expired == false)][0]
+        | select(. != null) | "\(.id) \(.created_at)"' \
       2>/dev/null || true)
+    aid="${row%% *}"
+    # Oldest referenced container feeds publish's rewarm check: a
+    # container nearing the 90d retention cliff triggers a full
+    # re-pack, which is the bank's only GC-defiance.
+    created="${row#* }"
+    if [ -n "$created" ] && { [ ! -f "$BANK_WORK/.oldest-container" ] \
+         || [ "$created" \< "$(cat "$BANK_WORK/.oldest-container")" ]; }; then
+      printf '%s' "$created" > "$BANK_WORK/.oldest-container"
+    fi
     if [ -z "$aid" ]; then
       # Referenced-but-missing container: degrade to re-execution (the
       # affected actions miss the cache) rather than failing the lap.

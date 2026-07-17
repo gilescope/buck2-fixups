@@ -65,7 +65,7 @@ publish_to_fake() { # <name> <src_dir> - stand-in for actions/upload-artifact
   rm -rf "${FAKE_ART:?}/$name"
   cp -R "$src" "$FAKE_ART/$name"
   jq -n --arg name "$name" \
-    --arg created "$(printf '2026-01-01T00:00:00.%06dZ' "$seq")" \
+    --arg created "$(printf '%sT00:00:00.%06dZ' "$(date -u +%Y-%m-%d)" "$seq")" \
     --arg branch "$CAS_LINEAGE" \
     '{id: $name, name: $name, created_at: $created, expired: false,
       workflow_run: {id: 1, repository_id: 1, head_repository_id: 1,
@@ -248,5 +248,32 @@ total=$(( $(sqlite3 "$DS3/db/pagable.2.db" "SELECT count(*) FROM pagable_data;")
 [ "$total" -eq 2 ] || fail "dice lap7: reload row count $total"
 unset DICE_SEED
 echo "ok - lap7: dice bank bootstrap, delta, and reload"
+
+# ── lap 8: the range owner compacts in its own teardown ─────────────
+# No separate workflow: the owner's store already holds the range's
+# full view, so compaction = publish-with-empty-diff-base, stamped
+# full, manifest referencing only the fresh packs. Then the trigger
+# must quiesce.
+W8="$T/lap8-w1"
+work "$W8" w1e 800 0
+pre=$(zstd -dq -c "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/blobs.txt.zst" | sort -u)
+BANK_WORK="$T/wk-800-w1e" GITHUB_RUN_ID=800 COMPACT_MIN_MB=0 \
+  ci/cas-bank-publish.sh "$W8" w1e 0
+jq -e '[.segments[] | .full == true] | all' \
+  "$T/wk-800-w1e/bank-manifest-out/manifest.json" > /dev/null \
+  || fail "lap8: compacted manifest has non-full segments"
+post=$(zstd -dq -c "$T/wk-800-w1e/bank-manifest-out/blobs.txt.zst" | sort -u)
+[ "$pre" = "$post" ] || fail "lap8: compaction changed the blob set"
+up 800 w1e container; up_manifest 800 w1e 0
+res=$(COMPACT_MIN_MB=0 ci/cas-bank.sh needs_compaction \
+  "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json")
+[ "$res" = "no" ] || fail "lap8: trigger did not quiesce: $res"
+# And the compacted range still restores whole.
+W8b="$T/lap8-verify"
+BANK_WORK="$T/wk-801" ci/cas-bank-restore.sh "$W8b" 0
+for b in 00go1d99 0aaa0001 1bbb0002 0e5e0005; do
+  [ -f "$W8b/cas/${b:0:2}/$b" ] || fail "lap8: post-compact restore missing $b"
+done
+echo "ok - lap8: owner-side compaction, blob set preserved, trigger quiesces"
 
 echo "PASS: integration"

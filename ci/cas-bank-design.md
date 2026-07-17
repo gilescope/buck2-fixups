@@ -238,12 +238,19 @@ REAL --jq expressions.
 
 - [ ] remove the legacy shard fallback + global-manifest parent after
       all 8 ranges have published
-- [ ] first compaction: needs cas-compact.yml on the default branch
-      (workflow_dispatch resolves there; branch
-      giles-register-cas-compact is pushed and awaits a PR - refresh
-      it with the federated version before merging). Until each
-      range's first re-bin, restores over-fetch from the fat
-      migration-era containers.
+- [x] compaction (2026-07-17, redesigned per Giles): NO separate
+      workflow - the range owner compacts in its own teardown. Its
+      store already holds the range's full view (seeded segments +
+      absorbed spills + the lap's new blobs), so a full re-pack is
+      publish-with-empty-diff-base, stamped `full`, manifest
+      referencing only the fresh packs. Triggers: needs_compaction's
+      20% rule, or any referenced container older than REWARM_DAYS
+      (captured during restore's container fetches). Monotonicity
+      gate: if the full pack would shed blobs vs the old manifest
+      (missing-container degradation), fall back to a delta.
+      cas-compact.yml deleted; PR #67 closed unmerged. Caveat: the
+      bank only rewarns while laps run - a repo quiet for ~90d loses
+      it to retention (same property the legacy shards had).
 
 Perf gotcha paid for on the way (fixed 1701c70): sizing blobs
 per-iteration inside the batching loop (awk scan + wc fork each) was

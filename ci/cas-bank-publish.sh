@@ -53,27 +53,82 @@ if [ -f "$BANK_WORK/.own-range-unknown" ] && [ "$SHARD" != "-" ]; then
 fi
 
 # ── own range: segments + staged manifest ───────────────────────────
+# Compaction rides the owner's own teardown (there is no separate
+# workflow): the store already holds the range's full compacted view -
+# seeded segments + absorbed spills + this lap's new blobs - so a full
+# re-pack is just "diff against nothing". Triggers: the 20% rule via
+# needs_compaction, or any referenced container older than REWARM_DAYS
+# (fresh uploads reset the 90d retention clock - the bank's only GC).
 if [ -n "$owned" ]; then
-  ci/cas-bank.sh pack_segments "$STORE_DIR" "$bank_list" \
+  compact_reason=""
+  if [ -f "$BANK_WORK/own-range/manifest.json" ]; then
+    verdict=$(ci/cas-bank.sh needs_compaction \
+      "$BANK_WORK/own-range/manifest.json")
+    case "$verdict" in yes*) compact_reason="$verdict" ;; esac
+    if [ -z "$compact_reason" ] && [ -f "$BANK_WORK/.oldest-container" ]; then
+      now=$(date +%s)
+      cutoff=$(date -u -d "@$((now - ${REWARM_DAYS:-60} * 86400))" \
+          +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+        || date -u -r $((now - ${REWARM_DAYS:-60} * 86400)) \
+          +%Y-%m-%dT%H:%M:%SZ)
+      oldest=$(cat "$BANK_WORK/.oldest-container")
+      if [ "$oldest" \< "$cutoff" ]; then
+        compact_reason="rewarm oldest-container=$oldest"
+      fi
+    fi
+  fi
+  diff_base="$bank_list"
+  if [ -n "$compact_reason" ]; then
+    echo "[bank] $ROLE r$SHARD: COMPACTING ($compact_reason)"
+    diff_base=/dev/null
+  fi
+  ci/cas-bank.sh pack_segments "$STORE_DIR" "$diff_base" \
     "$BANK_WORK/bank-segs" "$owned" > "$BANK_WORK/bank-segs.names" || true
+  # Monotonicity gate on the full path: the store should cover the old
+  # manifest's blob list (missing containers degrade to re-derive). If
+  # it shrank, DON'T compact this lap - fall back to a delta so
+  # newest-wins never sheds history.
+  if [ -n "$compact_reason" ] && [ -s "$BANK_WORK/bank-segs.names" ] \
+     && [ -f "$BANK_WORK/own-range/blobs.txt.zst" ]; then
+    old_n=$(zstd -dq -c "$BANK_WORK/own-range/blobs.txt.zst" | wc -l | tr -d ' ')
+    new_n=$(zstd -dq -c "$BANK_WORK/bank-segs"/cas-seg-*/blobs.txt.zst \
+      | sort -u | wc -l | tr -d ' ')
+    if [ "$new_n" -lt "$old_n" ]; then
+      echo "[bank] $ROLE r$SHARD: compact would shed blobs ($old_n -> $new_n) - delta instead"
+      compact_reason=""
+      rm -rf "$BANK_WORK/bank-segs"
+      ci/cas-bank.sh pack_segments "$STORE_DIR" "$bank_list" \
+        "$BANK_WORK/bank-segs" "$owned" > "$BANK_WORK/bank-segs.names" || true
+    fi
+  fi
   if [ -s "$BANK_WORK/bank-segs.names" ]; then
     mkdir -p "$BANK_WORK/bank-container"
     while IFS= read -r seg; do
       mkdir -p "$BANK_WORK/bank-container/$seg"
       mv "$BANK_WORK/bank-segs/$seg/bulk.tar.zst" \
          "$BANK_WORK/bank-container/$seg/"
-      # Tag the meta with its container for restore's fetch mapping.
-      jq -c --arg artifact "$CONTAINER" '. + {artifact: $artifact}' \
-        "$BANK_WORK/bank-segs/$seg/meta.json" \
-        > "$BANK_WORK/bank-segs/$seg/meta.json.tmp" \
-        && mv "$BANK_WORK/bank-segs/$seg/meta.json.tmp" \
-              "$BANK_WORK/bank-segs/$seg/meta.json"
+      # Tag the meta with its container for restore's fetch mapping;
+      # full packs are stamped so needs_compaction can quiesce.
+      if [ -n "$compact_reason" ]; then
+        jq -c --arg artifact "$CONTAINER" \
+          '. + {artifact: $artifact, full: true}' \
+          "$BANK_WORK/bank-segs/$seg/meta.json" \
+          > "$BANK_WORK/bank-segs/$seg/meta.json.tmp"
+      else
+        jq -c --arg artifact "$CONTAINER" '. + {artifact: $artifact}' \
+          "$BANK_WORK/bank-segs/$seg/meta.json" \
+          > "$BANK_WORK/bank-segs/$seg/meta.json.tmp"
+      fi
+      mv "$BANK_WORK/bank-segs/$seg/meta.json.tmp" \
+         "$BANK_WORK/bank-segs/$seg/meta.json"
     done < "$BANK_WORK/bank-segs.names"
     head_dir="-"
     prev_gen="-"
     if [ -f "$BANK_WORK/own-range/manifest.json" ]; then
-      head_dir="$BANK_WORK/own-range"
-      prev_gen=$(jq -r .generation "$head_dir/manifest.json" | tr -d '\r')
+      prev_gen=$(jq -r .generation "$BANK_WORK/own-range/manifest.json" | tr -d '\r')
+      # A compacting manifest references ONLY the fresh full packs;
+      # a delta chains on the head as before.
+      [ -n "$compact_reason" ] || head_dir="$BANK_WORK/own-range"
     fi
     ci/cas-bank.sh write_manifest "$CAS_LINEAGE" "$RUN-1" - "$prev_gen" \
       "$RUN" "$head_dir" "$BANK_WORK/bank-segs" "$BANK_WORK/bank-manifest-out"
