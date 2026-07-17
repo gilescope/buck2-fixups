@@ -67,12 +67,14 @@ env:
   # publishing run's head_branch to equal it.
   CAS_LINEAGE: ${{ github.ref_name }}
   SEG_MAX_MB: "64"
-  # seq: one leg at a time with a daemon page-out+restart between legs
-  # (peak memory = one leg; the 16GB box dies by thrash under three
-  # cold parallel legs - daemon RSS 10GiB, run 29499874526). Flip to
-  # "par" once the fleet is warm enough that legs are mostly cache
-  # replay.
-  LEG_MODE: "seq"
+  # par: all three legs concurrently (~longest-leg wall time). seq -
+  # one leg at a time with a daemon page-out+restart between legs -
+  # bounds peak memory to one leg and is the right setting for a COLD
+  # fleet (three cold parallel legs put the daemon at 10GiB and the
+  # 16GB box died by thrash, run 29499874526). Warm laps are cache
+  # replay and fit easily; the watchdog/choom/swap net catches a
+  # surprise cold lap by checkpointing it (banks, next lap continues).
+  LEG_MODE: "par"
 
 jobs:
   driver:
