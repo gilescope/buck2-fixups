@@ -56,7 +56,7 @@ env:
   # build scripts staged 0o100644, EACCES) + canonical hits carry
   # execution_metadata (buck2's client hard-rejects bare ActionResults;
   # every name-independent hit was an internal error).
-  REBUCK2_REV_PIN: 35bd5a9dc6ad576685f6a564ef86445fa01d0950
+  REBUCK2_REV_PIN: 7acfa3b07163c0bb94e2d35a92a51c33337b894b
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
