@@ -52,7 +52,11 @@ env:
   # watchdog / driver exit broadcast (6c676dc: win worker 1 idled 1h+
   # past the driver, run 29194749613). Prior lap 29195973667: build
   # 8m44s, win staging p90 18.7s -> 3s, second straight 8/8 bank.
-  REBUCK2_REV_PIN: eb5924b8cbc16917b24fee789a3f5638321ed972
+  # 7fda4e8: exec-bit guarantee on Linked materialization (bank-seeded
+  # build scripts staged 0o100644, EACCES) + canonical hits carry
+  # execution_metadata (buck2's client hard-rejects bare ActionResults;
+  # every name-independent hit was an internal error).
+  REBUCK2_REV_PIN: 7fda4e8653625d3983e97c305658f6a2e60819a8
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
