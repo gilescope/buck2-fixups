@@ -540,8 +540,11 @@ jobs:
           STORE="$HOME/.cache/rebuck2"
           if [ ! -d "$STORE/driver/cas" ]; then echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
           mkdir -p snapshot-hotcas
+          # -4, no --long: this pack ran 435s at -8/--long=27 every lap
+          # (run 29564589011) for a marginal ratio gain on tiny rmetas;
+          # the seed side's -d --long=27 reads both formats fine.
           ( cd "$STORE/driver" && find cas -type f -size -262144c -print0 \
-            | tar --null -c -T - ) | zstd -T0 --long=27 -8 > snapshot-hotcas/hotcas.tar.zst
+            | tar --null -c -T - ) | zstd -T0 -4 > snapshot-hotcas/hotcas.tar.zst
           ls -lh snapshot-hotcas/ || true
 
       - name: Save driver hot-CAS
