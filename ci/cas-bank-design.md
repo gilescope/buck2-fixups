@@ -128,7 +128,13 @@ invariant IS the work split. Fires when, for the owner's range:
   at the boundary does not compact alternate laps, and
 - `delta_bytes > COMPACT_MIN_MB` (default 256) - absolute floor so
   small ranges do not churn, or
-- `segments > COMPACT_MAX_SEGMENTS` (default 64), or
+- `delta segments > COMPACT_MAX_SEGMENTS` (default 64; FULL packs
+  never count - a big range legitimately needs many, and counting
+  them re-fired the trigger every lap, run 29589478222), or
+- MEASURED delta-container fetch time from this lap's restore exceeds
+  `COMPACT_RESTORE_BUDGET` (default 30s) - the autotuned trigger: the
+  static thresholds are proxies, this is the reclaimable cost itself,
+  adapting to API latency and lap cadence for free, or
 - any referenced container is older than `REWARM_DAYS` (default 60) -
   the retention rewarm, using ages captured during restore's fetches.
 

@@ -149,6 +149,14 @@ _seed_from_manifest() { # <manifest.json> <owned_prefixes>
         '. as $n | $m[0].segments[] | select(.name == $n) | .artifact' \
     | tr -d '\r' | sort -u)
   for c in $containers; do
+    # Autotune input: wall seconds spent fetching DELTA containers.
+    # Full-pack containers are the post-compaction steady state; the
+    # delta overhead is the cost compaction can actually reclaim, and
+    # publish compacts when it exceeds COMPACT_RESTORE_BUDGET.
+    c_start=$(date +%s)
+    c_is_full=$(jq -r --arg c "$c" \
+      '[.segments[] | select(.artifact == $c) | .full == true] | all' \
+      "$manifest")
     row=$(gh api \
       "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$c&per_page=1" \
       --jq '[.artifacts[] | select(.expired == false)][0]
@@ -176,6 +184,11 @@ _seed_from_manifest() { # <manifest.json> <owned_prefixes>
       seeded=$((seeded + 1))
     done
     rm -rf "$BANK_WORK/.seg"
+    if [ "$c_is_full" != "true" ]; then
+      prev=$(cat "$BANK_WORK/.delta-restore-secs" 2>/dev/null || echo 0)
+      echo $((prev + $(date +%s) - c_start)) \
+        > "$BANK_WORK/.delta-restore-secs"
+    fi
   done
 }
 

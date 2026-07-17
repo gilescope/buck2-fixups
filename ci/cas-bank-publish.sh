@@ -65,6 +65,16 @@ if [ -n "$owned" ]; then
     verdict=$(ci/cas-bank.sh needs_compaction \
       "$BANK_WORK/own-range/manifest.json")
     case "$verdict" in yes*) compact_reason="$verdict" ;; esac
+    # Autotuned trigger: compact when the MEASURED delta-container
+    # fetch overhead from this lap's restore exceeds the budget - the
+    # static thresholds are proxies; this is the cost itself, and it
+    # adapts to API latency and lap cadence for free.
+    if [ -z "$compact_reason" ] && [ -f "$BANK_WORK/.delta-restore-secs" ]; then
+      delta_secs=$(cat "$BANK_WORK/.delta-restore-secs")
+      if [ "$delta_secs" -gt "${COMPACT_RESTORE_BUDGET:-30}" ]; then
+        compact_reason="restore-overhead ${delta_secs}s>budget ${COMPACT_RESTORE_BUDGET:-30}s"
+      fi
+    fi
     if [ -z "$compact_reason" ] && [ -f "$BANK_WORK/.oldest-container" ]; then
       now=$(date +%s)
       cutoff=$(date -u -d "@$((now - ${REWARM_DAYS:-60} * 86400))" \

@@ -276,4 +276,22 @@ for b in 00go1d99 0aaa0001 1bbb0002 0e5e0005; do
 done
 echo "ok - lap8: owner-side compaction, blob set preserved, trigger quiesces"
 
+# ── lap 9: autotuned trigger - measured delta overhead over budget ──
+W9="$T/lap9-w1"
+BANK_WORK="$T/wk-900" ci/cas-bank-restore.sh "$W9" 0
+echo 999 > "$T/wk-900/.delta-restore-secs"
+out=$(BANK_WORK="$T/wk-900" GITHUB_RUN_ID=900 \
+  ci/cas-bank-publish.sh "$W9" w1f 0)
+echo "$out" | grep -q 'COMPACTING (restore-overhead 999s' \
+  || fail "lap9: measured overhead did not trigger compaction: $out"
+# and under budget stays quiet
+W9b="$T/lap9b-w1"
+BANK_WORK="$T/wk-901" ci/cas-bank-restore.sh "$W9b" 0
+echo 3 > "$T/wk-901/.delta-restore-secs"
+out=$(BANK_WORK="$T/wk-901" GITHUB_RUN_ID=901 \
+  ci/cas-bank-publish.sh "$W9b" w1g 0)
+echo "$out" | grep -q 'COMPACTING' \
+  && fail "lap9: under-budget overhead compacted anyway"
+echo "ok - lap9: restore-overhead autotune fires over budget, quiet under"
+
 echo "PASS: integration"
