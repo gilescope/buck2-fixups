@@ -268,12 +268,18 @@ up 800 w1e container; up_manifest 800 w1e 0
 res=$(COMPACT_MIN_MB=0 ci/cas-bank.sh needs_compaction \
   "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json")
 [ "$res" = "no" ] || fail "lap8: trigger did not quiesce: $res"
-# And the compacted range still restores whole.
+# And the compacted range still restores whole - WITHOUT re-merging
+# the global slice (a full-packed range is self-sufficient; the slice
+# re-merge re-fired compaction every lap and doubled seed downloads).
 W8b="$T/lap8-verify"
 BANK_WORK="$T/wk-801" ci/cas-bank-restore.sh "$W8b" 0
 for b in 00go1d99 0aaa0001 1bbb0002 0e5e0005; do
   [ -f "$W8b/cas/${b:0:2}/$b" ] || fail "lap8: post-compact restore missing $b"
 done
+nd=$(jq '[.segments[] | select(.full != true)] | length' \
+  "$T/wk-801/own-range/manifest.json")
+[ "$nd" -eq 0 ] \
+  || fail "lap8: $nd delta segments re-merged into a full-packed head"
 echo "ok - lap8: owner-side compaction, blob set preserved, trigger quiesces"
 
 # ── lap 9: autotuned trigger - measured delta overhead over budget ──

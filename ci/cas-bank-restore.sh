@@ -112,7 +112,22 @@ a=$(printf '%x' $((SHARD * 2))); b=$(printf '%x' $((SHARD * 2 + 1)))
 # manifest-invisible (never seeded): cold stores forever. The merge is
 # idempotent and monotonic; once the global expires it contributes
 # nothing and the fallback can go.
-if [ -n "$global_manifest" ] && [ ! -f "$BANK_WORK/.own-range-unknown" ]; then
+# Once the range has FULL packs it is self-sufficient: compaction
+# packed the whole seeded view (slice included, no-shed gated), so
+# re-merging the global slice would only re-add its never-full
+# migration segments as deltas - which re-fired the compaction trigger
+# every lap (run 29594711024: head 70 full + 69 slice = compact churn)
+# and made every seed download the range's content TWICE.
+has_full=0
+if [ -f "$BANK_WORK/own-range/manifest.json" ]; then
+  has_full=$(jq '[.segments[] | select(.full == true)] | length' \
+    "$BANK_WORK/own-range/manifest.json")
+fi
+if [ -n "$global_manifest" ] && [ "$has_full" -gt 0 ]; then
+  echo "[bank] range $SHARD has full packs - global slice merge skipped"
+fi
+if [ -n "$global_manifest" ] && [ "$has_full" -eq 0 ] \
+   && [ ! -f "$BANK_WORK/.own-range-unknown" ]; then
   mkdir -p "$BANK_WORK/own-range"
   own_json="$BANK_WORK/own-range/manifest.json"
   # Base is the own manifest when it exists (its generation chains);
