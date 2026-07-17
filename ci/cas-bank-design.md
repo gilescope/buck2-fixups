@@ -113,35 +113,40 @@ A lineage is a branch's chain of manifests. PR/branch lineages set
   ignored (one `gh api` call; blocks a hostile branch publishing under
   another lineage's name).
 
-## Compaction (the 20% rule)
+## Compaction (the 20% rule, owner-side)
 
-Separate workflow (`cas-compact.yml`, dispatch + weekly), never inside
-a sweep's finalize (a long pack window there is exactly the exposure
-this design removes). Fires when, for a lineage:
+No separate workflow: each range's PRIMARY owner compacts in its own
+teardown. Its store already holds the range's full compacted view
+(seeded segments + absorbed spills + the lap's new blobs), so a full
+re-pack is just publish-with-empty-diff-base - segments stamped
+`full`, manifest referencing only the fresh packs. The 8-way
+partitioning is free: one primary per range, so the single-writer
+invariant IS the work split. Fires when, for the owner's range:
 
 - `delta_bytes > COMPACT_DELTA_PCT` (default 20) percent of
   `full_bytes`, with `COMPACT_HYSTERESIS_PCT` (default 5) so hovering
   at the boundary does not compact alternate laps, and
 - `delta_bytes > COMPACT_MIN_MB` (default 256) - absolute floor so
-  small lineages do not churn, or
-- `segments > COMPACT_MAX_SEGMENTS` (default 64).
+  small ranges do not churn, or
+- `segments > COMPACT_MAX_SEGMENTS` (default 64), or
+- any referenced container is older than `REWARM_DAYS` (default 60) -
+  the retention rewarm, using ages captured during restore's fetches.
 
-Compaction downloads the lineage's segments, re-bins blobs into
-prefix-grouped packs of `SEG_MAX_MB`, uploads them, and publishes a
-manifest whose segment list is just the new packs (same blob list).
-Old segments become unreferenced and age out with artifact retention.
-Only the lineage's own writer compacts it; a child lineage never
-compacts its parent's segments (that would fork shared history).
-
-All knobs are workflow env; tune without code changes.
+Monotonicity gate: if the full pack would SHED blobs relative to the
+old manifest (a referenced container failed to restore), the lap falls
+back to a delta - newest-wins never loses history. Old segments become
+unreferenced and age out with artifact retention. A child lineage
+never compacts its parent's segments (that would fork shared history).
 
 ## Retention & GC
 
 Artifacts expire (90d) - that is the pool's GC. Consequences:
 
-- Segments referenced by a live manifest must not silently expire: the
-  weekly compaction run re-uploads (touches) any referenced segment
-  older than `REWARM_DAYS` (default 60).
+- Segments referenced by a live manifest must not silently expire:
+  the owner-side rewarm trigger re-packs any range whose oldest
+  referenced container passes `REWARM_DAYS`. Caveat: rewarm only
+  happens while laps RUN - a repo quiet for ~90d loses the bank to
+  retention (the legacy shards had the same property).
 - Dead lineages (closed PRs) clean themselves up by expiry.
 - v2 option if expiry ever bites the hot path: move the compacted
   full packs of the default lineage to rolling release assets
