@@ -4,7 +4,7 @@ index e80ab34..3a9a625 100644
 +++ b/prelude/decls/core_rules.bzl
 @@ -12,6 +12,7 @@
  # well-formatted (and then delete this TODO)
- 
+
  load("@prelude//cfg/exec_platform:marker.bzl", "get_exec_platform_marker")
 +load("@prelude//http_archive:cfg.bzl", "archive_unpack_transition")
  load("@prelude//transitions:constraint_overrides.bzl", "constraint_overrides")
@@ -19,7 +19,7 @@ index e80ab34..3a9a625 100644
 +    # buck2.archive_unpack_constraints is set). See http_archive/cfg.bzl.
 +    cfg = archive_unpack_transition,
  )
- 
+
  http_file = prelude_rule(
 diff --git a/prelude/decls/remote_common.bzl b/prelude/decls/remote_common.bzl
 index 6700f7a..924e7e2 100644
@@ -28,11 +28,11 @@ index 6700f7a..924e7e2 100644
 @@ -11,6 +11,7 @@
  # the generated docs, and so those should be verified to be accurate and
  # well-formatted (and then delete this TODO)
- 
+
 +load("@prelude//http_archive:cfg.bzl", "archive_exec_deps_default")
  load("@prelude//http_archive:exec_deps.bzl", "HttpArchiveExecDeps")
  load(":common.bzl", "validate_uri")
- 
+
 @@ -65,7 +66,7 @@ def _unarchive_args():
          ),
          "exec_deps": attrs.exec_dep(
@@ -153,7 +153,7 @@ index 715127c..53b4603 100644
 +load("@prelude//http_archive:cfg.bzl", "archive_unpack_constraints")
  load("@prelude//http_archive:exec_deps.bzl", "http_archive_exec_deps")
  load("@prelude//utils:source_listing.bzl", "source_listing")
- 
+
 @@ -9,3 +10,13 @@ http_archive_exec_deps(
      name = "exec_deps",
      visibility = ["PUBLIC"],
@@ -172,7 +172,29 @@ diff --git a/prelude/rust/tools/buildscript_run.py b/prelude/rust/tools/buildscr
 index 86ef36c..66a989c 100755
 --- a/prelude/rust/tools/buildscript_run.py
 +++ b/prelude/rust/tools/buildscript_run.py
-@@ -177,7 +177,17 @@ def run_buildscript(
+@@ -169,6 +169,21 @@ def run_buildscript(
+     env: dict[str, str],
+     cwd: Path,
+ ) -> str:
++    # Heal a mode-stripped staging: REAPI blob transfers carry no modes,
++    # so executability is a chain of custody that can break at any hop
++    # (bank seed, canonical-hit is_executable provenance). chmod at the
++    # point of use covers every source; exec only, never +w - the file
++    # may be a hardlinked CAS inode whose no-write defense must hold.
++    if not os.access(buildscript, os.X_OK):
++        try:
++            st = os.stat(buildscript)
++            os.chmod(buildscript, st.st_mode | 0o111)
++            print(
++                f"buildscript_run: healed exec bit on {buildscript}",
++                file=sys.stderr,
++            )
++        except OSError:
++            pass
+     try:
+         return subprocess.check_output(
+             os.path.abspath(buildscript),
+@@ -177,7 +192,17 @@ def run_buildscript(
              cwd=cwd,
          )
      except OSError as ex:
