@@ -300,7 +300,7 @@ jobs:
       - name: Start driver (barrier on the full mixed fleet)
         run: |
           STORE="$HOME/.cache/rebuck2"
-          rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --require-shards 8 --no-local-exec --cache-failures --locality \
+          rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --require-shards 8 --prefetch-metadata --no-local-exec --cache-failures --locality \
             --session "hetero-$GITHUB_RUN_ID" \
             --addr-file driver-addr.json \
             --store "$STORE/driver" > driver.log 2>&1 &
