@@ -235,6 +235,78 @@ $BANK _tool ac-purge-failures "$T/ac" | grep -q 'purged 1' \
 [ -f "$AC/okrow" ] && [ -f "$AC/norow" ] || fail "purge ate a success row"
 ok "ac purge: failures die, successes stay"
 
+# ── AC failure purge reaches FLAT ac/ rows ──────────────────────────
+# ac/ is flat (store.rs: root/ac/<digest>); only acn/ is <xx>/<key>.
+# A dir-only walk purged nothing where the poison actually lives.
+ACF="$T/acflat"
+mkdir -p "$ACF"
+printf '\x20\x01' > "$ACF/failrow"
+printf '\x20\x00' > "$ACF/okrow"
+$BANK _tool ac-purge-failures "$ACF" | grep -q 'purged 1' \
+  || fail "flat purge count wrong"
+[ ! -f "$ACF/failrow" ] || fail "flat failure row survived purge"
+[ -f "$ACF/okrow" ] || fail "flat purge ate a success row"
+ok "ac purge: flat ac/<digest> rows purge too"
+
+# ── ac-index: both layouts, content hash, path order ────────────────
+AS="$T/acstore"
+mkrow() { # <store> <relpath> <content>
+  mkdir -p "$(dirname "$1/$2")"; printf '%s' "$3" > "$1/$2"
+}
+mkrow "$AS" "ac/$(printf 'a%.0s' $(seq 64))" "row-A"
+mkrow "$AS" "ac/$(printf 'b%.0s' $(seq 64))" "row-B"
+mkrow "$AS" "acn/cc/$(printf 'c%.0s' $(seq 64))" "row-C"
+$BANK _tool ac-index "$AS" > "$T/acidx"
+[ "$(wc -l < "$T/acidx" | tr -d ' ')" -eq 3 ] \
+  || fail "ac-index row count: $(cat "$T/acidx")"
+diff <(cut -f1 "$T/acidx") <(cut -f1 "$T/acidx" | sort) \
+  || fail "ac-index not path-sorted"
+want=$(printf '%s' "row-C" | { sha256sum 2>/dev/null || shasum -a 256; } \
+  | cut -d' ' -f1)
+got=$(awk -F'\t' '$1 ~ /^acn\// {print $2}' "$T/acidx")
+[ "$got" = "$want" ] || fail "ac-index hash wrong: $got != $want"
+ok "ac-index: flat + nested rows, sha256 content hash, sorted"
+
+# ── ac_pack: cold, delta, and content-mutation re-bank ──────────────
+$BANK ac_pack "$AS" /dev/null "$T/acsegs1" > "$T/acsegs1.names"
+[ "$(wc -l < "$T/acsegs1.names" | tr -d ' ')" -eq 1 ] || fail "ac cold pack"
+aseg1=$(cat "$T/acsegs1.names")
+[ "$(zstd -dq -c "$T/acsegs1/$aseg1/blobs.txt.zst" | wc -l | tr -d ' ')" -eq 3 ] \
+  || fail "ac cold pack row count"
+$BANK ac_pack "$AS" /dev/null "$T/acsegs1b" > "$T/acsegs1b.names"
+diff "$T/acsegs1.names" "$T/acsegs1b.names" || fail "ac pack nondeterministic"
+zstd -dq -c "$T/acsegs1/$aseg1/blobs.txt.zst" > "$T/acbanked"
+$BANK ac_pack "$AS" "$T/acbanked" "$T/acsegs2" > "$T/acsegs2.names"
+[ ! -s "$T/acsegs2.names" ] || fail "unchanged AC packed anyway"
+# Same NAME, new CONTENT: the (name, hash) key must re-bank it.
+mkrow "$AS" "ac/$(printf 'a%.0s' $(seq 64))" "row-A-v2"
+$BANK ac_pack "$AS" "$T/acbanked" "$T/acsegs3" > "$T/acsegs3.names"
+aseg3=$(cat "$T/acsegs3.names")
+[ "$(zstd -dq -c "$T/acsegs3/$aseg3/blobs.txt.zst" | wc -l | tr -d ' ')" -eq 1 ] \
+  || fail "mutated row: expected exactly one re-banked row"
+ok "ac_pack: cold, deterministic, delta empty, mutation re-banks"
+
+# ── generation order: newer segment overwrites older row ────────────
+AS2="$T/acstore2"
+$BANK seed_store "$AS2" "$T/acsegs1/$aseg1" "$T/acsegs3/$aseg3"
+[ "$(cat "$AS2/ac/$(printf 'a%.0s' $(seq 64))")" = "row-A-v2" ] \
+  || fail "later segment did not overwrite the older row"
+[ "$(cat "$AS2/acn/cc/$(printf 'c%.0s' $(seq 64))")" = "row-C" ] \
+  || fail "untouched row lost through the round-trip"
+ok "ac seed: generation order is last-write-wins"
+
+# ── ac-index at fleet scale: single pass, no per-row forks ──────────
+# 68k rows live; the shell equivalent forks sha256sum per row.
+AS3="$T/acstore3"
+$BANK _tool gen-ac "$AS3" 10000
+start=$(child_cpu)
+$BANK ac_pack "$AS3" /dev/null "$T/acsegs5" > "$T/acsegs5.names"
+elapsed=$(( $(child_cpu) - start ))
+n=$(zstd -dq -c "$T/acsegs5"/cas-seg-*/blobs.txt.zst | wc -l | tr -d ' ')
+[ "$n" -eq 10000 ] || fail "scale ac pack lost rows: $n/10000"
+[ "$elapsed" -lt 60 ] || fail "scale ac pack burned ${elapsed}s CPU"
+ok "ac_pack: 10k rows in ${elapsed}s (single pass)"
+
 # ── dice bank: pack/merge the pagable sqlite rows ────────────────────
 # Fixture: 2 shards with rows whose key_lo & 15 matches the shard file
 # (the engine's shard_for is key.0 % 16 = key_lo & 15).

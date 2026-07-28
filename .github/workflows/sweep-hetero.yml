@@ -237,6 +237,35 @@ jobs:
           key: rebuck2-hotcas-${{ github.run_id }}
           restore-keys: rebuck2-hotcas-
 
+      # AC bank (ci/ac-bank-plan.md): every node banks the rows it
+      # AUTHORED into its own role manifest, on 90d artifact retention -
+      # the actions cache evicts after 7 idle days and took the whole
+      # ledger with it (lap 30239636346: 67,822 honest re-executions).
+      # The driver is the only READER, so it lays down the union of
+      # every role in (run, role) order, its own rows last. Additive
+      # during lap A: the cache snapshot below still seeds on top.
+      - name: Restore AC bank (union of every role)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank-ac-driver"
+          STORE="$HOME/.cache/rebuck2"
+          rc=0; ./ci/ac-bank-restore.sh "$STORE/driver" driver all || rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
+
+      # The co-worker executes actions too, so it authors rows. Its own
+      # history only: it never reads the AC, it just needs the full view
+      # for a compaction re-pack. Separate BANK_WORK - one staging dir
+      # per role, or the second restore clobbers the first's head.
+      - name: Restore AC bank (co-worker rows)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank-ac-co-worker"
+          STORE="$HOME/.cache/rebuck2"
+          rc=0; ./ci/ac-bank-restore.sh "$STORE/co-worker" co-worker own || rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
+
       - name: Seed the driver store
         run: |
           STORE="$HOME/.cache/rebuck2"
@@ -590,6 +619,58 @@ jobs:
           path: ${{ runner.temp }}/bank/bank-spill
           compression-level: 0
 
+      # AC bank publish: new/changed rows only, diffed by
+      # (name, content-hash) - rows are name-stable but content-mutable.
+      # The manifest upload is gated on the container upload: a manifest
+      # can never reference a container that did not land.
+      - name: Pack AC bank (driver)
+        id: acbankdriver
+        if: always()
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank-ac-driver"
+          STORE="$HOME/.cache/rebuck2"
+          ./ci/ac-bank-publish.sh "$STORE/driver" driver
+
+      - name: Upload AC container (driver)
+        id: upacdriver
+        if: always() && steps.acbankdriver.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-driver
+          path: ${{ runner.temp }}/bank-ac-driver/ac-container
+          compression-level: 0
+
+      - name: Publish AC manifest (driver)
+        if: always() && steps.acbankdriver.outputs.have == '1' && steps.upacdriver.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-driver
+          path: ${{ runner.temp }}/bank-ac-driver/ac-manifest-out
+
+      - name: Pack AC bank (co-worker)
+        id: acbankcoworker
+        if: always()
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank-ac-co-worker"
+          STORE="$HOME/.cache/rebuck2"
+          ./ci/ac-bank-publish.sh "$STORE/co-worker" co-worker
+
+      - name: Upload AC container (co-worker)
+        id: upaccoworker
+        if: always() && steps.acbankcoworker.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-co-worker
+          path: ${{ runner.temp }}/bank-ac-co-worker/ac-container
+          compression-level: 0
+
+      - name: Publish AC manifest (co-worker)
+        if: always() && steps.acbankcoworker.outputs.have == '1' && steps.upaccoworker.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-co-worker
+          path: ${{ runner.temp }}/bank-ac-co-worker/ac-manifest-out
+
       - name: Dispatch stats
         if: always()
         run: |
@@ -707,6 +788,19 @@ jobs:
             exit "$rc"
           fi
 
+      # AC bank: this worker's OWN authored rows (ci/ac-bank-plan.md).
+      # It never reads the AC - the driver does - so this seeds only
+      # enough for a compaction re-pack and the (name, hash) diff.
+      - name: Restore AC bank (own authored rows)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BANK_WORK="$(cygpath -u "$RUNNER_TEMP")/bank-ac"; export BANK_WORK
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          rc=0; ./ci/ac-bank-restore.sh "$STORE/worker" \
+            "${{ runner.os }}-w${{ matrix.n }}" own || rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
+
       - name: Seed from legacy shard (cold-bank bootstrap)
         if: steps.bank.outputs.cold == '1'
         env:
@@ -787,6 +881,34 @@ jobs:
           BANK_WORK="$(cygpath -u "$RUNNER_TEMP")/bank"; export BANK_WORK
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           ./ci/cas-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}" "${{ matrix.owns }}"
+
+      # Row and blobs were authored on this box in this lap and are now
+      # banked by it in this teardown: a torn publish loses both
+      # together (honest miss) instead of banking a row whose outputs
+      # never landed - the unservable class of writer 28935304124.
+      - name: Pack AC bank (own authored rows)
+        id: acbankpack
+        if: always()
+        run: |
+          BANK_WORK="$(cygpath -u "$RUNNER_TEMP")/bank-ac"; export BANK_WORK
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          ./ci/ac-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}"
+
+      - name: Upload AC container
+        id: upaccontainer
+        if: always() && steps.acbankpack.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank-ac/ac-container
+          compression-level: 0
+
+      - name: Publish AC manifest
+        if: always() && steps.acbankpack.outputs.have == '1' && steps.upaccontainer.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank-ac/ac-manifest-out
 
       - name: Upload bank container
         id: upcontainer
@@ -888,6 +1010,19 @@ jobs:
             exit "$rc"
           fi
 
+      # AC bank: this worker's OWN authored rows (ci/ac-bank-plan.md).
+      # It never reads the AC - the driver does - so this seeds only
+      # enough for a compaction re-pack and the (name, hash) diff.
+      - name: Restore AC bank (own authored rows)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank-ac"
+          STORE="$HOME/.cache/rebuck2"
+          rc=0; ./ci/ac-bank-restore.sh "$STORE/worker" \
+            "${{ runner.os }}-w${{ matrix.n }}" own || rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
+
       - name: Seed from legacy shard (cold-bank bootstrap)
         if: steps.bank.outputs.cold == '1'
         env:
@@ -962,6 +1097,34 @@ jobs:
           export BANK_WORK="$RUNNER_TEMP/bank"
           STORE="$HOME/.cache/rebuck2"
           ./ci/cas-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}" "${{ matrix.owns }}"
+
+      # Row and blobs were authored on this box in this lap and are now
+      # banked by it in this teardown: a torn publish loses both
+      # together (honest miss) instead of banking a row whose outputs
+      # never landed - the unservable class of writer 28935304124.
+      - name: Pack AC bank (own authored rows)
+        id: acbankpack
+        if: always()
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank-ac"
+          STORE="$HOME/.cache/rebuck2"
+          ./ci/ac-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}"
+
+      - name: Upload AC container
+        id: upaccontainer
+        if: always() && steps.acbankpack.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank-ac/ac-container
+          compression-level: 0
+
+      - name: Publish AC manifest
+        if: always() && steps.acbankpack.outputs.have == '1' && steps.upaccontainer.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank-ac/ac-manifest-out
 
       - name: Upload bank container
         id: upcontainer
@@ -1065,6 +1228,19 @@ jobs:
             exit "$rc"
           fi
 
+      # AC bank: this worker's OWN authored rows (ci/ac-bank-plan.md).
+      # It never reads the AC - the driver does - so this seeds only
+      # enough for a compaction re-pack and the (name, hash) diff.
+      - name: Restore AC bank (own authored rows)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank-ac"
+          STORE="$HOME/.cache/rebuck2"
+          rc=0; ./ci/ac-bank-restore.sh "$STORE/worker" \
+            "${{ runner.os }}-w${{ matrix.n }}" own || rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
+
       - name: Seed from legacy shard (cold-bank bootstrap)
         if: steps.bank.outputs.cold == '1'
         env:
@@ -1142,6 +1318,34 @@ jobs:
           export BANK_WORK="$RUNNER_TEMP/bank"
           STORE="$HOME/.cache/rebuck2"
           ./ci/cas-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}" "${{ matrix.owns }}"
+
+      # Row and blobs were authored on this box in this lap and are now
+      # banked by it in this teardown: a torn publish loses both
+      # together (honest miss) instead of banking a row whose outputs
+      # never landed - the unservable class of writer 28935304124.
+      - name: Pack AC bank (own authored rows)
+        id: acbankpack
+        if: always()
+        run: |
+          export BANK_WORK="$RUNNER_TEMP/bank-ac"
+          STORE="$HOME/.cache/rebuck2"
+          ./ci/ac-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}"
+
+      - name: Upload AC container
+        id: upaccontainer
+        if: always() && steps.acbankpack.outputs.have == '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank-ac/ac-container
+          compression-level: 0
+
+      - name: Publish AC manifest
+        if: always() && steps.acbankpack.outputs.have == '1' && steps.upaccontainer.outcome == 'success'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-${{ runner.os }}-w${{ matrix.n }}
+          path: ${{ runner.temp }}/bank-ac/ac-manifest-out
 
       - name: Upload bank container
         id: upcontainer

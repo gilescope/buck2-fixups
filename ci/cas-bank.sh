@@ -277,6 +277,82 @@ compact() {
   done
 }
 
+# ── ac_pack <store_dir> <banked_rows_file> <out_dir> ────────────────
+# The action cache banks like the CAS with ONE difference: rows are
+# name-stable but content-MUTABLE (a re-executed action overwrites its
+# row), so the diff key is (name, content-hash), not name alone.
+# Segments carry the CAS layout verbatim - bulk.tar.zst + blobs.txt.zst
+# + meta.json - so seed_store/write_manifest/segments_to_fetch are
+# reused unchanged; for the AC a "blob" line is
+# "<store-relative-path> <sha256(content)>".
+# Prints created segment names. banked_rows may be /dev/null.
+ac_pack() {
+  local store="$1" banked="$2" out="$3"
+  mkdir -p "$out"
+  [ -d "$store/ac" ] || [ -d "$store/acn" ] || return 0
+  local tab
+  tab=$(printf '\t')
+  # One pass over every row: path, content hash, size (the shell
+  # equivalent forks a hasher per row - 68k forks at live scale).
+  _tool ac-index "$store" > "$out/.ac-idx"
+  if ! [ -s "$out/.ac-idx" ]; then
+    rm -f "$out/.ac-idx"; return 0
+  fi
+  # New/changed = (path, hash) pairs absent from the banked list.
+  awk -F"$tab" -v tab="$tab" -v bankfile="$banked" '
+    FILENAME == bankfile { bank[$0] = 1; next }
+    !(($1 " " $2) in bank) { print $1 tab $3 }
+  ' "$banked" "$out/.ac-idx" > "$out/.new-idx"
+  if ! [ -s "$out/.new-idx" ]; then
+    rm -f "$out/.ac-idx" "$out/.new-idx"; return 0
+  fi
+
+  local max_bytes=$((SEG_MAX_MB * 1024 * 1024))
+  local batch="$out/.batch" batch_bytes=0 batch_n=0 seg_i=0
+  : > "$batch"
+  _seal_ac() {
+    [ -s "$batch" ] || return 0
+    local tmp="$out/.seg-$seg_i"
+    mkdir -p "$tmp"
+    _tool tar "$store" "$batch" "$tmp/bulk.tar"
+    local sha
+    sha=$(_sha256 "$tmp/bulk.tar")
+    zstd -q -8 --rm "$tmp/bulk.tar" -o "$tmp/bulk.tar.zst"
+    # Row identity lines for exactly this batch's paths.
+    awk -F"$tab" 'NR == FNR { want[$0] = 1; next }
+      ($1 in want) { print $1 " " $2 }' \
+      "$batch" "$out/.ac-idx" | sort > "$tmp/blobs.txt"
+    zstd -q --rm "$tmp/blobs.txt"
+    local rows bytes
+    rows=$(zstd -dq -c "$tmp/blobs.txt.zst" | wc -l | tr -d ' ')
+    bytes=$(wc -c < "$tmp/bulk.tar.zst" | tr -d ' ')
+    # prefixes "*": the AC restore is whole-fetch (one reader, no
+    # ranges), so there is no bitmap to match against.
+    printf '{"name":"cas-seg-%s","bytes":%s,"blobs":%s,"prefixes":"*"}\n' \
+      "$sha" "$bytes" "$rows" > "$tmp/meta.json"
+    mv "$tmp" "$out/cas-seg-$sha"
+    echo "cas-seg-$sha"
+    seg_i=$((seg_i + 1)); batch_bytes=0; batch_n=0; : > "$batch"
+  }
+  local path sz
+  while IFS="$tab" read -r path sz; do
+    if [ "$batch_n" -gt 0 ] \
+       && [ $((batch_bytes + sz)) -gt "$max_bytes" ]; then
+      _seal_ac
+    fi
+    echo "$path" >> "$batch"
+    batch_bytes=$((batch_bytes + sz)); batch_n=$((batch_n + 1))
+  done < "$out/.new-idx"
+  _seal_ac
+  rm -f "$out/.ac-idx" "$out/.new-idx" "$batch"
+}
+
+# ── ac_rows <store_dir> ─────────────────────────────────────────────
+# "<path> <sha256>" for every row - the banked-set shape.
+ac_rows() {
+  _tool ac-index "$1" | awk -F'\t' '{print $1 " " $2}' | sort
+}
+
 # ── dice_pack <db_dir> <banked_keys_file> <out_dir> ─────────────────
 # The dice value store (pagable.{0..15}.db, table pagable_data with
 # content-addressed 128-bit keys, INSERT OR IGNORE writes) is a CAS in

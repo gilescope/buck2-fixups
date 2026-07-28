@@ -300,4 +300,106 @@ echo "$out" | grep -q 'COMPACTING' \
   && fail "lap9: under-budget overhead compacted anyway"
 echo "ok - lap9: restore-overhead autotune fires over budget, quiet under"
 
+# ── lap 10: AC bank - role-authored publish, union restore, order ───
+# Every node banks the rows it authored; the driver reads the union.
+acrow() { # <store> <relpath> <content>
+  mkdir -p "$(dirname "$1/$2")"; printf '%s' "$3" > "$1/$2"
+}
+A1=$(printf 'a%.0s' $(seq 64)); A2=$(printf 'b%.0s' $(seq 64))
+AC_W="$T/ac-w0"
+rc=0; BANK_WORK="$T/acwk-w0" ci/ac-bank-restore.sh "$AC_W" linux-w0 own || rc=$?
+[ "$rc" -eq 3 ] || fail "ac: expected cold bank, rc=$rc"
+acrow "$AC_W" "ac/$A1" "worker-row-v1"
+acrow "$AC_W" "ac/$A2" "worker-only-row"
+BANK_WORK="$T/acwk-w0" GITHUB_RUN_ID=1000 \
+  ci/ac-bank-publish.sh "$AC_W" linux-w0
+publish_to_fake "cas-ac-segs-$CAS_LINEAGE-1000-linux-w0" "$T/acwk-w0/ac-container"
+publish_to_fake "cas-manifest-$CAS_LINEAGE-ac-linux-w0" \
+  "$T/acwk-w0/ac-manifest-out"
+echo "ok - lap10: worker banked its authored rows"
+
+# Driver, same lap: it normalizes A1, so its row must WIN on restore.
+AC_D="$T/ac-driver"
+rc=0; BANK_WORK="$T/acwk-drv" ci/ac-bank-restore.sh "$AC_D" driver all || rc=$?
+[ "$rc" -eq 0 ] || fail "ac: driver restore rc=$rc"
+[ "$(cat "$AC_D/ac/$A1")" = "worker-row-v1" ] \
+  || fail "ac: driver did not seed the worker's row"
+acrow "$AC_D" "ac/$A1" "driver-normalized"
+acrow "$AC_D" "acn/cd/$(printf 'c%.0s' $(seq 64))" "canon-row"
+BANK_WORK="$T/acwk-drv" GITHUB_RUN_ID=1000 \
+  ci/ac-bank-publish.sh "$AC_D" driver
+n=$(zstd -dq -c "$T/acwk-drv/ac-segs"/cas-seg-*/blobs.txt.zst 2>/dev/null \
+  | wc -l | tr -d ' ' || true)
+publish_to_fake "cas-ac-segs-$CAS_LINEAGE-1000-driver" "$T/acwk-drv/ac-container"
+publish_to_fake "cas-manifest-$CAS_LINEAGE-ac-driver" \
+  "$T/acwk-drv/ac-manifest-out"
+zstd -dq -c "$T/acwk-drv/ac-manifest-out/blobs.txt.zst" | grep -q "^ac/$A2 " \
+  && fail "ac: driver re-banked a row the worker already banked"
+echo "ok - lap10: driver banked only what no role had (union diff)"
+
+# Next lap's driver: union restore, driver-last order resolves the clash.
+AC_D2="$T/ac-driver2"
+BANK_WORK="$T/acwk-drv2" ci/ac-bank-restore.sh "$AC_D2" driver all
+[ "$(cat "$AC_D2/ac/$A1")" = "driver-normalized" ] \
+  || fail "ac: driver row did not win the same-run tie"
+[ "$(cat "$AC_D2/ac/$A2")" = "worker-only-row" ] \
+  || fail "ac: worker-only row missing from the union"
+[ -f "$AC_D2/acn/cd/$(printf 'c%.0s' $(seq 64))" ] \
+  || fail "ac: canonical row missing from the union"
+echo "ok - lap10: union restore, (run, role) order puts the driver last"
+
+# Warm lap: nothing changed -> nothing staged.
+BANK_WORK="$T/acwk-drv2" GITHUB_RUN_ID=1001 \
+  ci/ac-bank-publish.sh "$AC_D2" driver
+[ ! -d "$T/acwk-drv2/ac-container" ] \
+  || fail "ac: unchanged AC staged a container anyway"
+echo "ok - lap10: unchanged AC publishes nothing"
+
+# Mutation lap: same name, new content re-banks and wins on reload.
+acrow "$AC_D2" "ac/$A1" "driver-v3"
+BANK_WORK="$T/acwk-drv2" GITHUB_RUN_ID=1002 \
+  ci/ac-bank-publish.sh "$AC_D2" driver
+publish_to_fake "cas-ac-segs-$CAS_LINEAGE-1002-driver" "$T/acwk-drv2/ac-container"
+publish_to_fake "cas-manifest-$CAS_LINEAGE-ac-driver" \
+  "$T/acwk-drv2/ac-manifest-out"
+AC_D3="$T/ac-driver3"
+BANK_WORK="$T/acwk-drv3" ci/ac-bank-restore.sh "$AC_D3" driver all
+[ "$(cat "$AC_D3/ac/$A1")" = "driver-v3" ] \
+  || fail "ac: mutated row did not win: $(cat "$AC_D3/ac/$A1")"
+rows=$(zstd -dq -c "$T/acwk-drv2/ac-manifest-out/blobs.txt.zst" \
+  | grep -c "^ac/$A1 ")
+[ "$rows" -eq 1 ] || fail "ac: row list kept $rows entries for one path"
+echo "ok - lap10: content mutation re-banks, newest wins, list stays flat"
+
+# Failure rows never reach the pool (the poison class), flat ac/ too.
+acrow "$AC_D3" "ac/$(printf 'f%.0s' $(seq 64))" "$(printf '\x20\x01')"
+BANK_WORK="$T/acwk-drv3" GITHUB_RUN_ID=1003 \
+  ci/ac-bank-publish.sh "$AC_D3" driver
+[ ! -d "$T/acwk-drv3/ac-container" ] \
+  || fail "ac: a failure row was staged for banking"
+echo "ok - lap10: failure rows purged before they can be banked"
+
+# Torn publish: container lands, manifest upload never runs.
+AC_W2="$T/ac-w0b"
+BANK_WORK="$T/acwk-w0b" ci/ac-bank-restore.sh "$AC_W2" linux-w0 own
+acrow "$AC_W2" "ac/$(printf 'd%.0s' $(seq 64))" "straggler"
+BANK_WORK="$T/acwk-w0b" GITHUB_RUN_ID=1100 \
+  ci/ac-bank-publish.sh "$AC_W2" linux-w0
+publish_to_fake "cas-ac-segs-$CAS_LINEAGE-1100-linux-w0" "$T/acwk-w0b/ac-container"
+gen=$(jq -r .generation \
+  "$FAKE_ART/cas-manifest-$CAS_LINEAGE-ac-linux-w0/manifest.json")
+[ "$gen" = "1000-1" ] || fail "ac: torn publish moved the role HEAD to $gen"
+echo "ok - lap10: torn AC publish leaves the old role manifest as HEAD"
+
+# Lookup flake on the own manifest: stage nothing at all.
+AC_W3="$T/ac-w0c"
+rc=0; FAKE_FAIL_NAME="cas-manifest-$CAS_LINEAGE-ac-linux-w0" \
+  BANK_WORK="$T/acwk-w0c" ci/ac-bank-restore.sh "$AC_W3" linux-w0 own || rc=$?
+acrow "$AC_W3" "ac/$(printf 'e%.0s' $(seq 64))" "flaky-lap"
+BANK_WORK="$T/acwk-w0c" GITHUB_RUN_ID=1200 \
+  ci/ac-bank-publish.sh "$AC_W3" linux-w0
+[ ! -d "$T/acwk-w0c/ac-manifest-out" ] \
+  || fail "ac: staged a manifest despite unknown own state"
+echo "ok - lap10: own-manifest flake -> stage nothing, fat manifest stands"
+
 echo "PASS: integration"

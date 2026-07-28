@@ -1,8 +1,10 @@
 # AC bank: the ledger joins the artifacts
 
-Status: PLANNED. Companion to `ci/cas-bank-design.md` (blobs) and its
-dice-bank section (sqlite rows). This banks the third and final
-load-bearing state: the action cache.
+Status: BUILDING v2 (role-authored, federated). Companion to
+`ci/cas-bank-design.md` (blobs) and its dice-bank section (sqlite
+rows). This banks the third and final load-bearing state: the action
+cache. v1 (driver-only, whole-fetch) is described below for the
+record; we are building v2 directly.
 
 ## Why (the 2026-07-27 autopsy)
 
@@ -21,58 +23,98 @@ repo wakes warm anywhere inside 90 days.
 
 ## Shape
 
-Dice-bank pattern, not federated-blob pattern: the driver is the only
-reader and writer, so there are no ranges, no spills, no secondaries -
-one manifest, whole-fetch.
+Every node - driver and every worker - banks the rows it AUTHORED,
+into its own role manifest. "Their part" is authorship, not a hash
+range, and that is what makes it free: the worker already holds the
+bytes (`W2D::Done { action_result }` is encoded on the worker), so
+there is no row distribution, no range map, no new mesh frames.
 
-- Rows: `ac/<digest>` and `acn/<key>` files in the driver store,
-  ~22MB total. Name = action digest (or canonical key); content =
-  encoded REAPI ActionResult.
-- Artifacts: container `cas-ac-segs-<lineage>-<run>` (segments of
-  rows, tar.zst via the existing deterministic USTAR tool) + manifest
-  `cas-manifest-<lineage>-ac` (newest-by-created = HEAD; provenance-
-  checked like every other manifest).
-- Sidecar per segment: `rows.txt.zst` of `<name> <sha256(content)>`
-  lines - the diff key.
+- Rows: `ac/<digest>` (flat) and `acn/<xx>/<key>` files in the node's
+  store, ~22MB across the fleet; content = encoded REAPI ActionResult.
+- Artifacts, per role: container `cas-ac-segs-<lineage>-<run>-<role>`
+  (segments of rows, tar.zst via the existing deterministic USTAR
+  tool) + manifest `cas-manifest-<lineage>-ac-<role>` (newest-by-
+  created = HEAD for that role; provenance-checked like every other
+  manifest).
+- Segment layout is the CAS bank's verbatim - `bulk.tar.zst`,
+  `blobs.txt.zst`, `meta.json` - so `seed_store`, `write_manifest`
+  and `segments_to_fetch` are reused unchanged. For the AC a
+  "blob" line is `<store-relative-path> <sha256(content)>`: the
+  diff key.
+- Roles are the ones the CAS bank already uses (`<os>-w<n>`,
+  `driver`, `co-worker`).
+
+## Why role-authored beats driver-only
+
+Not the ~25s of driver teardown. Coherence: under `--locality` a row
+and the blobs it references are born on the same box in the same lap,
+and are now banked by the same node in the same teardown. A torn
+publish loses row+blobs together (honest miss -> re-execute) instead
+of banking a row whose outputs never landed - the unservable class
+this repo keeps paying for (17k blob-less results, writer
+28935304124; 5,390 lost to tree interiors, reader 29010597531).
+Blast radius drops from "the lap's whole ledger" to one role's slice,
+and the pack runs on 12 boxes in parallel instead of on the driver's
+critical path.
 
 ## The one semantic difference from blobs
 
 CAS blobs are content-addressed and immutable; AC rows are
 NAME-stable but CONTENT-mutable (a re-executed action overwrites its
-row, e.g. after a failure-purge or unservable re-derivation). Two
-consequences:
+row). Three consequences:
 
 1. Diff key is `(name, content-hash)`, not name alone - a changed row
    re-banks even though its name is already in the banked set.
-2. Restore applies segments in GENERATION ORDER (manifest segment
-   list is append-ordered) so newer rows overwrite older ones -
-   last-write-wins, same as `ac_put`'s rename-over semantics.
+2. Restore applies segments in GENERATION ORDER so newer rows
+   overwrite older ones - last-write-wins, same as `ac_put`'s
+   rename-over semantics.
+3. With many writers, generation order must be TOTAL and
+   deterministic. Each segment's meta carries the `run` that packed
+   it and the `role` that owns it; the driver sorts
+   `(run asc, role asc, driver LAST)` and untars in that order. The
+   driver goes last because its row is the normalized one
+   (`ensure_execution_metadata`) and it is the only node that serves.
 
 ## Lap flow
 
 ```text
-driver seed (before serving):
-  fetch cas-manifest-<lineage>-ac (exit-3 tolerant: cold = empty AC)
-  fetch containers, lay rows into ac/ + acn/, oldest generation first
-  run the existing ac-purge-failures pass (unchanged)
-  keep the banked (name, hash) list for the teardown diff
+every node, seed (before building):
+  fetch own role manifest -> segments -> lay rows into ac/ + acn/
+  driver ALSO fetches every other role manifest and lays those first,
+    in (run, role) order, driver's own last
+  run ac-purge-failures over ac/ + acn/
+  keep the union (name, hash) list for the teardown diff
 
-driver teardown (after AC pack step today):
-  new/changed = rows whose (name, hash) not in the banked list
+build: workers write ac/<digest> for every action they execute that
+  is cacheable (exit 0, not do_not_cache). The driver writes rows as
+  it always has - digest-keyed and canonical (acn/).
+
+every node, teardown (always()):
+  purge failure rows, then diff: new/changed = rows whose
+    (name, hash) is not in the union
   pack into segments -> container upload -> manifest upload
   (manifest gated on container step success - self-verification by
   step order, no banker)
 ```
 
+Worker stores are seeded with their own history so a rewarm/compaction
+re-pack has the full view locally; ~2MB per role, so the fetch is
+noise. Workers never READ the AC - the driver remains the only
+consumer at runtime, so there is no lookup RTT anywhere.
+
 ## Compaction / growth
 
 Rows are tiny and the set is bounded by the action graph (~68k rows,
-22MB), so v1 appends deltas and lets the same owner-side trigger
-machinery decide when to publish a full re-pack (needs_compaction on
-the ac manifest; `full: true` stamping; the measured-overhead
-autotune applies unchanged). Rewarm: any referenced container older
-than REWARM_DAYS forces a full re-pack - the same 90d-defiance as the
-blob bank.
+22MB fleet-wide), so v1 appends deltas and lets the same owner-side
+trigger machinery decide when to publish a full re-pack
+(`needs_compaction` on the role's manifest; `full: true` stamping;
+the measured-overhead autotune applies unchanged). Rewarm: any
+referenced container older than REWARM_DAYS forces a full re-pack -
+the same 90d-defiance as the blob bank.
+
+A role that disappears (matrix change) stops rewarming its manifest;
+its rows expire at 90d and re-derive. Self-healing, but note that AC
+warmth now sits on 12 retention clocks rather than one.
 
 ## Migration & rollout
 
@@ -90,24 +132,32 @@ blob bank.
 
 - Unit: row diff by (name, hash) - changed content re-banks under the
   same name; unchanged set packs nothing; generation-order overwrite
-  (old row + new row -> new content wins on restore).
+  (old row + new row -> new content wins on restore); flat `ac/` rows
+  and nested `acn/xx/` rows both index and round-trip.
 - Integration (fake-gh harness): bootstrap publish, warm restore,
   delta lap with an overwritten row, torn publish (container lands,
-  manifest doesn't -> old HEAD stands), failure-purge interaction
-  (purged rows re-bank as changed rows next lap).
+  manifest doesn't -> old HEAD stands), multi-role union restore with
+  a cross-role name collision resolved by (run, role) order.
 
 ## Out of scope (recorded)
 
-- Federating AC rows across workers (workers could serve AC lookups
-  for their ranges) - engine work, no current need at 22MB.
+- SERVING federation (workers answering AC lookups for a range).
+  Rejected, not deferred: `validated_ac_get` is the driver's hottest
+  path and a row is a page-cache read; a mesh RTT there buys nothing
+  at 22MB and the driver-overload class is grpc/relay pressure.
+- Content-addressing the row payload (row file holds a sha, bytes ride
+  the blob bank). Considered (rejected: it dedups acn/ac twins but
+  gives up the row/blob co-location that is the whole point of v2).
 - Banking `dice-graph.meta` history beyond the current generation.
 - The hotcas monolith retirement rides the separate prefetch plan
   (`--prefetch-metadata`, lap A pending verification - note its log
   line was absent on run 30241746804, verify the flag plumbs before
   deleting the cache steps).
 
-## Effort
+## v1, for the record (not built)
 
-Two scripts mirroring `ci/dice-bank-{restore,publish}.sh`, two-ish
-workflow steps + gated manifest upload, test groups in the existing
-suites. Half a day at the established loop cadence.
+Driver-only: one manifest, whole-fetch, no roles, no ordering rules -
+the dice-bank pattern. Half a day, and it fixes the eviction outage
+just as well. We skipped it because v2's coherence property is the
+part that stops the unservable class recurring, and the extra
+machinery is one sort key and a per-role loop.
