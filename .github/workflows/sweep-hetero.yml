@@ -56,7 +56,7 @@ env:
   # build scripts staged 0o100644, EACCES) + canonical hits carry
   # execution_metadata (buck2's client hard-rejects bare ActionResults;
   # every name-independent hit was an internal error).
-  REBUCK2_REV_PIN: af4c3cacc6bf295235645c6134a01753810ca14f
+  REBUCK2_REV_PIN: 540edb2737ed205039b2513382688d06792e1457
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
@@ -519,6 +519,24 @@ jobs:
             sleep 5
           done
 
+      # Party's over. A 0-byte marker keyed to this run: a worker still
+      # dialling reads it and stops, instead of burning its whole
+      # --connect-wait-secs on a driver that has exited (win worker 2
+      # spent 29 of this lap's 46 minutes doing exactly that, run
+      # 30332545916). always(): a FAILED driver also ends the party.
+      - name: Mark the lap finished
+        if: always()
+        run: |
+          mkdir -p lapdone
+          : > lapdone/done
+
+      - name: Save lap-finished marker
+        if: always()
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: lapdone
+          key: rebuck2-done-${{ github.run_id }}
+
       - name: Pack AC snapshot
         id: acpack
         if: always()
@@ -853,6 +871,8 @@ jobs:
           ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
 
       - name: Serve until the driver disconnects
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           ADDR_FLAG=()
           [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
@@ -863,11 +883,20 @@ jobs:
             REBUCK2_EXEC_BASE="$(cygpath -w "$(cygpath -u "$DEV_DRIVE")/rb2x")"
             export REBUCK2_EXEC_BASE
           fi
+          # Party's-over poller: the driver banks a 0-byte marker when
+          # the lap ends; --give-up-file turns that into a clean exit
+          # for a worker that is still dialling. Orphaned on a normal
+          # exit - the runner reaps it.
+          ( until gh cache list -R "$GITHUB_REPOSITORY" \
+                    -k "rebuck2-done-$GITHUB_RUN_ID" --json key -q '.[].key' \
+                  | grep -q .; do sleep 60; done
+            : > party-over ) &
           timeout 18000 rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
             "${ADDR_FLAG[@]}" \
             --preloaded-shard "${{ matrix.shard }}" \
             --connect-wait-secs 1800 \
+            --give-up-file party-over \
             --store "$STORE/worker" | tee worker.log
 
       # Bank pack: exact diff against the union blob list. Own-range
@@ -1075,15 +1104,26 @@ jobs:
           ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
 
       - name: Serve until the driver disconnects
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           ADDR_FLAG=()
           [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
           STORE="$HOME/.cache/rebuck2"
+          # Party's-over poller: the driver banks a 0-byte marker when
+          # the lap ends; --give-up-file turns that into a clean exit
+          # for a worker that is still dialling. Orphaned on a normal
+          # exit - the runner reaps it.
+          ( until gh cache list -R "$GITHUB_REPOSITORY" \
+                    -k "rebuck2-done-$GITHUB_RUN_ID" --json key -q '.[].key' \
+                  | grep -q .; do sleep 60; done
+            : > party-over ) &
           timeout 18000 rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
             "${ADDR_FLAG[@]}" \
             --preloaded-shard "${{ matrix.shard }}" \
             --connect-wait-secs 1800 \
+            --give-up-file party-over \
             --store "$STORE/worker" | tee worker.log
 
       # Bank pack: exact diff against the union blob list. Own-range
@@ -1293,6 +1333,8 @@ jobs:
           ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
 
       - name: Serve until the driver disconnects
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           ADDR_FLAG=()
           [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
@@ -1300,11 +1342,20 @@ jobs:
           if command -v timeout >/dev/null 2>&1; then T=(timeout 18000)
           elif command -v gtimeout >/dev/null 2>&1; then T=(gtimeout 18000)
           else T=(); fi
+          # Party's-over poller: the driver banks a 0-byte marker when
+          # the lap ends; --give-up-file turns that into a clean exit
+          # for a worker that is still dialling. Orphaned on a normal
+          # exit - the runner reaps it.
+          ( until gh cache list -R "$GITHUB_REPOSITORY" \
+                    -k "rebuck2-done-$GITHUB_RUN_ID" --json key -q '.[].key' \
+                  | grep -q .; do sleep 60; done
+            : > party-over ) &
           "${T[@]}" rebuck2 worker \
             --session "hetero-$GITHUB_RUN_ID" \
             "${ADDR_FLAG[@]}" \
             --preloaded-shard "${{ matrix.shard }}" \
             --connect-wait-secs 1800 \
+            --give-up-file party-over \
             --store "$STORE/worker" | tee worker.log
 
       # Bank pack: exact diff against the union blob list. Own-range
