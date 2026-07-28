@@ -12,8 +12,8 @@
 #   bank-blobs.txt      union blob list of every manifest found
 #   bank-manifest-rN.json  each range manifest found
 #   own-range/          own manifest + blob list (publish's head dir)
-# Exit 3 = no manifests of any kind for this lineage (caller may fall
-# back to the legacy monolithic shard artifacts for bootstrap).
+# Exit 3 = no range manifests for this lineage (caller may fall back
+# to the legacy monolithic shard artifacts for bootstrap).
 set -euo pipefail
 mkdir -p "$1"
 STORE_DIR=$(cd "$1" && pwd); SHARD="$2"
@@ -81,21 +81,8 @@ for n in 0 1 2 3 4 5 6 7; do
   fi
 done
 
-# Transitional: the pre-federation GLOBAL manifest is a read-only
-# parent - its blob list keeps the union complete while ranges are
-# still being established, and it seeds ranges that have no manifest
-# yet. Remove once all 8 ranges are live.
-global_manifest=""
-grow=$(_artifact_row "cas-manifest-$CAS_LINEAGE")
-if [ -n "$grow" ]; then
-  _fetch_zip "${grow%% *}" "$BANK_WORK/.g"
-  global_manifest="$BANK_WORK/.g/manifest.json"
-  zstd -dq -c "$BANK_WORK/.g/blobs.txt.zst" >> "$BANK_WORK/.union"
-  found=$((found + 1))
-fi
-
 if [ "$found" -eq 0 ]; then
-  echo "[bank] no range or global manifests for $CAS_LINEAGE - cold bank"
+  echo "[bank] no range manifests for $CAS_LINEAGE - cold bank"
   exit 3
 fi
 sort -u "$BANK_WORK/.union" > "$BANK_WORK/bank-blobs.txt"
@@ -105,54 +92,7 @@ echo "[bank] $found manifests, union $(wc -l < "$BANK_WORK/bank-blobs.txt" | tr 
 [ "$SHARD" != "-" ] || exit 0
 a=$(printf '%x' $((SHARD * 2))); b=$(printf '%x' $((SHARD * 2 + 1)))
 
-# The own-range head MERGES the global manifest's slice in - always,
-# not just on first publish. A thin range manifest (published after a
-# flaky restore, or before the global existed) would otherwise pin the
-# range's pre-migration blobs union-visible (never re-banked) but
-# manifest-invisible (never seeded): cold stores forever. The merge is
-# idempotent and monotonic; once the global expires it contributes
-# nothing and the fallback can go.
-# Once the range has FULL packs it is self-sufficient: compaction
-# packed the whole seeded view (slice included, no-shed gated), so
-# re-merging the global slice would only re-add its never-full
-# migration segments as deltas - which re-fired the compaction trigger
-# every lap (run 29594711024: head 70 full + 69 slice = compact churn)
-# and made every seed download the range's content TWICE.
-has_full=0
-if [ -f "$BANK_WORK/own-range/manifest.json" ]; then
-  has_full=$(jq '[.segments[] | select(.full == true)] | length' \
-    "$BANK_WORK/own-range/manifest.json")
-fi
-if [ -n "$global_manifest" ] && [ "$has_full" -gt 0 ]; then
-  echo "[bank] range $SHARD has full packs - global slice merge skipped"
-fi
-if [ -n "$global_manifest" ] && [ "$has_full" -eq 0 ] \
-   && [ ! -f "$BANK_WORK/.own-range-unknown" ]; then
-  mkdir -p "$BANK_WORK/own-range"
-  own_json="$BANK_WORK/own-range/manifest.json"
-  # Base is the own manifest when it exists (its generation chains);
-  # otherwise the global with its segments cleared (pure inheritance).
-  [ -f "$own_json" ] \
-    || jq '. + {segments: []}' "$global_manifest" > "$own_json"
-  jq --arg p "[$a$b]" --slurpfile g "$global_manifest" \
-    '. + {segments: ((.segments + [$g[0].segments[]
-                        | select(.prefixes | test($p))])
-                     | unique_by(.name))}' \
-    "$own_json" > "$own_json.tmp" && mv "$own_json.tmp" "$own_json"
-  { zstd -dq -c "$BANK_WORK/.g/blobs.txt.zst" | grep "^[$a$b]" || true; } \
-    > "$BANK_WORK/.gslice"
-  if [ -f "$BANK_WORK/own-range/blobs.txt.zst" ]; then
-    zstd -dq -c "$BANK_WORK/own-range/blobs.txt.zst" >> "$BANK_WORK/.gslice"
-  fi
-  sort -u "$BANK_WORK/.gslice" \
-    | zstd -q -o "$BANK_WORK/own-range/blobs.txt.zst" -f
-  rm -f "$BANK_WORK/.gslice"
-  echo "[bank] range $SHARD head merged with the global slice:" \
-    "$(jq '.segments|length' "$own_json") segments," \
-    "$(zstd -dq -c "$BANK_WORK/own-range/blobs.txt.zst" | wc -l | tr -d ' ') blobs"
-fi
-
-# ── seed own range: containers named by the manifest(s) ────────────
+# ── seed own range: containers named by the manifest ───────────────
 _seed_from_manifest() { # <manifest.json> <owned_prefixes>
   local manifest="$1" owned="$2" needed containers c aid name
   needed=$(ci/cas-bank.sh segments_to_fetch "$manifest" "$owned")
@@ -209,8 +149,7 @@ _seed_from_manifest() { # <manifest.json> <owned_prefixes>
 
 seeded=0
 mkdir -p "$STORE_DIR"
-# The merged own-range head names every segment this range should hold
-# (own manifest + global slice); seed straight from it.
+# The own-range head names every segment this range holds.
 if [ -f "$BANK_WORK/own-range/manifest.json" ]; then
   _seed_from_manifest "$BANK_WORK/own-range/manifest.json" "$a$b"
 fi

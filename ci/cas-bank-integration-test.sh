@@ -102,8 +102,8 @@ up_manifest() { # <run> <role> <shard>
     "$T/wk-$1-$2/bank-manifest-out"
 }
 
-# ── lap 0: migration - a pre-federation GLOBAL manifest exists ──────
-G="$T/lap0-global"
+# ── lap 0: an established r0 bank (this run's bootstrap source) ─────
+G="$T/lap0-r0"
 mkb "$G" 00go1d99 "gold"
 ci/cas-bank.sh pack_segments "$G" /dev/null "$T/gsegs" > "$T/gsegs.names"
 gseg=$(cat "$T/gsegs.names")
@@ -114,13 +114,13 @@ jq -c --arg a "cas-segs-$CAS_LINEAGE-50-w0" '. + {artifact: $a}' \
   && mv "$T/gsegs/$gseg/meta.json.tmp" "$T/gsegs/$gseg/meta.json"
 ci/cas-bank.sh write_manifest "$CAS_LINEAGE" 50-1 - - 50 - "$T/gsegs" "$T/gman"
 publish_to_fake "cas-segs-$CAS_LINEAGE-50-w0" "$T/gcontainer"
-publish_to_fake "cas-manifest-$CAS_LINEAGE" "$T/gman"
-echo "ok - lap0: global manifest staged (migration source)"
+publish_to_fake "cas-manifest-$CAS_LINEAGE-r0" "$T/gman"
+echo "ok - lap0: r0 manifest staged (bootstrap source)"
 
 # ── lap 1: w1 owns shard 0; in-range blobs bank, out-of-range spills ─
 W1="$T/lap1-w1"
-work "$W1" w1 100 0   # cold ranges; seeds 00go1d99 from the global
-[ -f "$W1/cas/00/00go1d99" ] || fail "lap1: global blob not seeded"
+work "$W1" w1 100 0   # seeds 00go1d99 from r0's established manifest
+[ -f "$W1/cas/00/00go1d99" ] || fail "lap1: banked blob not seeded"
 mkb "$W1" 0aaa0001 "in-a"
 mkb "$W1" 1bbb0002 "in-b"
 mkb "$W1" 2ccc0003 "out-of-range"
@@ -169,27 +169,19 @@ done
 [ -f "$W4/cas/0d/0ddd0004" ] && fail "lap4: unreferenced straggler blob seeded"
 echo "ok - lap4: prefix-subset restore, referenced blobs only"
 
-# ── lap 5: a THIN range manifest heals via the global merge ─────────
-# The r3 field incident: a manifest published without history pins its
-# range cold. The merged head must re-seed and re-reference the slice.
-thin="$T/thin-r0"; mkdir -p "$thin"
-jq --arg s "$gseg" '. + {segments: [.segments[] | select(.name != $s)]}' \
-  "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json" > "$thin/manifest.json"
-zstd -dq -c "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/blobs.txt.zst" \
-  | grep -v 00go1d99 | zstd -q -o "$thin/blobs.txt.zst" -f
-publish_to_fake "cas-manifest-$CAS_LINEAGE-r0" "$thin"
+# ── lap 5: ordinary delta lap - history chains, new blob banks ──────
 W5="$T/lap5-w1"
 work "$W5" w1c 500 0
-[ -f "$W5/cas/00/00go1d99" ] || fail "lap5: thin manifest not healed on seed"
+[ -f "$W5/cas/00/00go1d99" ] || fail "lap5: bootstrap blob lost from r0"
 mkb "$W5" 0e5e0005 "new"
 BANK_WORK="$T/wk-500-w1c" GITHUB_RUN_ID=500 ci/cas-bank-publish.sh "$W5" w1c 0
 jq -e --arg s "$gseg" '.segments[] | select(.name == $s)' \
   "$T/wk-500-w1c/bank-manifest-out/manifest.json" > /dev/null \
-  || fail "lap5: healed manifest dropped the global slice segment"
+  || fail "lap5: delta manifest dropped an inherited segment"
 zstd -dq -c "$T/wk-500-w1c/bank-manifest-out/blobs.txt.zst" \
-  | grep -q 00go1d99 || fail "lap5: healed manifest lost the sliced blob"
+  | grep -q 0e5e0005 || fail "lap5: new blob missing from the new manifest"
 up 500 w1c container; up_manifest 500 w1c 0
-echo "ok - lap5: thin manifest healed by the global-slice merge"
+echo "ok - lap5: delta lap chains history and banks the new blob"
 
 # ── lap 6: own-manifest lookup FAILURE demotes to spill-only ────────
 # A flake must not read as "absent": a thin manifest would clobber the

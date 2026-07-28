@@ -247,8 +247,12 @@ cover the choreography end-to-end (migration inherit, spill/absorb,
 torn publish, subset restore) against a fake gh that runs the scripts'
 REAL --jq expressions.
 
-- [ ] remove the legacy shard fallback + global-manifest parent after
-      all 8 ranges have published
+- [x] global-manifest parent removed (2026-07-28): all 8 ranges carry
+      FULL packs (r0..r7: 49-77 each), so the slice merge was already
+      skipped everywhere - dead code, deleted with its two integration
+      cases. The legacy cas-shard-N fallback STAYS until lap A of the
+      AC bank is green: 20 unexpired shard artifacts still exist, and
+      pulling two cold-start nets in one week is the wrong order.
 - [x] compaction (2026-07-17, redesigned per Giles): NO separate
       workflow - the range owner compacts in its own teardown. Its
       store already holds the range's full view (seeded segments +
