@@ -98,6 +98,15 @@ Blast radius comparison:
 A lineage is a branch's chain of manifests. PR/branch lineages set
 `parent_lineage`; restore walks child-then-parent and unions. Rules:
 
+- **Inheritance** (live 2026-07-29): `CAS_PARENT_LINEAGE` names the
+  trunk. Its manifests are read at restore - blobs/rows join the union
+  (so they are never re-banked) and its segments seed the store - while
+  every publish still goes to the child's own manifest names. Workers
+  skip it for the AC: they only need their own history to re-pack, and
+  inheriting rows they did not author would invite them to re-bank the
+  trunk. Cross-lineage AC apply order is `(lineage, run, role)`, parent
+  first: a branch that re-derived an action must beat the trunk's row
+  for it even when the trunk published later.
 - **Write isolation**: a lap only ever publishes to its own lineage's
   manifest. PR blobs never enter the target lineage's manifest - on
   merge, the target rebuilds and re-derives everything under its own

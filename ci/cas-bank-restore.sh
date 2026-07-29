@@ -4,9 +4,13 @@
 #   ci/cas-bank-restore.sh <store_dir> <shard|->
 # shard: this worker's shard number (owns hex prefixes 2n,2n+1); '-'
 # fetches only the blob-list union (driver/co-worker: no seeding).
-# Env: CAS_LINEAGE (required), GH_TOKEN, GITHUB_REPOSITORY,
-# ABSORB_SPILLS=1 (primaries only: also seed recent spill artifacts'
-# own-range blobs so the next publish banks them properly).
+# Env: CAS_LINEAGE (required), CAS_PARENT_LINEAGE (optional: the trunk
+# a branch/PR lineage inherits from - its bank seeds this store and
+# joins the union, so a branch's first lap is warm and only its OWN new
+# blobs are banked, under its OWN manifest), GH_TOKEN,
+# GITHUB_REPOSITORY, ABSORB_SPILLS=1 (primaries only: also seed recent
+# spill artifacts' own-range blobs so the next publish banks them
+# properly).
 # Side effects in $BANK_WORK (set it to a persistent NON-REPO dir in
 # CI - stray files in the repo root churn buck2's file watcher):
 #   bank-blobs.txt      union blob list of every manifest found
@@ -22,17 +26,20 @@ cd "$(dirname "$0")/.."
 BANK_WORK="${BANK_WORK:-$(mktemp -d)}"
 mkdir -p "$BANK_WORK"
 
-# Newest unexpired artifact for an exact name, provenance-checked:
-# the publishing run must have run on the lineage's own branch in this
-# repo (blocks a hostile branch publishing under another lineage's
-# name - see ci/cas-bank-design.md). Prints "id created_at" or nothing.
+# Newest unexpired artifact for an exact name, provenance-checked: the
+# publishing run must have run on that lineage's own branch in this repo
+# (blocks a hostile branch publishing under another lineage's name - see
+# ci/cas-bank-design.md). $2 = the branch to demand, defaulting to this
+# lineage; a parent lineage's manifests are checked against THEIR branch.
+# Prints "id created_at" or nothing.
 _artifact_row() {
+  local want="${2:-$CAS_LINEAGE}"
   gh api \
     "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$1&per_page=20" \
     --jq "[.artifacts[]
       | select(.expired == false
                and .workflow_run.head_repository_id == .workflow_run.repository_id
-               and .workflow_run.head_branch == \"$CAS_LINEAGE\")][0]
+               and .workflow_run.head_branch == \"$want\")][0]
       | select(. != null) | \"\(.id) \(.created_at)\"" 2>/dev/null || true
 }
 
@@ -81,13 +88,35 @@ for n in 0 1 2 3 4 5 6 7; do
   fi
 done
 
-if [ "$found" -eq 0 ]; then
+# ── parent lineage: inherit the trunk's bank, read-only ────────────
+# Write isolation is absolute (see ci/cas-bank-design.md): the parent's
+# blobs join the union so this lap never re-banks them, and its segments
+# seed this store, but every publish still goes to the CHILD's manifest.
+# On merge the trunk re-derives under its own trust.
+parent_found=0
+if [ -n "${CAS_PARENT_LINEAGE:-}" ] \
+   && [ "$CAS_PARENT_LINEAGE" != "$CAS_LINEAGE" ]; then
+  for n in 0 1 2 3 4 5 6 7; do
+    prow=$(_artifact_row "cas-manifest-$CAS_PARENT_LINEAGE-r$n" \
+      "$CAS_PARENT_LINEAGE")
+    [ -n "$prow" ] || continue
+    _fetch_zip "${prow%% *}" "$BANK_WORK/.p$n"
+    cp "$BANK_WORK/.p$n/manifest.json" "$BANK_WORK/parent-manifest-r$n.json"
+    zstd -dq -c "$BANK_WORK/.p$n/blobs.txt.zst" >> "$BANK_WORK/.union"
+    parent_found=$((parent_found + 1))
+  done
+  [ "$parent_found" -eq 0 ] \
+    || echo "[bank] parent lineage $CAS_PARENT_LINEAGE: $parent_found manifests inherited"
+fi
+
+if [ "$((found + parent_found))" -eq 0 ]; then
   echo "[bank] no range manifests for $CAS_LINEAGE - cold bank"
   exit 3
 fi
 sort -u "$BANK_WORK/.union" > "$BANK_WORK/bank-blobs.txt"
 rm -f "$BANK_WORK/.union"
-echo "[bank] $found manifests, union $(wc -l < "$BANK_WORK/bank-blobs.txt" | tr -d ' ') blobs"
+echo "[bank] $found own + $parent_found inherited manifests," \
+  "union $(wc -l < "$BANK_WORK/bank-blobs.txt" | tr -d ' ') blobs"
 
 [ "$SHARD" != "-" ] || exit 0
 a=$(printf '%x' $((SHARD * 2))); b=$(printf '%x' $((SHARD * 2 + 1)))
@@ -149,6 +178,12 @@ _seed_from_manifest() { # <manifest.json> <owned_prefixes>
 
 seeded=0
 mkdir -p "$STORE_DIR"
+# The parent's range first (the branch's warm base), then this
+# lineage's own segments on top. Content-addressed, so the order is
+# only about doing the bulk fetch once.
+if [ -f "$BANK_WORK/parent-manifest-r$SHARD.json" ]; then
+  _seed_from_manifest "$BANK_WORK/parent-manifest-r$SHARD.json" "$a$b"
+fi
 # The own-range head names every segment this range holds.
 if [ -f "$BANK_WORK/own-range/manifest.json" ]; then
   _seed_from_manifest "$BANK_WORK/own-range/manifest.json" "$a$b"

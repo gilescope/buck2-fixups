@@ -34,6 +34,12 @@ on:
     branches: [giles-rebuck2-sweep]
     paths:
       - .github/workflows/sweep-hetero.yml
+  # Opt-in per PR: `branches` filters the BASE, so the SOURCE-branch
+  # prefix gate lives in each job's `if` (SWEEP_PR_PREFIX below).
+  # Name a branch sweep-<something> and its PR gets a full fleet lap,
+  # inheriting the base branch's bank; every other PR skips all jobs.
+  pull_request:
+    branches: [main, giles-rebuck2-sweep]
 
 permissions:
   contents: read
@@ -64,8 +70,16 @@ env:
   QUORUM_WORKERS: "8"
   # CAS bank (ci/cas-bank-design.md): lineage = the branch. Artifact
   # names embed it, and restore's provenance check requires the
-  # publishing run's head_branch to equal it.
-  CAS_LINEAGE: ${{ github.ref_name }}
+  # publishing run's head_branch to equal it. On a pull_request that is
+  # the SOURCE branch (github.ref_name would be "<n>/merge").
+  CAS_LINEAGE: ${{ github.head_ref || github.ref_name }}
+  # The trunk this lineage inherits from, read-only: its bank seeds the
+  # store and joins the diff base, so a branch's first lap is warm and
+  # banks only its own new content - under its own manifest. Empty on
+  # the trunk itself. Write isolation is what makes this safe to read:
+  # a PR never publishes into the parent's names, so on merge the trunk
+  # re-derives everything under its own trust.
+  CAS_PARENT_LINEAGE: ${{ github.base_ref != '' && github.base_ref || (github.ref_name != 'main' && 'main' || '') }}
   SEG_MAX_MB: "64"
   # par: all three legs concurrently (~longest-leg wall time). seq -
   # one leg at a time with a daemon page-out+restart between legs -
@@ -79,6 +93,8 @@ env:
 jobs:
   driver:
     name: driver
+    # SWEEP_PR_PREFIX gate: PRs sweep only from a sweep-* branch.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sweep-')
     runs-on: ubuntu-latest
     timeout-minutes: 350
     permissions:
@@ -729,6 +745,8 @@ jobs:
     # verdict, and the mesh tolerates stragglers.
   worker-win:
     name: win worker ${{ matrix.n }}
+    # SWEEP_PR_PREFIX gate: PRs sweep only from a sweep-* branch.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sweep-')
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -971,6 +989,8 @@ jobs:
     # verdict, and the mesh tolerates stragglers.
   worker-linux:
     name: linux worker ${{ matrix.n }}
+    # SWEEP_PR_PREFIX gate: PRs sweep only from a sweep-* branch.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sweep-')
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -1198,6 +1218,8 @@ jobs:
     # verdict, and the mesh tolerates stragglers.
   worker-mac:
     name: mac worker ${{ matrix.n }}
+    # SWEEP_PR_PREFIX gate: PRs sweep only from a sweep-* branch.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sweep-')
     continue-on-error: true
     strategy:
       fail-fast: false

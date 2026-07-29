@@ -140,7 +140,8 @@ if [ -n "$owned" ]; then
       # a delta chains on the head as before.
       [ -n "$compact_reason" ] || head_dir="$BANK_WORK/own-range"
     fi
-    ci/cas-bank.sh write_manifest "$CAS_LINEAGE" "$RUN-1" - "$prev_gen" \
+    ci/cas-bank.sh write_manifest "$CAS_LINEAGE" "$RUN-1" \
+      "${CAS_PARENT_LINEAGE:--}" "$prev_gen" \
       "$RUN" "$head_dir" "$BANK_WORK/bank-segs" "$BANK_WORK/bank-manifest-out"
     echo "[bank] $ROLE r$SHARD: $(wc -l < "$BANK_WORK/bank-segs.names" | tr -d ' ') segments," \
       "$(du -sh "$BANK_WORK/bank-container" | cut -f1) in $CONTAINER;" \

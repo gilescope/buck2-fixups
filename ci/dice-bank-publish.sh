@@ -66,7 +66,8 @@ if [ -f "$BANK_WORK/dice-head/manifest.json" ]; then
   head_dir="$BANK_WORK/dice-head"
   prev_gen=$(jq -r .generation "$head_dir/manifest.json" | tr -d '\r')
 fi
-ci/cas-bank.sh write_manifest "$CAS_LINEAGE" "$RUN-1" - "$prev_gen" \
+ci/cas-bank.sh write_manifest "$CAS_LINEAGE" "$RUN-1" \
+  "${CAS_PARENT_LINEAGE:--}" "$prev_gen" \
   "$RUN" "$head_dir" "$BANK_WORK/dice-segs" "$BANK_WORK/dice-manifest-out"
 # The skeleton rides the manifest whole: 19MB raw, byte-stable, and it
 # must be atomic with the row index it references.

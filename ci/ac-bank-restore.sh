@@ -6,7 +6,9 @@
 # all = lay down every role's rows (the driver: it is the only reader).
 # own = lay down only this role's own history (workers: enough for a
 #       compaction re-pack, and they never read the AC).
-# Env: CAS_LINEAGE (required), GH_TOKEN, GITHUB_REPOSITORY, BANK_WORK.
+# Env: CAS_LINEAGE (required), CAS_PARENT_LINEAGE (optional trunk to
+# inherit from - "all" mode lays its rows down UNDER this lineage's),
+# GH_TOKEN, GITHUB_REPOSITORY, BANK_WORK.
 # Side effects in $BANK_WORK:
 #   ac-banked-rows.txt   union "<path> <sha256>" list (the publish diff)
 #   own-ac/              own role manifest + row list (publish's head)
@@ -49,18 +51,32 @@ if ! own_row=$(gh api \
 fi
 
 : > "$BANK_WORK/.ac-manifests"
-if [ "$MODE" = "all" ]; then
-  # Newest artifact per role name, in one listing call - roles need no
-  # enumeration here, so a matrix change cannot silently drop a slice.
+_list_role_manifests() { # <lineage>
   gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
     --jq "[.artifacts[]
       | select(.expired == false
-               and (.name | startswith(\"$PREFIX\"))
+               and (.name | startswith(\"cas-manifest-$1-ac-\"))
                and .workflow_run.head_repository_id == .workflow_run.repository_id
-               and .workflow_run.head_branch == \"$CAS_LINEAGE\")]
+               and .workflow_run.head_branch == \"$1\")]
       | group_by(.name) | map(sort_by(.created_at) | last)[]
-      | \"\(.id) \(.name)\"" 2>/dev/null \
-    | tr -d '\r' > "$BANK_WORK/.ac-manifests" || true
+      | \"\(.id) \(.name)\"" 2>/dev/null | tr -d '\r' || true
+}
+
+: > "$BANK_WORK/.ac-parents"
+if [ "$MODE" = "all" ]; then
+  # Newest artifact per role name, in one listing call - roles need no
+  # enumeration here, so a matrix change cannot silently drop a slice.
+  _list_role_manifests "$CAS_LINEAGE" > "$BANK_WORK/.ac-manifests"
+  # Parent lineage (a branch inheriting the trunk): read-only. Its rows
+  # seed this store and join the diff base so they are never re-banked,
+  # but every publish still goes to THIS lineage's manifest.
+  # Workers ('own' mode) skip it - they only need their own history for
+  # a compaction re-pack, and inheriting rows they did not author would
+  # invite them to re-bank the trunk.
+  if [ -n "${CAS_PARENT_LINEAGE:-}" ] \
+     && [ "$CAS_PARENT_LINEAGE" != "$CAS_LINEAGE" ]; then
+    _list_role_manifests "$CAS_PARENT_LINEAGE" > "$BANK_WORK/.ac-parents"
+  fi
 fi
 # The own manifest is always read (head + diff base), even in all mode
 # where the listing may not have surfaced it yet.
@@ -69,9 +85,9 @@ if [ -n "$own_row" ] \
   printf '%s\n' "$own_row" >> "$BANK_WORK/.ac-manifests"
 fi
 
-if ! [ -s "$BANK_WORK/.ac-manifests" ]; then
+if ! [ -s "$BANK_WORK/.ac-manifests" ] && ! [ -s "$BANK_WORK/.ac-parents" ]; then
   echo "[ac-bank] no AC manifests for $CAS_LINEAGE - cold bank"
-  rm -f "$BANK_WORK/.ac-manifests"
+  rm -f "$BANK_WORK/.ac-manifests" "$BANK_WORK/.ac-parents"
   exit 3
 fi
 
@@ -83,21 +99,37 @@ fi
 : > "$BANK_WORK/.ac-union"
 : > "$BANK_WORK/.ac-plan"
 found=0
-while read -r aid name; do
+inherited=0
+# Rank 0 = parent lineage, 1 = this one. Rows are name-stable and
+# content-mutable, so the apply order must be TOTAL: (lineage, run,
+# role). Lineage outranks run because a branch that re-derived an
+# action must beat the trunk's row for it even when the trunk published
+# later - ordering by run alone would silently serve the trunk's stale
+# result to the branch that changed the input.
+awk '{print "0 " $0}' "$BANK_WORK/.ac-parents" > "$BANK_WORK/.ac-all"
+awk '{print "1 " $0}' "$BANK_WORK/.ac-manifests" >> "$BANK_WORK/.ac-all"
+mv "$BANK_WORK/.ac-all" "$BANK_WORK/.ac-manifests"
+rm -f "$BANK_WORK/.ac-parents"
+while read -r rank aid name; do
   [ -n "$aid" ] || continue
-  role="${name#"$PREFIX"}"
+  role="${name##*-ac-}"
   _fetch_zip "$aid" "$BANK_WORK/.acm"
   [ -f "$BANK_WORK/.acm/manifest.json" ] || continue
   zstd -dq -c "$BANK_WORK/.acm/blobs.txt.zst" >> "$BANK_WORK/.ac-union"
-  found=$((found + 1))
+  if [ "$rank" = "0" ]; then
+    inherited=$((inherited + 1))
+  else
+    found=$((found + 1))
+  fi
   # Segments inherit their packing run/role through write_manifest, so
   # a manifest's own generation says nothing about its old segments.
   sort_role="$role"
   [ "$role" != "driver" ] || sort_role="zzzz-driver"
-  jq -r --arg role "$role" --arg sr "$sort_role" \
-    '.segments[] | "\(.run // 0)\t\($sr)\t\(.artifact // "-")\t\(.name)\t\($role)"' \
+  jq -r --arg role "$role" --arg sr "$sort_role" --arg rank "$rank" \
+    '.segments[]
+     | "\($rank)\t\(.run // 0)\t\($sr)\t\(.artifact // "-")\t\(.name)\t\($role)"' \
     "$BANK_WORK/.acm/manifest.json" | tr -d '\r' >> "$BANK_WORK/.ac-plan"
-  if [ "$role" = "$ROLE" ]; then
+  if [ "$rank" = "1" ] && [ "$role" = "$ROLE" ]; then
     rm -rf "$BANK_WORK/own-ac" && mkdir -p "$BANK_WORK/own-ac"
     cp "$BANK_WORK/.acm/manifest.json" "$BANK_WORK/own-ac/manifest.json"
     cp "$BANK_WORK/.acm/blobs.txt.zst" "$BANK_WORK/own-ac/blobs.txt.zst"
@@ -106,20 +138,21 @@ while read -r aid name; do
 done < "$BANK_WORK/.ac-manifests"
 rm -f "$BANK_WORK/.ac-manifests"
 
-if [ "$found" -eq 0 ]; then
+if [ "$((found + inherited))" -eq 0 ]; then
   echo "[ac-bank] AC manifests unreadable - cold bank"
   exit 3
 fi
 sort -u "$BANK_WORK/.ac-union" > "$BANK_WORK/ac-banked-rows.txt"
 rm -f "$BANK_WORK/.ac-union"
-echo "[ac-bank] $found role manifests, union" \
+echo "[ac-bank] $found role manifests ($inherited inherited), union" \
   "$(wc -l < "$BANK_WORK/ac-banked-rows.txt" | tr -d ' ') rows"
 
 # ── fetch containers and lay rows down in generation order ──────────
-sort -k1,1n -k2,2 -k4,4 "$BANK_WORK/.ac-plan" > "$BANK_WORK/.ac-plan.sorted"
+sort -k1,1n -k2,2n -k3,3 -k5,5 "$BANK_WORK/.ac-plan" \
+  > "$BANK_WORK/.ac-plan.sorted"
 seeded=0
 cur=""
-while IFS="$(printf '\t')" read -r _run _sr container seg _role; do
+while IFS="$(printf '\t')" read -r _rank _run _sr container seg _role; do
   [ "$container" != "-" ] || continue
   if [ "$container" != "$cur" ]; then
     rm -rf "$BANK_WORK/.acseg"

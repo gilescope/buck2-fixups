@@ -394,4 +394,68 @@ BANK_WORK="$T/acwk-w0c" GITHUB_RUN_ID=1200 \
   || fail "ac: staged a manifest despite unknown own state"
 echo "ok - lap10: own-manifest flake -> stage nothing, fat manifest stands"
 
+# ── lap 11: a child lineage inherits its parent's blob bank ─────────
+# A branch/PR is its own lineage. Without inheritance its first lap is
+# a full cold re-derivation; with it, the trunk's bank is warm and only
+# the branch's own new blobs are banked - under the CHILD's manifest,
+# never the parent's (the cache-poisoning boundary).
+PARENT="$CAS_LINEAGE"
+export CAS_PARENT_LINEAGE="$PARENT"
+export CAS_LINEAGE=child-branch
+W11="$T/lap11-child"
+rc=0; BANK_WORK="$T/wk-1100" ci/cas-bank-restore.sh "$W11" 0 || rc=$?
+[ "$rc" -eq 0 ] || fail "lap11: child restore rc=$rc (cold - no inheritance?)"
+for b in 00go1d99 0aaa0001 0e5e0005; do
+  [ -f "$W11/cas/${b:0:2}/$b" ] || fail "lap11: parent blob $b not inherited"
+done
+grep -q 0aaa0001 "$T/wk-1100/bank-blobs.txt" \
+  || fail "lap11: parent blob missing from the child's union"
+mkb "$W11" 0c1d0007 "child-only"
+BANK_WORK="$T/wk-1100" GITHUB_RUN_ID=1100 ci/cas-bank-publish.sh "$W11" c0 0
+# The staged manifest IS what gets published, so assert there: a child
+# with no own history should reference exactly its own new blob.
+got=$(zstd -dq -c "$T/wk-1100/bank-manifest-out/blobs.txt.zst" | tr -d '[:space:]')
+[ "$got" = "0c1d0007" ] || fail "lap11: child re-banked inherited blobs: $got"
+[ "$(jq '.segments|length' "$T/wk-1100/bank-manifest-out/manifest.json")" -eq 1 ] \
+  || fail "lap11: child manifest references inherited segments"
+[ "$(jq -r .parent_lineage "$T/wk-1100/bank-manifest-out/manifest.json")" \
+  = "$PARENT" ] || fail "lap11: child manifest records no parent"
+pgen=$(jq -r .generation "$FAKE_ART/cas-manifest-$PARENT-r0/manifest.json")
+[ "$pgen" = "800-1" ] || fail "lap11: child publish moved the PARENT head to $pgen"
+echo "ok - lap11: child lineage inherits, banks only its own, parent untouched"
+
+# ── lap 12: AC parentage, and the child's row wins ──────────────────
+# Deliberately give the child a LOWER run id than the parent's last AC
+# lap: ordering must be (lineage, run), not run alone, or the trunk's
+# stale row would beat the branch's rebuild of the same action.
+AC_C="$T/ac-child"
+BANK_WORK="$T/acwk-child" ci/ac-bank-restore.sh "$AC_C" driver all
+[ "$(cat "$AC_C/ac/$A1")" = "driver-v3" ] \
+  || fail "lap12: parent AC row not inherited"
+[ "$(cat "$AC_C/ac/$A2")" = "worker-only-row" ] \
+  || fail "lap12: parent worker row not inherited"
+grep -q "^ac/$A1 " "$T/acwk-child/ac-banked-rows.txt" \
+  || fail "lap12: parent rows missing from the child's diff base"
+acrow "$AC_C" "ac/$A1" "child-v1"
+BANK_WORK="$T/acwk-child" GITHUB_RUN_ID=900 \
+  ci/ac-bank-publish.sh "$AC_C" driver
+rows=$(zstd -dq -c "$T/acwk-child/ac-manifest-out/blobs.txt.zst")
+n=$(printf '%s\n' "$rows" | wc -l | tr -d ' ')
+[ "$n" -eq 1 ] || fail "lap12: child banked $n rows, expected just the changed one: $rows"
+printf '%s' "$rows" | grep -q "^ac/$A1 " \
+  || fail "lap12: child banked the wrong row: $rows"
+[ "$(jq -r .parent_lineage "$T/acwk-child/ac-manifest-out/manifest.json")" \
+  = "$PARENT" ] || fail "lap12: child AC manifest records no parent"
+publish_to_fake "cas-ac-segs-$CAS_LINEAGE-900-driver" "$T/acwk-child/ac-container"
+publish_to_fake "cas-manifest-$CAS_LINEAGE-ac-driver" "$T/acwk-child/ac-manifest-out"
+AC_C2="$T/ac-child2"
+BANK_WORK="$T/acwk-child2" ci/ac-bank-restore.sh "$AC_C2" driver all
+[ "$(cat "$AC_C2/ac/$A1")" = "child-v1" ] \
+  || fail "lap12: parent row (run 1002) beat the child's (run 900) - ordering by run alone"
+[ "$(cat "$AC_C2/ac/$A2")" = "worker-only-row" ] \
+  || fail "lap12: inherited row lost on the child's second restore"
+echo "ok - lap12: AC inheritance, child rows win regardless of run id"
+export CAS_LINEAGE="$PARENT"
+unset CAS_PARENT_LINEAGE
+
 echo "PASS: integration"

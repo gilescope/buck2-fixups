@@ -2,7 +2,9 @@
 # Restore the dice value store + graph skeleton from the dice bank.
 #   ci/dice-bank-restore.sh <dice_sweep_dir>
 # Produces <dice_sweep_dir>/{db/pagable.N.db, graph.meta}.
-# Env: CAS_LINEAGE, DICE_SEED (must equal BUCK2_DICE_SNAPSHOT_SEED -
+# Env: CAS_LINEAGE, CAS_PARENT_LINEAGE (optional trunk to inherit a
+# dice bank from when this lineage has none), DICE_SEED (must equal
+# BUCK2_DICE_SNAPSHOT_SEED -
 # banked rows are only valid within one fork-rev+seed), GH_TOKEN,
 # GITHUB_REPOSITORY, BANK_WORK.
 # Side effects in $BANK_WORK: dice-banked-keys.txt (for the publish
@@ -27,13 +29,25 @@ _sha8() {
 SEED8=$(_sha8 "$DICE_SEED")
 MANIFEST_NAME="cas-manifest-$CAS_LINEAGE-dice-$SEED8"
 
-row=$(gh api \
-  "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$MANIFEST_NAME&per_page=20" \
-  --jq "[.artifacts[]
-    | select(.expired == false
-             and .workflow_run.head_repository_id == .workflow_run.repository_id
-             and .workflow_run.head_branch == \"$CAS_LINEAGE\")][0]
-    | .id // empty" 2>/dev/null || true)
+_dice_row() { # <lineage>
+  gh api \
+    "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-manifest-$1-dice-$SEED8&per_page=20" \
+    --jq "[.artifacts[]
+      | select(.expired == false
+               and .workflow_run.head_repository_id == .workflow_run.repository_id
+               and .workflow_run.head_branch == \"$1\")][0]
+      | .id // empty" 2>/dev/null || true
+}
+row=$(_dice_row "$CAS_LINEAGE")
+# A branch lineage with no dice bank of its own inherits the trunk's:
+# whole-fetch, one manifest, so this is a fallback rather than a union.
+# The seed hash already gates validity (fork-rev + snapshot seed), so an
+# inherited bank is only ever read when it is the SAME graph.
+if [ -z "$row" ] && [ -n "${CAS_PARENT_LINEAGE:-}" ] \
+   && [ "$CAS_PARENT_LINEAGE" != "$CAS_LINEAGE" ]; then
+  row=$(_dice_row "$CAS_PARENT_LINEAGE")
+  [ -z "$row" ] || echo "[dice-bank] inheriting $CAS_PARENT_LINEAGE's dice bank"
+fi
 if [ -z "$row" ]; then
   echo "[dice-bank] no $MANIFEST_NAME - cold dice bank"
   exit 3

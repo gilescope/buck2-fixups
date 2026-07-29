@@ -137,7 +137,8 @@ if [ -f "$BANK_WORK/own-ac/manifest.json" ]; then
   # A compacting manifest references ONLY the fresh full packs.
   [ -n "$compact_reason" ] || head_dir="$BANK_WORK/own-ac"
 fi
-ci/cas-bank.sh write_manifest "$CAS_LINEAGE" "$RUN-1" - "$prev_gen" \
+ci/cas-bank.sh write_manifest "$CAS_LINEAGE" "$RUN-1" \
+  "${CAS_PARENT_LINEAGE:--}" "$prev_gen" \
   "$RUN" "$head_dir" "$BANK_WORK/ac-segs" "$BANK_WORK/ac-manifest-out"
 
 # write_manifest unions the row lists line-wise; for the AC a mutated
