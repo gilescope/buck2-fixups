@@ -33,20 +33,12 @@ mkdir -p "$BANK_WORK"
 # lineage; a parent lineage's manifests are checked against THEIR branch.
 # Prints "id created_at" or nothing.
 _artifact_row() {
-  local want="${2:-$CAS_LINEAGE}"
-  gh api \
-    "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$1&per_page=20" \
-    --jq "[.artifacts[]
-      | select(.expired == false
-               and .workflow_run.head_repository_id == .workflow_run.repository_id
-               and .workflow_run.head_branch == \"$want\")][0]
-      | select(. != null) | \"\(.id) \(.created_at)\"" 2>/dev/null || true
+  ci/cas-bank.sh _tool gh-list "$1" "${2:-$CAS_LINEAGE}" \
+    | head -1 | cut -f1,3 | tr '\t' ' ' || true
 }
 
 _fetch_zip() { # <artifact_id> <dest_dir>
-  rm -rf "$2" && mkdir -p "$2"
-  gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$1/zip" > "$2.zip"
-  unzip -o -q "$2.zip" -d "$2" && rm -f "$2.zip"
+  ci/cas-bank.sh _tool gh-download "$1" "$2"
 }
 
 # ── all range manifests: union blob list + own head ────────────────
@@ -60,13 +52,9 @@ for n in 0 1 2 3 4 5 6 7; do
   # the fat one - monotonicity broken by a network flake. Flag it so
   # publish skips manifest staging (spill-only lap, self-heals).
   if [ "$SHARD" != "-" ] && [ "$n" = "$SHARD" ]; then
-    if ! row=$(gh api \
-      "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-manifest-$CAS_LINEAGE-r$n&per_page=20" \
-      --jq "[.artifacts[]
-        | select(.expired == false
-                 and .workflow_run.head_repository_id == .workflow_run.repository_id
-                 and .workflow_run.head_branch == \"$CAS_LINEAGE\")][0]
-        | select(. != null) | \"\(.id) \(.created_at)\"" 2>/dev/null); then
+    if ! row=$(ci/cas-bank.sh _tool gh-list \
+      "cas-manifest-$CAS_LINEAGE-r$n" "$CAS_LINEAGE" \
+      | head -1 | cut -f1,3 | tr '\t' ' '); then
       echo "[bank] WARN own-range manifest lookup FAILED - publish will spill-only"
       touch "$BANK_WORK/.own-range-unknown"
       continue
@@ -141,11 +129,8 @@ _seed_from_manifest() { # <manifest.json> <owned_prefixes>
     c_is_full=$(jq -r --arg c "$c" \
       '[.segments[] | select(.artifact == $c) | .full == true] | all' \
       "$manifest")
-    row=$(gh api \
-      "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$c&per_page=1" \
-      --jq '[.artifacts[] | select(.expired == false)][0]
-        | select(. != null) | "\(.id) \(.created_at)"' \
-      2>/dev/null || true)
+    row=$(ci/cas-bank.sh _tool gh-list "$c" - \
+      | head -1 | cut -f1,3 | tr '\t' ' ' || true)
     aid="${row%% *}"
     # Oldest referenced container feeds publish's rewarm check: a
     # container nearing the 90d retention cliff triggers a full
@@ -197,15 +182,9 @@ echo "[bank] seeded $seeded segments for range $a$b"
 # a side effect of the ordinary pack, not extra machinery.
 if [ "${ABSORB_SPILLS:-}" = "1" ]; then
   cutoff="${own_created:-1970-01-01T00:00:00Z}"
-  spills=$(gh api \
-    "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
-    --jq "[.artifacts[]
-      | select(.expired == false
-               and (.name | startswith(\"cas-spill-$CAS_LINEAGE-\"))
-               and .workflow_run.head_repository_id == .workflow_run.repository_id
-               and .workflow_run.head_branch == \"$CAS_LINEAGE\"
-               and .created_at > \"$cutoff\")
-      | .id][:40] | .[]" 2>/dev/null || true)
+  spills=$(ci/cas-bank.sh _tool gh-list-prefix \
+    "cas-spill-$CAS_LINEAGE-" "$CAS_LINEAGE" \
+    | awk -F'\t' -v c="$cutoff" '$3 > c { print $1 }' | head -40 || true)
   absorbed=0
   for aid in $spills; do
     _fetch_zip "$aid" "$BANK_WORK/.spill"

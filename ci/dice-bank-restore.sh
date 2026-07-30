@@ -30,13 +30,8 @@ SEED8=$(_sha8 "$DICE_SEED")
 MANIFEST_NAME="cas-manifest-$CAS_LINEAGE-dice-$SEED8"
 
 _dice_row() { # <lineage>
-  gh api \
-    "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-manifest-$1-dice-$SEED8&per_page=20" \
-    --jq "[.artifacts[]
-      | select(.expired == false
-               and .workflow_run.head_repository_id == .workflow_run.repository_id
-               and .workflow_run.head_branch == \"$1\")][0]
-      | .id // empty" 2>/dev/null || true
+  ci/cas-bank.sh _tool gh-list "cas-manifest-$1-dice-$SEED8" "$1" \
+    | head -1 | cut -f1 || true
 }
 row=$(_dice_row "$CAS_LINEAGE")
 # A branch lineage with no dice bank of its own inherits the trunk's:
@@ -53,10 +48,7 @@ if [ -z "$row" ]; then
   exit 3
 fi
 rm -rf "$BANK_WORK/dice-head" && mkdir -p "$BANK_WORK/dice-head"
-gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$row/zip" \
-  > "$BANK_WORK/.dm.zip"
-unzip -o -q "$BANK_WORK/.dm.zip" -d "$BANK_WORK/dice-head" \
-  && rm -f "$BANK_WORK/.dm.zip"
+ci/cas-bank.sh _tool gh-download "$row" "$BANK_WORK/dice-head"
 zstd -dq -c "$BANK_WORK/dice-head/blobs.txt.zst" \
   > "$BANK_WORK/dice-banked-keys.txt"
 gen=$(jq -r .generation "$BANK_WORK/dice-head/manifest.json")
@@ -70,10 +62,7 @@ containers=$(jq -r '[.segments[].artifact] | unique | .[]' \
   "$BANK_WORK/dice-head/manifest.json")
 merged=0
 for c in $containers; do
-  aid=$(gh api \
-    "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$c&per_page=1" \
-    --jq '[.artifacts[] | select(.expired == false)][0].id // empty' \
-    2>/dev/null || true)
+  aid=$(ci/cas-bank.sh _tool gh-list "$c" - | head -1 | cut -f1 || true)
   if [ -z "$aid" ]; then
     # Missing dice container = incomplete value store; hydration of a
     # missing DataKey is an engine error, not a cache miss. Degrade to
@@ -83,10 +72,7 @@ for c in $containers; do
     exit 3
   fi
   rm -rf "$BANK_WORK/.dseg" && mkdir -p "$BANK_WORK/.dseg"
-  gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$aid/zip" \
-    > "$BANK_WORK/.dseg.zip"
-  unzip -o -q "$BANK_WORK/.dseg.zip" -d "$BANK_WORK/.dseg" \
-    && rm -f "$BANK_WORK/.dseg.zip"
+  ci/cas-bank.sh _tool gh-download "$aid" "$BANK_WORK/.dseg"
   for d in "$BANK_WORK/.dseg"/cas-seg-*/; do
     [ -d "$d" ] || continue
     ci/cas-bank.sh dice_merge "$DICE_DIR/db" "$d"

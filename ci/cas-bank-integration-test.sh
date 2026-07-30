@@ -72,7 +72,10 @@ case "${1:-}" in
     [ -z "${FAKE_FAIL_NAME:-}" ] || [ "$name" != "$FAKE_FAIL_NAME" ] || {
       echo "fake bank: injected failure for $name" >&2; exit 1; }
     [ -d "$FAKE_ART/$name" ] || exit 0
-    [ "$(_meta "$name" .workflow_run.head_branch)" = "$lineage" ] || exit 0
+    # '-' = any lineage: containers are trusted via the manifest naming
+    # them, not on their own provenance.
+    [ "$lineage" = "-" ] \
+      || [ "$(_meta "$name" .workflow_run.head_branch)" = "$lineage" ] || exit 0
     printf '%s\t%s\t%s\n' "$name" "$name" "$(_meta "$name" .created_at)" ;;
   gh-list-prefix)
     prefix="$2"; lineage="$3"

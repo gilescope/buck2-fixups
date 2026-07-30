@@ -145,10 +145,8 @@ while IFS="$(printf '\t')" read -r _rank _run _sr container seg _role; do
   [ "$container" != "-" ] || continue
   if [ "$container" != "$cur" ]; then
     rm -rf "$BANK_WORK/.acseg"
-    row=$(gh api \
-      "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$container&per_page=1" \
-      --jq '[.artifacts[] | select(.expired == false)][0]
-        | select(. != null) | "\(.id) \(.created_at)"' 2>/dev/null || true)
+    row=$(ci/cas-bank.sh _tool gh-list "$container" - \
+      | head -1 | cut -f1,3 | tr '\t' ' ' || true)
     aid="${row%% *}"
     created="${row#* }"
     if [ -n "$created" ] && { [ ! -f "$BANK_WORK/.ac-oldest-container" ] \
