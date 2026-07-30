@@ -20,6 +20,17 @@ import re
 import sys
 import urllib.request
 
+# Text IO is pinned, never inherited. read_text()/write_text() default to
+# locale.getpreferredencoding(), which is UTF-8 on linux/mac and cp1252 on
+# the windows runners - so a single non-ASCII byte in a generated BUCK file
+# killed buckify-all.sh --check on win x86 only (0x81 at offset 358555).
+# newline="\n" matters just as much: the default translates \n to \r\n on
+# write, so a file regenerated on windows would differ byte-for-byte from
+# the same file regenerated on linux and --check would call a clean tree
+# dirty.
+UTF8 = {"encoding": "utf-8"}
+UTF8_OUT = {"encoding": "utf-8", "newline": "\n"}
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CACHE = ROOT / "ci" / "crate-sizes.txt"
 BLOCK = re.compile(r"http_archive\(\n(?:    .*\n)+?\)", re.M)
@@ -32,7 +43,9 @@ def load_cache() -> dict[str, int]:
     return {
         sha: int(size)
         for sha, size in (
-            line.split() for line in CACHE.read_text().splitlines() if line.strip()
+            line.split()
+            for line in CACHE.read_text(**UTF8).splitlines()
+            if line.strip()
         )
     }
 
@@ -62,7 +75,7 @@ def main() -> int:
     # Pass 1: collect entries missing size_bytes.
     todo: dict[str, str] = {}  # sha256 -> url
     for bf in buck_files:
-        for block in BLOCK.findall(bf.read_text()):
+        for block in BLOCK.findall(bf.read_text(**UTF8)):
             attrs = dict((k, v) for k, v in ATTR.findall(block))
             if "sha256" in attrs and "size_bytes" not in attrs:
                 sha = attrs["sha256"].strip('"')
@@ -79,12 +92,13 @@ def main() -> int:
                 cache[sha] = fut.result()  # raises on mismatch - fail loud
                 if i % 200 == 0:
                     print(f"  {i}/{len(todo)}", flush=True)
-        CACHE.write_text("".join(f"{s} {n}\n" for s, n in sorted(cache.items())))
+        rows = "".join(f"{s} {n}\n" for s, n in sorted(cache.items()))
+        CACHE.write_text(rows, **UTF8_OUT)
 
     # Pass 2: rewrite blocks (idempotent; size_bytes sorts after sha256).
     changed = 0
     for bf in buck_files:
-        text = bf.read_text()
+        text = bf.read_text(**UTF8)
 
         def inject(m: re.Match) -> str:
             nonlocal changed
@@ -102,7 +116,7 @@ def main() -> int:
 
         new = BLOCK.sub(inject, text)
         if new != text:
-            bf.write_text(new)
+            bf.write_text(new, **UTF8_OUT)
 
     print(f"size_bytes injected into {changed} http_archive entries")
     return 0
