@@ -51,70 +51,7 @@ _tool() {
 # (e.g. "01"); '*' or absent = all (federated split: a range owner
 # packs its own prefixes; everything else spills).
 pack_segments() {
-  local store="$1" bank_blobs="$2" out="$3" only="${4:-*}"
-  mkdir -p "$out"
-  [ -d "$store/cas" ] || return 0
-
-  local new_list="$out/.new-blobs" tab
-  tab=$(printf '\t')
-  # Store layout: cas/<2-hex>/<full-hash>. Blob id = basename. One
-  # tool pass indexes blob\tpath\tbytes (blob-sorted): sizing per blob
-  # inside the batching loop (an awk scan + wc fork each) was O(n^2)
-  # and stalled every worker 30min+ at fleet scale (run 29435672672).
-  _tool index "$store" > "$out/.store-idx"
-  # bank blob list: plain sorted hashes (possibly zstd'd by caller).
-  comm -23 <(cut -f1 "$out/.store-idx") <(sort -u "$bank_blobs") \
-    > "$new_list"
-  if [ "$only" != '*' ]; then
-    grep "^[$only]" "$new_list" > "$new_list.f" || true
-    mv "$new_list.f" "$new_list"
-  fi
-  if ! [ -s "$new_list" ]; then
-    rm -f "$out/.new-blobs" "$out/.store-idx"
-    return 0
-  fi
-  # New blobs joined back to their path+size, still hash-sorted.
-  join -t "$tab" "$new_list" "$out/.store-idx" > "$out/.new-idx"
-
-  # Greedy split by cumulative file size.
-  local max_bytes=$((SEG_MAX_MB * 1024 * 1024))
-  local batch="$out/.batch" batch_bytes=0 batch_n=0 seg_i=0
-  : > "$batch"
-  _seal() {
-    [ -s "$batch" ] || return 0
-    local tmp="$out/.seg-$seg_i"
-    mkdir -p "$tmp"
-    # Deterministic USTAR via the rust tool (bsdtar on mac lacks
-    # --mtime etc). Segment name = sha256 of the RAW tar, so a zstd
-    # version bump cannot fork the name of identical content.
-    _tool tar "$store" "$batch" "$tmp/bulk.tar"
-    local sha
-    sha=$(_sha256 "$tmp/bulk.tar")
-    zstd -q -8 --rm "$tmp/bulk.tar" -o "$tmp/bulk.tar.zst"
-    awk -F/ '{print $NF}' "$batch" | sort > "$tmp/blobs.txt"
-    zstd -q --rm "$tmp/blobs.txt"
-    local prefixes bytes blobs
-    prefixes=$(zstd -dq -c "$tmp/blobs.txt.zst" | cut -c1 | sort -u \
-      | tr -d '\n')
-    blobs=$(zstd -dq -c "$tmp/blobs.txt.zst" | wc -l | tr -d ' ')
-    bytes=$(wc -c < "$tmp/bulk.tar.zst" | tr -d ' ')
-    printf '{"name":"cas-seg-%s","bytes":%s,"blobs":%s,"prefixes":"%s"}\n' \
-      "$sha" "$bytes" "$blobs" "$prefixes" > "$tmp/meta.json"
-    mv "$tmp" "$out/cas-seg-$sha"
-    echo "cas-seg-$sha"
-    seg_i=$((seg_i + 1)); batch_bytes=0; batch_n=0; : > "$batch"
-  }
-  local path sz
-  while IFS="$tab" read -r _ path sz; do
-    if [ "$batch_n" -gt 0 ] \
-       && [ $((batch_bytes + sz)) -gt "$max_bytes" ]; then
-      _seal
-    fi
-    echo "$path" >> "$batch"
-    batch_bytes=$((batch_bytes + sz)); batch_n=$((batch_n + 1))
-  done < "$out/.new-idx"
-  _seal
-  rm -f "$new_list" "$out/.store-idx" "$out/.new-idx" "$batch"
+  _tool pack "$1" "$2" "$3" "${4:-*}"
 }
 
 # ── write_manifest <lineage> <generation> <parent_lineage|-> \
@@ -139,12 +76,7 @@ segments_to_fetch() {
 # Untar downloaded segments into the store.
 seed_store() {
   local store="$1"; shift
-  mkdir -p "$store"
-  local d
-  for d in "$@"; do
-    [ -f "$d/bulk.tar.zst" ] || continue
-    zstd -dq -c "$d/bulk.tar.zst" | tar -x -C "$store"
-  done
+  _tool seed "$store" "$@"
 }
 
 # ── needs_compaction <manifest.json> ────────────────────────────────
@@ -161,32 +93,7 @@ needs_compaction() {
 # <=SEG_MAX_MB), marked "full":true in their meta. Caller publishes a
 # fresh manifest whose segment list is exactly these.
 compact() {
-  local store="$1" out="$2"
-  mkdir -p "$out"
-  local p
-  for p in 0 1 2 3 4 5 6 7 8 9 a b c d e f; do
-    local sub="$out/.prefix-$p"
-    mkdir -p "$sub"
-    (cd "$store" && find cas -mindepth 2 -maxdepth 2 -type f \
-        -path "cas/$p*" | sort) > "$sub/paths" || true
-    [ -s "$sub/paths" ] || { rm -rf "$sub"; continue; }
-    # Reuse pack_segments' sealing by faking a mini-store view: one
-    # tool pass hardlinks the prefix's blobs (a per-blob mkdir+ln
-    # shell loop here was the pack loop's O(n*forks) class again -
-    # 170s at 10k blobs, hours at the live bank's 2.27M).
-    local mini="$sub/store"
-    _tool link "$store" "$sub/paths" "$mini"
-    pack_segments "$mini" /dev/null "$out" > /dev/null
-    rm -rf "$sub"
-  done
-  # Stamp every produced segment as a full pack.
-  local d
-  for d in "$out"/cas-seg-*/; do
-    [ -d "$d" ] || continue
-    jq -c '. + {full: true}' "$d/meta.json" > "$d/meta.json.tmp" \
-      && mv "$d/meta.json.tmp" "$d/meta.json"
-    basename "$d"
-  done
+  _tool compact "$1" "$2"
 }
 
 # ── ac_pack <store_dir> <banked_rows_file> <out_dir> ────────────────
@@ -199,64 +106,7 @@ compact() {
 # "<store-relative-path> <sha256(content)>".
 # Prints created segment names. banked_rows may be /dev/null.
 ac_pack() {
-  local store="$1" banked="$2" out="$3"
-  mkdir -p "$out"
-  [ -d "$store/ac" ] || [ -d "$store/acn" ] || return 0
-  local tab
-  tab=$(printf '\t')
-  # One pass over every row: path, content hash, size (the shell
-  # equivalent forks a hasher per row - 68k forks at live scale).
-  _tool ac-index "$store" > "$out/.ac-idx"
-  if ! [ -s "$out/.ac-idx" ]; then
-    rm -f "$out/.ac-idx"; return 0
-  fi
-  # New/changed = (path, hash) pairs absent from the banked list.
-  awk -F"$tab" -v tab="$tab" -v bankfile="$banked" '
-    FILENAME == bankfile { bank[$0] = 1; next }
-    !(($1 " " $2) in bank) { print $1 tab $3 }
-  ' "$banked" "$out/.ac-idx" > "$out/.new-idx"
-  if ! [ -s "$out/.new-idx" ]; then
-    rm -f "$out/.ac-idx" "$out/.new-idx"; return 0
-  fi
-
-  local max_bytes=$((SEG_MAX_MB * 1024 * 1024))
-  local batch="$out/.batch" batch_bytes=0 batch_n=0 seg_i=0
-  : > "$batch"
-  _seal_ac() {
-    [ -s "$batch" ] || return 0
-    local tmp="$out/.seg-$seg_i"
-    mkdir -p "$tmp"
-    _tool tar "$store" "$batch" "$tmp/bulk.tar"
-    local sha
-    sha=$(_sha256 "$tmp/bulk.tar")
-    zstd -q -8 --rm "$tmp/bulk.tar" -o "$tmp/bulk.tar.zst"
-    # Row identity lines for exactly this batch's paths.
-    awk -F"$tab" 'NR == FNR { want[$0] = 1; next }
-      ($1 in want) { print $1 " " $2 }' \
-      "$batch" "$out/.ac-idx" | sort > "$tmp/blobs.txt"
-    zstd -q --rm "$tmp/blobs.txt"
-    local rows bytes
-    rows=$(zstd -dq -c "$tmp/blobs.txt.zst" | wc -l | tr -d ' ')
-    bytes=$(wc -c < "$tmp/bulk.tar.zst" | tr -d ' ')
-    # prefixes "*": the AC restore is whole-fetch (one reader, no
-    # ranges), so there is no bitmap to match against.
-    printf '{"name":"cas-seg-%s","bytes":%s,"blobs":%s,"prefixes":"*"}\n' \
-      "$sha" "$bytes" "$rows" > "$tmp/meta.json"
-    mv "$tmp" "$out/cas-seg-$sha"
-    echo "cas-seg-$sha"
-    seg_i=$((seg_i + 1)); batch_bytes=0; batch_n=0; : > "$batch"
-  }
-  local path sz
-  while IFS="$tab" read -r path sz; do
-    if [ "$batch_n" -gt 0 ] \
-       && [ $((batch_bytes + sz)) -gt "$max_bytes" ]; then
-      _seal_ac
-    fi
-    echo "$path" >> "$batch"
-    batch_bytes=$((batch_bytes + sz)); batch_n=$((batch_n + 1))
-  done < "$out/.new-idx"
-  _seal_ac
-  rm -f "$out/.ac-idx" "$out/.new-idx" "$batch"
+  _tool ac-pack "$1" "$2" "$3"
 }
 
 # ── ac_rows <store_dir> ─────────────────────────────────────────────
