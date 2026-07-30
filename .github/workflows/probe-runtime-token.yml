@@ -11,7 +11,12 @@
 name: probe runtime token
 
 on:
+  # workflow_dispatch only works once the file is on the DEFAULT branch,
+  # which this never will be - so it triggers on changes to itself.
   workflow_dispatch: {}
+  push:
+    paths:
+      - .github/workflows/probe-runtime-token.yml
 
 permissions:
   contents: read
