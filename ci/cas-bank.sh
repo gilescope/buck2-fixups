@@ -125,68 +125,14 @@ pack_segments() {
 # verified new cas-seg-*/ subdirs (may be empty). Produces
 # out_dir/{manifest.json,blobs.txt.zst}.
 write_manifest() {
-  local lineage="$1" generation="$2" parent_lineage="$3"
-  local parent_generation="$4" run_id="$5" head="$6" segs="$7" out="$8"
-  mkdir -p "$out"
-
-  local old_segments='[]' old_blobs="$out/.old-blobs"
-  : > "$old_blobs"
-  if [ "$head" != "-" ] && [ -f "$head/manifest.json" ]; then
-    old_segments=$(jq -c '.segments' "$head/manifest.json")
-    zstd -dq -c "$head/blobs.txt.zst" > "$old_blobs"
-  fi
-
-  local new_segments="$out/.new-segs" new_blobs="$out/.new-blobs"
-  : > "$new_segments"; : > "$new_blobs"
-  local d
-  for d in "$segs"/cas-seg-*/; do
-    [ -d "$d" ] || continue
-    cat "$d/meta.json" >> "$new_segments"
-    zstd -dq -c "$d/blobs.txt.zst" >> "$new_blobs"
-  done
-
-  # Real file, not <(): native jq.exe on windows cannot open MSYS
-  # /proc/N/fd process-substitution paths (bit win workers the first
-  # lap write_manifest ran outside the ubuntu banker, run 29486020160).
-  jq -s '.' "$new_segments" > "$out/.new-segs.json" 2>/dev/null \
-    || echo '[]' > "$out/.new-segs.json"
-  jq -n \
-    --arg lineage "$lineage" \
-    --arg generation "$generation" \
-    --arg parent_lineage "$parent_lineage" \
-    --arg parent_generation "$parent_generation" \
-    --argjson run_id "$run_id" \
-    --argjson old "$old_segments" \
-    --slurpfile new "$out/.new-segs.json" \
-    '{version: 1, lineage: $lineage, generation: $generation,
-      parent_lineage: (if $parent_lineage == "-" then null
-                       else $parent_lineage end),
-      parent_generation: (if $parent_generation == "-" then null
-                          else $parent_generation end),
-      created_by_run: $run_id,
-      segments: ($old + $new[0])}' > "$out/manifest.json"
-
-  sort -u "$old_blobs" "$new_blobs" | zstd -q -o "$out/blobs.txt.zst" -f
-  rm -f "$old_blobs" "$new_segments" "$new_blobs" "$out/.new-segs.json"
+  _tool write-manifest "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8"
 }
 
 # ── segments_to_fetch <manifest.json> <owned_prefixes> ──────────────
 # Prefix-bitmap matching game: print names of segments whose prefixes
 # overlap owned_prefixes (e.g. "89"). '*' means fetch everything.
 segments_to_fetch() {
-  local manifest="$1" owned="$2"
-  # tr: jq.exe emits CRLF on windows; a stray \r in a segment name made
-  # every [ -d ] test fail except the last line's (run 29491383253:
-  # "seeded 1 segments" against a 16-segment head).
-  if [ "$owned" = '*' ]; then
-    jq -r '.segments[].name' "$manifest" | tr -d '\r'
-    return 0
-  fi
-  jq -r --arg owned "$owned" '
-    .segments[]
-    | select(.prefixes | split("") | any(. as $p
-        | ($owned | contains($p))))
-    | .name' "$manifest" | tr -d '\r'
+  _tool fetch-list "$1" "$2"
 }
 
 # ── seed_store <store_dir> <segment_dir>... ─────────────────────────
@@ -206,36 +152,7 @@ seed_store() {
 # Fulls are prefix-binned packs (marked "full":true by compaction);
 # everything else counts as delta.
 needs_compaction() {
-  local manifest="$1"
-  local pct="${COMPACT_DELTA_PCT:-20}" hyst="${COMPACT_HYSTERESIS_PCT:-5}"
-  local min_mb="${COMPACT_MIN_MB:-256}" max_segs="${COMPACT_MAX_SEGMENTS:-64}"
-  local full_bytes delta_bytes segs
-  full_bytes=$(jq '[.segments[] | select(.full == true) | .bytes] | add // 0' \
-    "$manifest")
-  delta_bytes=$(jq '[.segments[] | select(.full != true) | .bytes] | add // 0' \
-    "$manifest")
-  # Cap counts DELTA segments only: full packs are as binned as they
-  # get - a big range legitimately needs many of them (r0's first
-  # compaction produced 70 at SEG_MAX=64MB, and counting those re-fired
-  # the trigger every lap: 1.3GB of churn re-packing already-compact
-  # content, run 29589478222).
-  segs=$(jq '[.segments[] | select(.full != true)] | length' "$manifest")
-  if [ "$segs" -gt "$max_segs" ]; then
-    echo "yes segments=$segs>max=$max_segs"; return 0
-  fi
-  if [ "$delta_bytes" -lt $((min_mb * 1024 * 1024)) ]; then
-    echo "no"; return 0
-  fi
-  # Cold bank (no fulls yet): any delta above the floor compacts.
-  if [ "$full_bytes" -eq 0 ]; then
-    echo "yes cold-bank delta=${delta_bytes}B"; return 0
-  fi
-  local threshold=$(( full_bytes * (pct + hyst) / 100 ))
-  if [ "$delta_bytes" -gt "$threshold" ]; then
-    echo "yes delta=${delta_bytes}B>$((pct + hyst))%of=${full_bytes}B"
-  else
-    echo "no"
-  fi
+  _tool needs-compaction "$1"
 }
 
 # ── compact <store_dir> <out_dir> ───────────────────────────────────

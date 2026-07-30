@@ -149,8 +149,7 @@ zstd -dq -c "$BANK_WORK/ac-manifest-out/blobs.txt.zst" \
   > "$BANK_WORK/.ac-rowlist"
 zstd -dq -c "$BANK_WORK/ac-segs"/cas-seg-*/blobs.txt.zst \
   >> "$BANK_WORK/.ac-rowlist"
-awk '{ h[$1] = $2 } END { for (p in h) print p, h[p] }' \
-  "$BANK_WORK/.ac-rowlist" | sort \
+ci/cas-bank.sh _tool collapse-rows "$BANK_WORK/.ac-rowlist" \
   | zstd -q -o "$BANK_WORK/ac-manifest-out/blobs.txt.zst" -f
 rm -f "$BANK_WORK/.ac-rowlist"
 
