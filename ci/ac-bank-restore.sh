@@ -188,6 +188,6 @@ echo "[ac-bank] seeded $seeded segments into $STORE_DIR (mode $MODE)"
 # EACCES class, lap 29522220924) would replay forever. In-lap failure
 # caching keeps working; the poison stops crossing laps.
 for d in "$STORE_DIR/ac" "$STORE_DIR/acn"; do
-  [ -d "$d" ] && ci/cas-bank.sh _tool ac-purge-failures "$d"
+  [ -d "$d" ] && ci/cas-bank.sh _tool purge-failures "$d"
 done
 exit 0

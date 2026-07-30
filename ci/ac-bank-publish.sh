@@ -48,7 +48,7 @@ fi
 # fatal across laps. Purging here (not just at seed) keeps them out of
 # the artifact pool entirely.
 for d in "$STORE_DIR/ac" "$STORE_DIR/acn"; do
-  [ -d "$d" ] && ci/cas-bank.sh _tool ac-purge-failures "$d"
+  [ -d "$d" ] && ci/cas-bank.sh _tool purge-failures "$d"
 done
 
 banked="$BANK_WORK/ac-banked-rows.txt"

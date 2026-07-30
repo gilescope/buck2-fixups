@@ -1,9 +1,0 @@
-[package]
-name = "cas-bank-tool"
-version = "0.1.0"
-edition = "2021"
-description = "Fork-free hot paths of ci/cas-bank.sh: index/tar/link + test corpus generators"
-
-[[bin]]
-name = "cas-bank-tool"
-path = "src/main.rs"

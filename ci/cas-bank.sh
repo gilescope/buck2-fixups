@@ -26,24 +26,19 @@ _sha256() {
   fi
 }
 
-# Rust helper for the per-blob hot paths (index/tar/link): shell loops
-# fork per item and melt at fleet scale. Zero deps, so the on-demand
-# build works offline; CAS_BANK_TOOL overrides (e.g. a prebuilt path).
+# The per-item hot paths (index/tar/link/purge) live in the ENGINE, as
+# `rebuck2 bank <verb>`: shell loops fork per item and melt at fleet
+# scale, and a separate tool in this repo meant the store format had two
+# owners - it hand-rolled SHA-256 and a protobuf varint reader that
+# rebuck2 already has. rebuck2 is installed on every runner anyway, so
+# this also drops a per-runner cargo build. CAS_BANK_TOOL overrides with
+# a binary taking the same verbs (a local build under test, say).
 _tool() {
-  if [ -z "${CAS_BANK_TOOL:-}" ]; then
-    local dir
-    dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/cas-bank-tool"
-    if [ -x "$dir/target/release/cas-bank-tool" ]; then
-      CAS_BANK_TOOL="$dir/target/release/cas-bank-tool"
-    elif [ -x "$dir/target/release/cas-bank-tool.exe" ]; then
-      CAS_BANK_TOOL="$dir/target/release/cas-bank-tool.exe"
-    else
-      cargo build --release --quiet --manifest-path "$dir/Cargo.toml"
-      CAS_BANK_TOOL="$dir/target/release/cas-bank-tool"
-      [ -x "$CAS_BANK_TOOL" ] || CAS_BANK_TOOL="$CAS_BANK_TOOL.exe"
-    fi
+  if [ -n "${CAS_BANK_TOOL:-}" ]; then
+    "$CAS_BANK_TOOL" "$@"
+  else
+    rebuck2 bank "$@"
   fi
-  "$CAS_BANK_TOOL" "$@"
 }
 
 # ── pack_segments <store_dir> <bank_blobs_file> <out_dir> [prefixes] ─

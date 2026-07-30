@@ -195,10 +195,14 @@ unit groups + `ci/cas-bank-integration-test.sh` end-to-end against a
 faked `gh`, including a straggler whose container never lands):
 
 - [x] `ci/cas-bank.sh` - pack/manifest/fetch-matching/seed/compaction
-      library (deterministic USTAR via `ci/cas-bank-tool`, a zero-dep
-      rust bin that owns every per-blob hot path - index/tar/link -
-      so mac/win/linux packs agree; segments named by raw-tar sha so
-      zstd version bumps cannot fork names)
+      library (deterministic USTAR via `rebuck2 bank`, which owns every
+      per-item hot path - index/ac-index/tar/link/purge - so
+      mac/win/linux packs agree; segments named by raw-tar sha so zstd
+      version bumps cannot fork names. Lived in `ci/cas-bank-tool` here
+      until 2026-07-30: a second owner of the store format, hand-rolling
+      SHA-256 and a protobuf varint reader the engine already had. The
+      USTAR byte layout is now pinned by a golden test in rebuck2 -
+      changing it renames every segment and re-uploads the bank)
 - [x] `ci/cas-bank-restore.sh` - manifest fetch (provenance-checked) +
       prefix-subset segment restore; exit 3 = cold bank
 - [x] `ci/cas-bank-publish.sh` - pack store-minus-bank into container +

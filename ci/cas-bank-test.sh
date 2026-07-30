@@ -229,7 +229,7 @@ mkdir -p "$AC"
 printf '\x20\x01' > "$AC/failrow"        # exit_code = 1
 printf '\x20\x00' > "$AC/okrow"          # exit_code = 0
 printf '\x12\x03abc' > "$AC/norow"       # field 2 only (exit_code absent)
-$BANK _tool ac-purge-failures "$T/ac" | grep -q 'purged 1' \
+$BANK _tool purge-failures "$T/ac" | grep -q 'purged 1' \
   || fail "purge count wrong"
 [ ! -f "$AC/failrow" ] || fail "failure row survived purge"
 [ -f "$AC/okrow" ] && [ -f "$AC/norow" ] || fail "purge ate a success row"
@@ -242,7 +242,7 @@ ACF="$T/acflat"
 mkdir -p "$ACF"
 printf '\x20\x01' > "$ACF/failrow"
 printf '\x20\x00' > "$ACF/okrow"
-$BANK _tool ac-purge-failures "$ACF" | grep -q 'purged 1' \
+$BANK _tool purge-failures "$ACF" | grep -q 'purged 1' \
   || fail "flat purge count wrong"
 [ ! -f "$ACF/failrow" ] || fail "flat failure row survived purge"
 [ -f "$ACF/okrow" ] || fail "flat purge ate a success row"

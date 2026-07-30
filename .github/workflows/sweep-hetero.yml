@@ -305,7 +305,7 @@ jobs:
           # replays forever. Purge failures at seed: in-lap failure
           # caching keeps working, poison stops crossing laps.
           for d in "$STORE/driver/ac" "$STORE/driver/acn"; do
-            [ -d "$d" ] && ./ci/cas-bank.sh _tool ac-purge-failures "$d"
+            [ -d "$d" ] && ./ci/cas-bank.sh _tool purge-failures "$d"
           done
           # AC-only manifest: unchanged AC at run end = skip pack + upload.
           ./ci/store-snapshot.sh manifest "$STORE/driver" "ac acn" > seeded.manifest
