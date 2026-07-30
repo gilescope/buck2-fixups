@@ -25,10 +25,10 @@ BANK_WORK="${BANK_WORK:-$(mktemp -d)}"
 mkdir -p "$BANK_WORK"
 PREFIX="cas-manifest-$CAS_LINEAGE-ac-"
 
+# Download + unzip is rebuck2's now: GITHUB_TOKEN over the REST API,
+# with the zip extracted under a traversal guard.
 _fetch_zip() { # <artifact_id> <dest_dir>
-  rm -rf "$2" && mkdir -p "$2"
-  gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$1/zip" > "$2.zip"
-  unzip -o -q "$2.zip" -d "$2" && rm -f "$2.zip"
+  ci/cas-bank.sh _tool gh-download "$1" "$2"
 }
 
 # ── which role manifests to read ────────────────────────────────────
@@ -36,13 +36,8 @@ _fetch_zip() { # <artifact_id> <dest_dir>
 # run must have run on the lineage's own branch in this repo.
 rm -f "$BANK_WORK/.ac-own-unknown"
 own_row=""
-if ! own_row=$(gh api \
-  "repos/$GITHUB_REPOSITORY/actions/artifacts?name=$PREFIX$ROLE&per_page=20" \
-  --jq "[.artifacts[]
-    | select(.expired == false
-             and .workflow_run.head_repository_id == .workflow_run.repository_id
-             and .workflow_run.head_branch == \"$CAS_LINEAGE\")][0]
-    | select(. != null) | \"\(.id) \(.name)\"" 2>/dev/null); then
+if ! own_row=$(ci/cas-bank.sh _tool gh-list "$PREFIX$ROLE" "$CAS_LINEAGE" \
+  | head -1 | cut -f1,2 | tr '\t' ' '); then
   # A flake must not read as "absent": newest-wins would let this lap's
   # thin manifest clobber the fat one. Publish skips staging entirely.
   echo "[ac-bank] WARN own manifest lookup FAILED - publish will not stage"
@@ -52,14 +47,8 @@ fi
 
 : > "$BANK_WORK/.ac-manifests"
 _list_role_manifests() { # <lineage>
-  gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?per_page=100" \
-    --jq "[.artifacts[]
-      | select(.expired == false
-               and (.name | startswith(\"cas-manifest-$1-ac-\"))
-               and .workflow_run.head_repository_id == .workflow_run.repository_id
-               and .workflow_run.head_branch == \"$1\")]
-      | group_by(.name) | map(sort_by(.created_at) | last)[]
-      | \"\(.id) \(.name)\"" 2>/dev/null | tr -d '\r' || true
+  ci/cas-bank.sh _tool gh-list-prefix "cas-manifest-$1-ac-" "$1" \
+    | cut -f1,2 | tr '\t' ' ' || true
 }
 
 : > "$BANK_WORK/.ac-parents"

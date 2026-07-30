@@ -55,6 +55,40 @@ esac
 if [ -n "$jq_expr" ]; then echo "$json" | jq -r "$jq_expr"; else echo "$json"; fi
 FAKE
 chmod +x "$T/bin/gh"
+
+# The artifact verbs are rebuck2's now, so the fake moves to that
+# boundary too: serve gh-list/gh-download from $FAKE_ART and delegate
+# every store verb to the real binary, so the code under test is real
+# except for the network.
+cat > "$T/bin/bank" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+REAL="${REBUCK2_BIN:-rebuck2}"
+_meta() { jq -r "$2" "$FAKE_ART/.meta/$1.json" 2>/dev/null || true; }
+case "${1:-}" in
+  gh-list)
+    name="$2"; lineage="$3"
+    # Injected lookup failure: a flake must not read as "absent".
+    [ -z "${FAKE_FAIL_NAME:-}" ] || [ "$name" != "$FAKE_FAIL_NAME" ] || {
+      echo "fake bank: injected failure for $name" >&2; exit 1; }
+    [ -d "$FAKE_ART/$name" ] || exit 0
+    [ "$(_meta "$name" .workflow_run.head_branch)" = "$lineage" ] || exit 0
+    printf '%s\t%s\t%s\n' "$name" "$name" "$(_meta "$name" .created_at)" ;;
+  gh-list-prefix)
+    prefix="$2"; lineage="$3"
+    for d in "$FAKE_ART"/*/; do
+      n=$(basename "$d")
+      case "$n" in "$prefix"*) ;; *) continue ;; esac
+      [ "$(_meta "$n" .workflow_run.head_branch)" = "$lineage" ] || continue
+      printf '%s\t%s\t%s\n' "$n" "$n" "$(_meta "$n" .created_at)"
+    done ;;
+  gh-download)
+    rm -rf "${3:?}" && mkdir -p "$3" && cp -R "$FAKE_ART/$2/." "$3/" ;;
+  *) exec "$REAL" bank "$@" ;;
+esac
+SHIM
+chmod +x "$T/bin/bank"
+export CAS_BANK_TOOL="$T/bin/bank"
 export PATH="$T/bin:$PATH"
 export CAS_LINEAGE=test-lineage GITHUB_REPOSITORY=fake/fake
 
