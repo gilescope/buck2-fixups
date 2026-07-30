@@ -1,0 +1,56 @@
+# Throwaway probe: can a `run:` step see the Actions *runtime* credentials?
+#
+# Uploading an artifact is plain HTTP (create -> blob PUT -> finalize),
+# but it authenticates with ACTIONS_RUNTIME_TOKEN against ACTIONS_RESULTS_URL
+# - not GITHUB_TOKEN. Those are exported to JS/composite actions; whether a
+# plain `run:` step sees them decides whether rebuck2 can own artifact
+# upload directly or needs one helper action to re-export them.
+#
+# Prints presence, length and URL host only - never a token. Delete once
+# the answer is recorded.
+name: probe runtime token
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: runtime env visible to run steps?
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report presence (never the value)
+        run: |
+          for v in ACTIONS_RUNTIME_TOKEN ACTIONS_RESULTS_URL \
+                   ACTIONS_RUNTIME_URL ACTIONS_CACHE_URL \
+                   ACTIONS_ID_TOKEN_REQUEST_TOKEN GITHUB_TOKEN; do
+            val="${!v:-}"
+            if [ -n "$val" ]; then
+              case "$v" in
+                *URL) echo "$v: SET (${val})" ;;
+                *) echo "$v: SET (len ${#val})" ;;
+              esac
+            else
+              echo "$v: unset"
+            fi
+          done
+
+      # Same question for the composite-action boundary: if a plain step
+      # cannot see them but a composite can, the fix is a one-line local
+      # action rather than a third-party one.
+      - name: Report again from a composite action
+        run: |
+          mkdir -p .probe-action
+          cat > .probe-action/action.yml <<'YML'
+          name: probe
+          runs:
+            using: composite
+            steps:
+              - shell: bash
+                run: |
+                  echo "composite ACTIONS_RUNTIME_TOKEN: ${ACTIONS_RUNTIME_TOKEN:+SET}${ACTIONS_RUNTIME_TOKEN:-unset}"
+                  echo "composite ACTIONS_RESULTS_URL:   ${ACTIONS_RESULTS_URL:-unset}"
+          YML
+      - uses: ./.probe-action
