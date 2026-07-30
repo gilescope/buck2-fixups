@@ -874,21 +874,43 @@ jobs:
           ./ci/verify-cas.sh "$STORE/worker"
 
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
+        id: addr
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for _ in $(seq 1 240); do
+          # The lap-finished marker is checked HERE as well as in the serve
+          # step. Run 30517451940: win worker 2 sat in this loop for 1h34m
+          # after the driver had already banked its marker at 06:14 - the
+          # poller only existed one waiting room further on, so a worker
+          # that arrived late never reached the code that would have told
+          # it to go home. Every wait for the driver needs the same escape.
+          over=0
+          for i in $(seq 1 240); do
             if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
                  --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
                && [ -s aid.txt ]; then
               gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(cat aid.txt)/zip" > addr.zip 2>/dev/null \
                 && unzip -o addr.zip > /dev/null && [ -s driver-addr.json ] && break
             fi
+            # Poll the marker every ~minute, not every 10s: it only appears
+            # once and the API budget is shared with the bank.
+            if [ $((i % 6)) -eq 0 ] \
+               && gh cache list -R "$GITHUB_REPOSITORY" \
+                    -k "rebuck2-done-$GITHUB_RUN_ID" --json key -q '.[].key' \
+                  | grep -q .; then
+              echo "[worker] lap finished while waiting for the driver addr - nothing to join"
+              over=1
+              break
+            fi
             sleep 10
           done
-          ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
+          echo "over=$over" >> "$GITHUB_OUTPUT"
+          [ "$over" = "1" ] \
+            || ls -la driver-addr.json 2>/dev/null \
+            || echo "no addr artifact - falling back to discovery"
 
       - name: Serve until the driver disconnects
+        if: steps.addr.outputs.over != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -1109,21 +1131,43 @@ jobs:
           ./ci/verify-cas.sh "$STORE/worker"
 
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
+        id: addr
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for _ in $(seq 1 240); do
+          # The lap-finished marker is checked HERE as well as in the serve
+          # step. Run 30517451940: win worker 2 sat in this loop for 1h34m
+          # after the driver had already banked its marker at 06:14 - the
+          # poller only existed one waiting room further on, so a worker
+          # that arrived late never reached the code that would have told
+          # it to go home. Every wait for the driver needs the same escape.
+          over=0
+          for i in $(seq 1 240); do
             if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
                  --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
                && [ -s aid.txt ]; then
               gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(cat aid.txt)/zip" > addr.zip 2>/dev/null \
                 && unzip -o addr.zip > /dev/null && [ -s driver-addr.json ] && break
             fi
+            # Poll the marker every ~minute, not every 10s: it only appears
+            # once and the API budget is shared with the bank.
+            if [ $((i % 6)) -eq 0 ] \
+               && gh cache list -R "$GITHUB_REPOSITORY" \
+                    -k "rebuck2-done-$GITHUB_RUN_ID" --json key -q '.[].key' \
+                  | grep -q .; then
+              echo "[worker] lap finished while waiting for the driver addr - nothing to join"
+              over=1
+              break
+            fi
             sleep 10
           done
-          ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
+          echo "over=$over" >> "$GITHUB_OUTPUT"
+          [ "$over" = "1" ] \
+            || ls -la driver-addr.json 2>/dev/null \
+            || echo "no addr artifact - falling back to discovery"
 
       - name: Serve until the driver disconnects
+        if: steps.addr.outputs.over != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -1340,21 +1384,43 @@ jobs:
           ./ci/verify-cas.sh "$STORE/worker"
 
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
+        id: addr
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for _ in $(seq 1 240); do
+          # The lap-finished marker is checked HERE as well as in the serve
+          # step. Run 30517451940: win worker 2 sat in this loop for 1h34m
+          # after the driver had already banked its marker at 06:14 - the
+          # poller only existed one waiting room further on, so a worker
+          # that arrived late never reached the code that would have told
+          # it to go home. Every wait for the driver needs the same escape.
+          over=0
+          for i in $(seq 1 240); do
             if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
                  --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
                && [ -s aid.txt ]; then
               gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(cat aid.txt)/zip" > addr.zip 2>/dev/null \
                 && unzip -o addr.zip > /dev/null && [ -s driver-addr.json ] && break
             fi
+            # Poll the marker every ~minute, not every 10s: it only appears
+            # once and the API budget is shared with the bank.
+            if [ $((i % 6)) -eq 0 ] \
+               && gh cache list -R "$GITHUB_REPOSITORY" \
+                    -k "rebuck2-done-$GITHUB_RUN_ID" --json key -q '.[].key' \
+                  | grep -q .; then
+              echo "[worker] lap finished while waiting for the driver addr - nothing to join"
+              over=1
+              break
+            fi
             sleep 10
           done
-          ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
+          echo "over=$over" >> "$GITHUB_OUTPUT"
+          [ "$over" = "1" ] \
+            || ls -la driver-addr.json 2>/dev/null \
+            || echo "no addr artifact - falling back to discovery"
 
       - name: Serve until the driver disconnects
+        if: steps.addr.outputs.over != '1'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
