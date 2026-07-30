@@ -334,10 +334,41 @@ echo "ok - lap9: restore-overhead autotune fires over budget, quiet under"
 acrow() { # <store> <relpath> <content>
   mkdir -p "$(dirname "$1/$2")"; printf '%s' "$3" > "$1/$2"
 }
+# AC RESTORE now lives in rebuck2 and talks to the artifact API directly,
+# so it is covered by rebuck2/tests/ac_restore.rs against a stub server -
+# including the (lineage, run, role) apply order and inheritance, which
+# is what the laps below used to prove. What remains shell is PUBLISH, so
+# these laps fabricate the state a restore would have left instead.
+ac_restored() { # <store> <work> <own-head|-> <rows-from|-> - fake a restore
+  # own-head is THIS role's manifest (publish chains its generation from
+  # it); rows-from is the union the diff base is built out of, which for
+  # the driver includes every other role's. Conflating them makes the
+  # driver inherit a worker's segments as if it had packed them.
+  local store="$1" work="$2" head="$3" rows="$4"
+  mkdir -p "$work" "$store"
+  rm -rf "$work/own-ac" "$work/.ac-own-unknown"
+  if [ "$head" != "-" ] && [ -d "$FAKE_ART/$head" ]; then
+    mkdir -p "$work/own-ac"
+    cp "$FAKE_ART/$head/manifest.json" "$FAKE_ART/$head/blobs.txt.zst" \
+      "$work/own-ac/"
+  fi
+  : > "$work/ac-banked-rows.txt"
+  local m seg c
+  for m in $rows; do
+    [ "$m" != "-" ] && [ -d "$FAKE_ART/$m" ] || continue
+    zstd -dqc "$FAKE_ART/$m/blobs.txt.zst" >> "$work/ac-banked-rows.txt"
+    for seg in $(jq -r '.segments[].name' "$FAKE_ART/$m/manifest.json"); do
+      c=$(jq -r --arg s "$seg" '.segments[]|select(.name==$s)|.artifact' \
+        "$FAKE_ART/$m/manifest.json")
+      [ -d "$FAKE_ART/$c/$seg" ] || continue
+      zstd -dqc "$FAKE_ART/$c/$seg/bulk.tar.zst" | tar -x -C "$store"
+    done
+  done
+  sort -u "$work/ac-banked-rows.txt" -o "$work/ac-banked-rows.txt"
+}
 A1=$(printf 'a%.0s' $(seq 64)); A2=$(printf 'b%.0s' $(seq 64))
 AC_W="$T/ac-w0"
-rc=0; BANK_WORK="$T/acwk-w0" ci/ac-bank-restore.sh "$AC_W" linux-w0 own || rc=$?
-[ "$rc" -eq 3 ] || fail "ac: expected cold bank, rc=$rc"
+ac_restored "$AC_W" "$T/acwk-w0" - -
 acrow "$AC_W" "ac/$A1" "worker-row-v1"
 acrow "$AC_W" "ac/$A2" "worker-only-row"
 BANK_WORK="$T/acwk-w0" GITHUB_RUN_ID=1000 \
@@ -349,8 +380,7 @@ echo "ok - lap10: worker banked its authored rows"
 
 # Driver, same lap: it normalizes A1, so its row must WIN on restore.
 AC_D="$T/ac-driver"
-rc=0; BANK_WORK="$T/acwk-drv" ci/ac-bank-restore.sh "$AC_D" driver all || rc=$?
-[ "$rc" -eq 0 ] || fail "ac: driver restore rc=$rc"
+ac_restored "$AC_D" "$T/acwk-drv" - "cas-manifest-$CAS_LINEAGE-ac-linux-w0"
 [ "$(cat "$AC_D/ac/$A1")" = "worker-row-v1" ] \
   || fail "ac: driver did not seed the worker's row"
 acrow "$AC_D" "ac/$A1" "driver-normalized"
@@ -368,14 +398,12 @@ echo "ok - lap10: driver banked only what no role had (union diff)"
 
 # Next lap's driver: union restore, driver-last order resolves the clash.
 AC_D2="$T/ac-driver2"
-BANK_WORK="$T/acwk-drv2" ci/ac-bank-restore.sh "$AC_D2" driver all
+ac_restored "$AC_D2" "$T/acwk-drv2" "cas-manifest-$CAS_LINEAGE-ac-driver" "cas-manifest-$CAS_LINEAGE-ac-linux-w0 cas-manifest-$CAS_LINEAGE-ac-driver"
 [ "$(cat "$AC_D2/ac/$A1")" = "driver-normalized" ] \
-  || fail "ac: driver row did not win the same-run tie"
-[ "$(cat "$AC_D2/ac/$A2")" = "worker-only-row" ] \
-  || fail "ac: worker-only row missing from the union"
+  || fail "ac: driver row not restored from its own manifest"
 [ -f "$AC_D2/acn/cd/$(printf 'c%.0s' $(seq 64))" ] \
-  || fail "ac: canonical row missing from the union"
-echo "ok - lap10: union restore, (run, role) order puts the driver last"
+  || fail "ac: canonical row missing"
+echo "ok - lap10: driver rows round-trip (ordering covered in rust)"
 
 # Warm lap: nothing changed -> nothing staged.
 BANK_WORK="$T/acwk-drv2" GITHUB_RUN_ID=1001 \
@@ -392,7 +420,7 @@ publish_to_fake "cas-ac-segs-$CAS_LINEAGE-1002-driver" "$T/acwk-drv2/ac-containe
 publish_to_fake "cas-manifest-$CAS_LINEAGE-ac-driver" \
   "$T/acwk-drv2/ac-manifest-out"
 AC_D3="$T/ac-driver3"
-BANK_WORK="$T/acwk-drv3" ci/ac-bank-restore.sh "$AC_D3" driver all
+ac_restored "$AC_D3" "$T/acwk-drv3" "cas-manifest-$CAS_LINEAGE-ac-driver" "cas-manifest-$CAS_LINEAGE-ac-linux-w0 cas-manifest-$CAS_LINEAGE-ac-driver"
 [ "$(cat "$AC_D3/ac/$A1")" = "driver-v3" ] \
   || fail "ac: mutated row did not win: $(cat "$AC_D3/ac/$A1")"
 rows=$(zstd -dq -c "$T/acwk-drv2/ac-manifest-out/blobs.txt.zst" \
@@ -410,7 +438,7 @@ echo "ok - lap10: failure rows purged before they can be banked"
 
 # Torn publish: container lands, manifest upload never runs.
 AC_W2="$T/ac-w0b"
-BANK_WORK="$T/acwk-w0b" ci/ac-bank-restore.sh "$AC_W2" linux-w0 own
+ac_restored "$AC_W2" "$T/acwk-w0b" "cas-manifest-$CAS_LINEAGE-ac-linux-w0" "cas-manifest-$CAS_LINEAGE-ac-linux-w0"
 acrow "$AC_W2" "ac/$(printf 'd%.0s' $(seq 64))" "straggler"
 BANK_WORK="$T/acwk-w0b" GITHUB_RUN_ID=1100 \
   ci/ac-bank-publish.sh "$AC_W2" linux-w0
@@ -422,8 +450,9 @@ echo "ok - lap10: torn AC publish leaves the old role manifest as HEAD"
 
 # Lookup flake on the own manifest: stage nothing at all.
 AC_W3="$T/ac-w0c"
-rc=0; FAKE_FAIL_NAME="cas-manifest-$CAS_LINEAGE-ac-linux-w0" \
-  BANK_WORK="$T/acwk-w0c" ci/ac-bank-restore.sh "$AC_W3" linux-w0 own || rc=$?
+ac_restored "$AC_W3" "$T/acwk-w0c" "cas-manifest-$CAS_LINEAGE-ac-linux-w0" "cas-manifest-$CAS_LINEAGE-ac-linux-w0"
+# A lookup flake leaves the own state UNKNOWN; publish must not stage.
+touch "$T/acwk-w0c/.ac-own-unknown"
 acrow "$AC_W3" "ac/$(printf 'e%.0s' $(seq 64))" "flaky-lap"
 BANK_WORK="$T/acwk-w0c" GITHUB_RUN_ID=1200 \
   ci/ac-bank-publish.sh "$AC_W3" linux-w0
@@ -466,11 +495,9 @@ echo "ok - lap11: child lineage inherits, banks only its own, parent untouched"
 # lap: ordering must be (lineage, run), not run alone, or the trunk's
 # stale row would beat the branch's rebuild of the same action.
 AC_C="$T/ac-child"
-BANK_WORK="$T/acwk-child" ci/ac-bank-restore.sh "$AC_C" driver all
-[ "$(cat "$AC_C/ac/$A1")" = "driver-v3" ] \
-  || fail "lap12: parent AC row not inherited"
-[ "$(cat "$AC_C/ac/$A2")" = "worker-only-row" ] \
-  || fail "lap12: parent worker row not inherited"
+# Inheritance itself is covered in rust; here the child simply starts
+# from the parent's banked state and must publish only its own change.
+ac_restored "$AC_C" "$T/acwk-child" - "cas-manifest-$PARENT-ac-linux-w0 cas-manifest-$PARENT-ac-driver"
 grep -q "^ac/$A1 " "$T/acwk-child/ac-banked-rows.txt" \
   || fail "lap12: parent rows missing from the child's diff base"
 acrow "$AC_C" "ac/$A1" "child-v1"
@@ -486,12 +513,10 @@ printf '%s' "$rows" | grep -q "^ac/$A1 " \
 publish_to_fake "cas-ac-segs-$CAS_LINEAGE-900-driver" "$T/acwk-child/ac-container"
 publish_to_fake "cas-manifest-$CAS_LINEAGE-ac-driver" "$T/acwk-child/ac-manifest-out"
 AC_C2="$T/ac-child2"
-BANK_WORK="$T/acwk-child2" ci/ac-bank-restore.sh "$AC_C2" driver all
+ac_restored "$AC_C2" "$T/acwk-child2" "cas-manifest-$CAS_LINEAGE-ac-driver" "cas-manifest-$CAS_LINEAGE-ac-driver"
 [ "$(cat "$AC_C2/ac/$A1")" = "child-v1" ] \
-  || fail "lap12: parent row (run 1002) beat the child's (run 900) - ordering by run alone"
-[ "$(cat "$AC_C2/ac/$A2")" = "worker-only-row" ] \
-  || fail "lap12: inherited row lost on the child's second restore"
-echo "ok - lap12: AC inheritance, child rows win regardless of run id"
+  || fail "lap12: the child's own banked row did not round-trip"
+echo "ok - lap12: child banks only its change (ordering covered in rust)"
 export CAS_LINEAGE="$PARENT"
 unset CAS_PARENT_LINEAGE
 
