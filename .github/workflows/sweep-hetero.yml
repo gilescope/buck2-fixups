@@ -263,7 +263,7 @@ jobs:
       # The driver is the only node that READS the AC, so it lays down
       # every role's rows - and the parent lineage's beneath them.
       - name: Restore from the bank (driver)
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: driver
           role: driver
@@ -276,7 +276,7 @@ jobs:
       # The co-worker executes actions too, so it authors rows - its own
       # history only, which is all it needs to re-pack.
       - name: Restore from the bank (co-worker)
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: co-worker
           role: co-worker
@@ -614,7 +614,7 @@ jobs:
       # its own - it authored the canonical ones.
       - name: Bank and upload (driver)
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: driver
           role: driver
@@ -623,7 +623,7 @@ jobs:
       # $BANK_WORK staging dirs and wipes them on entry.
       - name: Bank and upload (co-worker)
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: co-worker
           role: co-worker
@@ -736,7 +736,7 @@ jobs:
       # inside the action, per OS - no cygpath here.
       - name: Restore from the bank
         id: bank
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -855,7 +855,7 @@ jobs:
       # self-verifying - each manifest gated on its container landing.
       - name: Bank and upload
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -923,7 +923,7 @@ jobs:
       # inside the action, per OS - no cygpath here.
       - name: Restore from the bank
         id: bank
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -1032,7 +1032,7 @@ jobs:
       # self-verifying - each manifest gated on its container landing.
       - name: Bank and upload
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -1102,7 +1102,7 @@ jobs:
       # inside the action, per OS - no cygpath here.
       - name: Restore from the bank
         id: bank
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -1214,7 +1214,7 @@ jobs:
       # self-verifying - each manifest gated on its container landing.
       - name: Bank and upload
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@eaf0c5d9afa6516fba475c6d0485402d05d574a7
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
