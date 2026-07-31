@@ -260,27 +260,28 @@ jobs:
       # The driver is the only READER, so it lays down the union of
       # every role in (run, role) order, its own rows last. Additive
       # during lap A: the cache snapshot below still seeds on top.
-      - name: Restore AC bank (union of every role)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank-ac-driver"
-          STORE="$HOME/.cache/rebuck2"
-          rc=0; ./ci/ac-bank-restore.sh "$STORE/driver" driver all || rc=$?
-          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
+      # The driver is the only node that READS the AC, so it lays down
+      # every role's rows - and the parent lineage's beneath them.
+      - name: Restore from the bank (driver)
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@bdb2ef1068037fd9565ba2a7539961167c66e591
+        with:
+          subdir: driver
+          role: driver
+          mode: all
 
       # The co-worker executes actions too, so it authors rows. Its own
       # history only: it never reads the AC, it just needs the full view
       # for a compaction re-pack. Separate BANK_WORK - one staging dir
       # per role, or the second restore clobbers the first's head.
-      - name: Restore AC bank (co-worker rows)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank-ac-co-worker"
-          STORE="$HOME/.cache/rebuck2"
-          rc=0; ./ci/ac-bank-restore.sh "$STORE/co-worker" co-worker own || rc=$?
-          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
+      # The co-worker executes actions too, so it authors rows - its own
+      # history only, which is all it needs to re-pack.
+      - name: Restore from the bank (co-worker)
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@bdb2ef1068037fd9565ba2a7539961167c66e591
+        with:
+          subdir: co-worker
+          role: co-worker
+          mode: own
+          verify: "false"
 
       - name: Seed the driver store
         run: |
@@ -311,17 +312,6 @@ jobs:
           ./ci/store-snapshot.sh manifest "$STORE/driver" "ac acn" > seeded.manifest
           echo "seeded AC manifest: $(cat seeded.manifest)"
 
-      # Blob-list-only bank restore ('-' = no shard, no seeding): leaves
-      # the union blob list in $BANK_WORK so the post-build spill packs
-      # diff store-minus-bank exactly. Exit 3 = cold bank (the pack then
-      # diffs against /dev/null and spills everything - bootstrap).
-      - name: Fetch bank blob list (no seeding)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank"
-          rc=0; ./ci/cas-bank-restore.sh "$(mktemp -d)" "-" || rc=$?
-          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
 
       - name: Reclaim runner ballast in the background
         run: |
@@ -619,92 +609,25 @@ jobs:
 
       # The driver box owns no range: everything new it holds spills,
       # and range owners absorb it on a later lap's restore.
-      - name: Pack spill for the bank (driver)
-        id: bankdriver
+      # The driver box owns no CAS range: everything new it holds spills,
+      # and range owners absorb it on a later restore. Its AC rows are
+      # its own - it authored the canonical ones.
+      - name: Bank and upload (driver)
         if: always()
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank"
-          STORE="$HOME/.cache/rebuck2"
-          ./ci/cas-bank-publish.sh "$STORE/driver" driver "-"
-
-      - name: Upload bank spill (driver)
-        if: always() && steps.bankdriver.outputs.spill == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@bdb2ef1068037fd9565ba2a7539961167c66e591
         with:
-          name: cas-spill-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-driver
-          path: ${{ runner.temp }}/bank/bank-spill
-          compression-level: 0
-
+          subdir: driver
+          role: driver
+          shard: "-"
       # Sequenced after the driver-role upload: publish reuses the same
       # $BANK_WORK staging dirs and wipes them on entry.
-      - name: Pack spill for the bank (co-worker)
-        id: bankcoworker
+      - name: Bank and upload (co-worker)
         if: always()
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank"
-          STORE="$HOME/.cache/rebuck2"
-          ./ci/cas-bank-publish.sh "$STORE/co-worker" co-worker "-"
-
-      - name: Upload bank spill (co-worker)
-        if: always() && steps.bankcoworker.outputs.spill == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@bdb2ef1068037fd9565ba2a7539961167c66e591
         with:
-          name: cas-spill-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-co-worker
-          path: ${{ runner.temp }}/bank/bank-spill
-          compression-level: 0
-
-      # AC bank publish: new/changed rows only, diffed by
-      # (name, content-hash) - rows are name-stable but content-mutable.
-      # The manifest upload is gated on the container upload: a manifest
-      # can never reference a container that did not land.
-      - name: Pack AC bank (driver)
-        id: acbankdriver
-        if: always()
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank-ac-driver"
-          STORE="$HOME/.cache/rebuck2"
-          ./ci/ac-bank-publish.sh "$STORE/driver" driver
-
-      - name: Upload AC container (driver)
-        id: upacdriver
-        if: always() && steps.acbankdriver.outputs.have == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-driver
-          path: ${{ runner.temp }}/bank-ac-driver/ac-container
-          compression-level: 0
-
-      - name: Publish AC manifest (driver)
-        if: always() && steps.acbankdriver.outputs.have == '1' && steps.upacdriver.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-driver
-          path: ${{ runner.temp }}/bank-ac-driver/ac-manifest-out
-
-      - name: Pack AC bank (co-worker)
-        id: acbankcoworker
-        if: always()
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank-ac-co-worker"
-          STORE="$HOME/.cache/rebuck2"
-          ./ci/ac-bank-publish.sh "$STORE/co-worker" co-worker
-
-      - name: Upload AC container (co-worker)
-        id: upaccoworker
-        if: always() && steps.acbankcoworker.outputs.have == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-co-worker
-          path: ${{ runner.temp }}/bank-ac-co-worker/ac-container
-          compression-level: 0
-
-      - name: Publish AC manifest (co-worker)
-        if: always() && steps.acbankcoworker.outputs.have == '1' && steps.upaccoworker.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-co-worker
-          path: ${{ runner.temp }}/bank-ac-co-worker/ac-manifest-out
-
+          subdir: co-worker
+          role: co-worker
+          shard: "-"
       - name: Dispatch stats
         if: always()
         run: |
@@ -807,36 +730,18 @@ jobs:
       # bank (ci/cas-bank-design.md); bloom gossip announces it, the
       # driver's HasMany verifies it. Exit 3 = cold bank -> bootstrap
       # from the legacy monolithic shard artifact below.
-      - name: Restore CAS bank (own range + spill absorption)
+      # One `uses:` for the whole warm path: CAS range, AC rows this role
+      # authored, parent-lineage inheritance, and the hash verification of
+      # everything that crossed the artifact wall. Store paths resolve
+      # inside the action, per OS - no cygpath here.
+      - name: Restore from the bank
         id: bank
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ABSORB_SPILLS: ${{ matrix.owns != '-' && '1' || '' }}
-        run: |
-          # BANK_WORK outside the repo root: stray files in the
-          # workspace churn buck2's file watcher.
-          BANK_WORK="$(cygpath -u "$RUNNER_TEMP")/bank"; export BANK_WORK
-          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          rc=0; ./ci/cas-bank-restore.sh "$STORE/worker" "${{ matrix.shard }}" || rc=$?
-          if [ "$rc" -eq 3 ]; then
-            echo "cold=1" >> "$GITHUB_OUTPUT"
-          elif [ "$rc" -ne 0 ]; then
-            exit "$rc"
-          fi
-
-      # AC bank: this worker's OWN authored rows (ci/ac-bank-plan.md).
-      # It never reads the AC - the driver does - so this seeds only
-      # enough for a compaction re-pack and the (name, hash) diff.
-      - name: Restore AC bank (own authored rows)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          BANK_WORK="$(cygpath -u "$RUNNER_TEMP")/bank-ac"; export BANK_WORK
-          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          rc=0; ./ci/ac-bank-restore.sh "$STORE/worker" \
-            "${{ runner.os }}-w${{ matrix.n }}" own || rc=$?
-          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
-
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@bdb2ef1068037fd9565ba2a7539961167c66e591
+        with:
+          subdir: worker
+          role: ${{ runner.os }}-w${{ matrix.n }}
+          mode: own
+          shard: ${{ matrix.shard }}
       - name: Seed from legacy shard (cold-bank bootstrap)
         if: steps.bank.outputs.cold == '1'
         env:
@@ -945,70 +850,16 @@ jobs:
       # new blobs become segments + a staged range manifest; the rest
       # spills for its owners. Self-verification is step ORDER: the
       # manifest only uploads after the container it references landed.
-      - name: Pack new blobs for the bank
-        id: bankpack
+      # Banks the owned range, banks the AC rows this node authored,
+      # spills the rest, and uploads all of it in the order that makes it
+      # self-verifying - each manifest gated on its container landing.
+      - name: Bank and upload
         if: always()
-        run: |
-          BANK_WORK="$(cygpath -u "$RUNNER_TEMP")/bank"; export BANK_WORK
-          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          ./ci/cas-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}" "${{ matrix.owns }}"
-
-      # Row and blobs were authored on this box in this lap and are now
-      # banked by it in this teardown: a torn publish loses both
-      # together (honest miss) instead of banking a row whose outputs
-      # never landed - the unservable class of writer 28935304124.
-      - name: Pack AC bank (own authored rows)
-        id: acbankpack
-        if: always()
-        run: |
-          BANK_WORK="$(cygpath -u "$RUNNER_TEMP")/bank-ac"; export BANK_WORK
-          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          ./ci/ac-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}"
-
-      - name: Upload AC container
-        id: upaccontainer
-        if: always() && steps.acbankpack.outputs.have == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@bdb2ef1068037fd9565ba2a7539961167c66e591
         with:
-          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank-ac/ac-container
-          compression-level: 0
-
-      - name: Publish AC manifest
-        if: always() && steps.acbankpack.outputs.have == '1' && steps.upaccontainer.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank-ac/ac-manifest-out
-
-      - name: Upload bank container
-        id: upcontainer
-        if: always() && steps.bankpack.outputs.have == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank/bank-container
-          compression-level: 0
-
-      # Atomic + self-verified: this range manifest references ONLY the
-      # container above, and only uploads once that step succeeded. A
-      # death anywhere earlier leaves the previous generation as HEAD.
-      - name: Publish range manifest
-        if: always() && steps.bankpack.outputs.manifest == '1' && steps.upcontainer.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-manifest-${{ env.CAS_LINEAGE }}-r${{ matrix.owns }}
-          path: ${{ runner.temp }}/bank/bank-manifest-out
-
-      - name: Upload bank spill
-        if: always() && steps.bankpack.outputs.spill == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-spill-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank/bank-spill
-          compression-level: 0
-
-
+          subdir: worker
+          role: ${{ runner.os }}-w${{ matrix.n }}
+          shard: ${{ matrix.owns }}
     # A lost worker must not redden the run - the driver job is the
     # verdict, and the mesh tolerates stragglers.
   worker-linux:
@@ -1066,36 +917,18 @@ jobs:
       # bank (ci/cas-bank-design.md); bloom gossip announces it, the
       # driver's HasMany verifies it. Exit 3 = cold bank -> bootstrap
       # from the legacy monolithic shard artifact below.
-      - name: Restore CAS bank (own range + spill absorption)
+      # One `uses:` for the whole warm path: CAS range, AC rows this role
+      # authored, parent-lineage inheritance, and the hash verification of
+      # everything that crossed the artifact wall. Store paths resolve
+      # inside the action, per OS - no cygpath here.
+      - name: Restore from the bank
         id: bank
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ABSORB_SPILLS: ${{ matrix.owns != '-' && '1' || '' }}
-        run: |
-          # BANK_WORK outside the repo root: stray files in the
-          # workspace churn buck2's file watcher.
-          export BANK_WORK="$RUNNER_TEMP/bank"
-          STORE="$HOME/.cache/rebuck2"
-          rc=0; ./ci/cas-bank-restore.sh "$STORE/worker" "${{ matrix.shard }}" || rc=$?
-          if [ "$rc" -eq 3 ]; then
-            echo "cold=1" >> "$GITHUB_OUTPUT"
-          elif [ "$rc" -ne 0 ]; then
-            exit "$rc"
-          fi
-
-      # AC bank: this worker's OWN authored rows (ci/ac-bank-plan.md).
-      # It never reads the AC - the driver does - so this seeds only
-      # enough for a compaction re-pack and the (name, hash) diff.
-      - name: Restore AC bank (own authored rows)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank-ac"
-          STORE="$HOME/.cache/rebuck2"
-          rc=0; ./ci/ac-bank-restore.sh "$STORE/worker" \
-            "${{ runner.os }}-w${{ matrix.n }}" own || rc=$?
-          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
-
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@bdb2ef1068037fd9565ba2a7539961167c66e591
+        with:
+          subdir: worker
+          role: ${{ runner.os }}-w${{ matrix.n }}
+          mode: own
+          shard: ${{ matrix.shard }}
       - name: Seed from legacy shard (cold-bank bootstrap)
         if: steps.bank.outputs.cold == '1'
         env:
@@ -1194,70 +1027,16 @@ jobs:
       # new blobs become segments + a staged range manifest; the rest
       # spills for its owners. Self-verification is step ORDER: the
       # manifest only uploads after the container it references landed.
-      - name: Pack new blobs for the bank
-        id: bankpack
+      # Banks the owned range, banks the AC rows this node authored,
+      # spills the rest, and uploads all of it in the order that makes it
+      # self-verifying - each manifest gated on its container landing.
+      - name: Bank and upload
         if: always()
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank"
-          STORE="$HOME/.cache/rebuck2"
-          ./ci/cas-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}" "${{ matrix.owns }}"
-
-      # Row and blobs were authored on this box in this lap and are now
-      # banked by it in this teardown: a torn publish loses both
-      # together (honest miss) instead of banking a row whose outputs
-      # never landed - the unservable class of writer 28935304124.
-      - name: Pack AC bank (own authored rows)
-        id: acbankpack
-        if: always()
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank-ac"
-          STORE="$HOME/.cache/rebuck2"
-          ./ci/ac-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}"
-
-      - name: Upload AC container
-        id: upaccontainer
-        if: always() && steps.acbankpack.outputs.have == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@bdb2ef1068037fd9565ba2a7539961167c66e591
         with:
-          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank-ac/ac-container
-          compression-level: 0
-
-      - name: Publish AC manifest
-        if: always() && steps.acbankpack.outputs.have == '1' && steps.upaccontainer.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank-ac/ac-manifest-out
-
-      - name: Upload bank container
-        id: upcontainer
-        if: always() && steps.bankpack.outputs.have == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank/bank-container
-          compression-level: 0
-
-      # Atomic + self-verified: this range manifest references ONLY the
-      # container above, and only uploads once that step succeeded. A
-      # death anywhere earlier leaves the previous generation as HEAD.
-      - name: Publish range manifest
-        if: always() && steps.bankpack.outputs.manifest == '1' && steps.upcontainer.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-manifest-${{ env.CAS_LINEAGE }}-r${{ matrix.owns }}
-          path: ${{ runner.temp }}/bank/bank-manifest-out
-
-      - name: Upload bank spill
-        if: always() && steps.bankpack.outputs.spill == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-spill-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank/bank-spill
-          compression-level: 0
-
-
+          subdir: worker
+          role: ${{ runner.os }}-w${{ matrix.n }}
+          shard: ${{ matrix.owns }}
     # A lost worker must not redden the run - the driver job is the
     # verdict, and the mesh tolerates stragglers.
   worker-mac:
@@ -1317,36 +1096,18 @@ jobs:
       # bank (ci/cas-bank-design.md); bloom gossip announces it, the
       # driver's HasMany verifies it. Exit 3 = cold bank -> bootstrap
       # from the legacy monolithic shard artifact below.
-      - name: Restore CAS bank (own range + spill absorption)
+      # One `uses:` for the whole warm path: CAS range, AC rows this role
+      # authored, parent-lineage inheritance, and the hash verification of
+      # everything that crossed the artifact wall. Store paths resolve
+      # inside the action, per OS - no cygpath here.
+      - name: Restore from the bank
         id: bank
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ABSORB_SPILLS: ${{ matrix.owns != '-' && '1' || '' }}
-        run: |
-          # BANK_WORK outside the repo root: stray files in the
-          # workspace churn buck2's file watcher.
-          export BANK_WORK="$RUNNER_TEMP/bank"
-          STORE="$HOME/.cache/rebuck2"
-          rc=0; ./ci/cas-bank-restore.sh "$STORE/worker" "${{ matrix.shard }}" || rc=$?
-          if [ "$rc" -eq 3 ]; then
-            echo "cold=1" >> "$GITHUB_OUTPUT"
-          elif [ "$rc" -ne 0 ]; then
-            exit "$rc"
-          fi
-
-      # AC bank: this worker's OWN authored rows (ci/ac-bank-plan.md).
-      # It never reads the AC - the driver does - so this seeds only
-      # enough for a compaction re-pack and the (name, hash) diff.
-      - name: Restore AC bank (own authored rows)
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank-ac"
-          STORE="$HOME/.cache/rebuck2"
-          rc=0; ./ci/ac-bank-restore.sh "$STORE/worker" \
-            "${{ runner.os }}-w${{ matrix.n }}" own || rc=$?
-          [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || exit "$rc"
-
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@bdb2ef1068037fd9565ba2a7539961167c66e591
+        with:
+          subdir: worker
+          role: ${{ runner.os }}-w${{ matrix.n }}
+          mode: own
+          shard: ${{ matrix.shard }}
       - name: Seed from legacy shard (cold-bank bootstrap)
         if: steps.bank.outputs.cold == '1'
         env:
@@ -1448,65 +1209,13 @@ jobs:
       # new blobs become segments + a staged range manifest; the rest
       # spills for its owners. Self-verification is step ORDER: the
       # manifest only uploads after the container it references landed.
-      - name: Pack new blobs for the bank
-        id: bankpack
+      # Banks the owned range, banks the AC rows this node authored,
+      # spills the rest, and uploads all of it in the order that makes it
+      # self-verifying - each manifest gated on its container landing.
+      - name: Bank and upload
         if: always()
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank"
-          STORE="$HOME/.cache/rebuck2"
-          ./ci/cas-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}" "${{ matrix.owns }}"
-
-      # Row and blobs were authored on this box in this lap and are now
-      # banked by it in this teardown: a torn publish loses both
-      # together (honest miss) instead of banking a row whose outputs
-      # never landed - the unservable class of writer 28935304124.
-      - name: Pack AC bank (own authored rows)
-        id: acbankpack
-        if: always()
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank-ac"
-          STORE="$HOME/.cache/rebuck2"
-          ./ci/ac-bank-publish.sh "$STORE/worker" "${{ runner.os }}-w${{ matrix.n }}"
-
-      - name: Upload AC container
-        id: upaccontainer
-        if: always() && steps.acbankpack.outputs.have == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@bdb2ef1068037fd9565ba2a7539961167c66e591
         with:
-          name: cas-ac-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank-ac/ac-container
-          compression-level: 0
-
-      - name: Publish AC manifest
-        if: always() && steps.acbankpack.outputs.have == '1' && steps.upaccontainer.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-manifest-${{ env.CAS_LINEAGE }}-ac-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank-ac/ac-manifest-out
-
-      - name: Upload bank container
-        id: upcontainer
-        if: always() && steps.bankpack.outputs.have == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank/bank-container
-          compression-level: 0
-
-      # Atomic + self-verified: this range manifest references ONLY the
-      # container above, and only uploads once that step succeeded. A
-      # death anywhere earlier leaves the previous generation as HEAD.
-      - name: Publish range manifest
-        if: always() && steps.bankpack.outputs.manifest == '1' && steps.upcontainer.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-manifest-${{ env.CAS_LINEAGE }}-r${{ matrix.owns }}
-          path: ${{ runner.temp }}/bank/bank-manifest-out
-
-      - name: Upload bank spill
-        if: always() && steps.bankpack.outputs.spill == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-spill-${{ env.CAS_LINEAGE }}-${{ github.run_id }}-${{ runner.os }}-w${{ matrix.n }}
-          path: ${{ runner.temp }}/bank/bank-spill
-          compression-level: 0
+          subdir: worker
+          role: ${{ runner.os }}-w${{ matrix.n }}
+          shard: ${{ matrix.owns }}

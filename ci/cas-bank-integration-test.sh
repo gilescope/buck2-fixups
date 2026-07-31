@@ -233,8 +233,8 @@ AC_W="$T/ac-w0"
 ac_restored "$AC_W" "$T/acwk-w0" - -
 acrow "$AC_W" "ac/$A1" "worker-row-v1"
 acrow "$AC_W" "ac/$A2" "worker-only-row"
-BANK_WORK="$T/acwk-w0" GITHUB_RUN_ID=1000 \
-  ci/ac-bank-publish.sh "$AC_W" linux-w0
+BANK_WORK="$T/acwk-w0" ci/cas-bank.sh _tool ac-publish \
+  "$AC_W" linux-w0 "$CAS_LINEAGE" 1000 "${CAS_PARENT_LINEAGE:--}"
 publish_to_fake "cas-ac-segs-$CAS_LINEAGE-1000-linux-w0" "$T/acwk-w0/ac-container"
 publish_to_fake "cas-manifest-$CAS_LINEAGE-ac-linux-w0" \
   "$T/acwk-w0/ac-manifest-out"
@@ -247,8 +247,8 @@ ac_restored "$AC_D" "$T/acwk-drv" - "cas-manifest-$CAS_LINEAGE-ac-linux-w0"
   || fail "ac: driver did not seed the worker's row"
 acrow "$AC_D" "ac/$A1" "driver-normalized"
 acrow "$AC_D" "acn/cd/$(printf 'c%.0s' $(seq 64))" "canon-row"
-BANK_WORK="$T/acwk-drv" GITHUB_RUN_ID=1000 \
-  ci/ac-bank-publish.sh "$AC_D" driver
+BANK_WORK="$T/acwk-drv" ci/cas-bank.sh _tool ac-publish \
+  "$AC_D" driver "$CAS_LINEAGE" 1000 "${CAS_PARENT_LINEAGE:--}"
 n=$(zstd -dq -c "$T/acwk-drv/ac-segs"/cas-seg-*/blobs.txt.zst 2>/dev/null \
   | wc -l | tr -d ' ' || true)
 publish_to_fake "cas-ac-segs-$CAS_LINEAGE-1000-driver" "$T/acwk-drv/ac-container"
@@ -268,16 +268,16 @@ ac_restored "$AC_D2" "$T/acwk-drv2" "cas-manifest-$CAS_LINEAGE-ac-driver" "cas-m
 echo "ok - lap10: driver rows round-trip (ordering covered in rust)"
 
 # Warm lap: nothing changed -> nothing staged.
-BANK_WORK="$T/acwk-drv2" GITHUB_RUN_ID=1001 \
-  ci/ac-bank-publish.sh "$AC_D2" driver
+BANK_WORK="$T/acwk-drv2" ci/cas-bank.sh _tool ac-publish \
+  "$AC_D2" driver "$CAS_LINEAGE" 1001 "${CAS_PARENT_LINEAGE:--}"
 [ ! -d "$T/acwk-drv2/ac-container" ] \
   || fail "ac: unchanged AC staged a container anyway"
 echo "ok - lap10: unchanged AC publishes nothing"
 
 # Mutation lap: same name, new content re-banks and wins on reload.
 acrow "$AC_D2" "ac/$A1" "driver-v3"
-BANK_WORK="$T/acwk-drv2" GITHUB_RUN_ID=1002 \
-  ci/ac-bank-publish.sh "$AC_D2" driver
+BANK_WORK="$T/acwk-drv2" ci/cas-bank.sh _tool ac-publish \
+  "$AC_D2" driver "$CAS_LINEAGE" 1002 "${CAS_PARENT_LINEAGE:--}"
 publish_to_fake "cas-ac-segs-$CAS_LINEAGE-1002-driver" "$T/acwk-drv2/ac-container"
 publish_to_fake "cas-manifest-$CAS_LINEAGE-ac-driver" \
   "$T/acwk-drv2/ac-manifest-out"
@@ -292,8 +292,8 @@ echo "ok - lap10: content mutation re-banks, newest wins, list stays flat"
 
 # Failure rows never reach the pool (the poison class), flat ac/ too.
 acrow "$AC_D3" "ac/$(printf 'f%.0s' $(seq 64))" "$(printf '\x20\x01')"
-BANK_WORK="$T/acwk-drv3" GITHUB_RUN_ID=1003 \
-  ci/ac-bank-publish.sh "$AC_D3" driver
+BANK_WORK="$T/acwk-drv3" ci/cas-bank.sh _tool ac-publish \
+  "$AC_D3" driver "$CAS_LINEAGE" 1003 "${CAS_PARENT_LINEAGE:--}"
 [ ! -d "$T/acwk-drv3/ac-container" ] \
   || fail "ac: a failure row was staged for banking"
 echo "ok - lap10: failure rows purged before they can be banked"
@@ -302,8 +302,8 @@ echo "ok - lap10: failure rows purged before they can be banked"
 AC_W2="$T/ac-w0b"
 ac_restored "$AC_W2" "$T/acwk-w0b" "cas-manifest-$CAS_LINEAGE-ac-linux-w0" "cas-manifest-$CAS_LINEAGE-ac-linux-w0"
 acrow "$AC_W2" "ac/$(printf 'd%.0s' $(seq 64))" "straggler"
-BANK_WORK="$T/acwk-w0b" GITHUB_RUN_ID=1100 \
-  ci/ac-bank-publish.sh "$AC_W2" linux-w0
+BANK_WORK="$T/acwk-w0b" ci/cas-bank.sh _tool ac-publish \
+  "$AC_W2" linux-w0 "$CAS_LINEAGE" 1100 "${CAS_PARENT_LINEAGE:--}"
 publish_to_fake "cas-ac-segs-$CAS_LINEAGE-1100-linux-w0" "$T/acwk-w0b/ac-container"
 gen=$(jq -r .generation \
   "$FAKE_ART/cas-manifest-$CAS_LINEAGE-ac-linux-w0/manifest.json")
@@ -316,8 +316,8 @@ ac_restored "$AC_W3" "$T/acwk-w0c" "cas-manifest-$CAS_LINEAGE-ac-linux-w0" "cas-
 # A lookup flake leaves the own state UNKNOWN; publish must not stage.
 touch "$T/acwk-w0c/.ac-own-unknown"
 acrow "$AC_W3" "ac/$(printf 'e%.0s' $(seq 64))" "flaky-lap"
-BANK_WORK="$T/acwk-w0c" GITHUB_RUN_ID=1200 \
-  ci/ac-bank-publish.sh "$AC_W3" linux-w0
+BANK_WORK="$T/acwk-w0c" ci/cas-bank.sh _tool ac-publish \
+  "$AC_W3" linux-w0 "$CAS_LINEAGE" 1200 "${CAS_PARENT_LINEAGE:--}"
 [ ! -d "$T/acwk-w0c/ac-manifest-out" ] \
   || fail "ac: staged a manifest despite unknown own state"
 echo "ok - lap10: own-manifest flake -> stage nothing, fat manifest stands"
@@ -335,8 +335,8 @@ ac_restored "$AC_C" "$T/acwk-child" - "cas-manifest-$PARENT-ac-linux-w0 cas-mani
 grep -q "^ac/$A1 " "$T/acwk-child/ac-banked-rows.txt" \
   || fail "lap12: parent rows missing from the child's diff base"
 acrow "$AC_C" "ac/$A1" "child-v1"
-BANK_WORK="$T/acwk-child" GITHUB_RUN_ID=900 \
-  ci/ac-bank-publish.sh "$AC_C" driver
+BANK_WORK="$T/acwk-child" ci/cas-bank.sh _tool ac-publish \
+  "$AC_C" driver "$CAS_LINEAGE" 900 "${CAS_PARENT_LINEAGE:--}"
 rows=$(zstd -dq -c "$T/acwk-child/ac-manifest-out/blobs.txt.zst")
 n=$(printf '%s\n' "$rows" | wc -l | tr -d ' ')
 [ "$n" -eq 1 ] || fail "lap12: child banked $n rows, expected just the changed one: $rows"
