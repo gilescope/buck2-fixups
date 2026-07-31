@@ -865,13 +865,15 @@ jobs:
           done
           rm -rf shard-in
 
+      # Blobs that crossed the artifact wall must prove themselves: a CAS
+      # filename IS the content sha256. The engine's verifier is portable
+      # and parallel - the shell one it replaced could delete GOOD files
+      # when two hashers shared a pipe (run 29082052036).
       - name: Verify seeded blobs
         run: |
           STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
           mkdir -p "$STORE/worker"
-          # Blobs that crossed the artifact wall must prove themselves:
-          # a CAS filename IS the content sha256; mismatches are deleted.
-          ./ci/verify-cas.sh "$STORE/worker"
+          rebuck2 verify-store --store "$STORE/worker"
 
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         id: addr
@@ -1126,9 +1128,7 @@ jobs:
         run: |
           STORE="$HOME/.cache/rebuck2"
           mkdir -p "$STORE/worker"
-          # Blobs that crossed the artifact wall must prove themselves:
-          # a CAS filename IS the content sha256; mismatches are deleted.
-          ./ci/verify-cas.sh "$STORE/worker"
+          rebuck2 verify-store --store "$STORE/worker"
 
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         id: addr
@@ -1379,9 +1379,7 @@ jobs:
         run: |
           STORE="$HOME/.cache/rebuck2"
           mkdir -p "$STORE/worker"
-          # Blobs that crossed the artifact wall must prove themselves:
-          # a CAS filename IS the content sha256; mismatches are deleted.
-          ./ci/verify-cas.sh "$STORE/worker"
+          rebuck2 verify-store --store "$STORE/worker"
 
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         id: addr
