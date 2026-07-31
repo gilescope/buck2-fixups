@@ -94,6 +94,7 @@ chmod +x "$T/bin/bank"
 export CAS_BANK_TOOL="$T/bin/bank"
 export PATH="$T/bin:$PATH"
 export CAS_LINEAGE=test-lineage GITHUB_REPOSITORY=fake/fake
+PARENT="$CAS_LINEAGE"
 
 publish_to_fake() { # <name> <src_dir> - stand-in for actions/upload-artifact
   local name="$1" src="$2" seq
@@ -139,102 +140,14 @@ up_manifest() { # <run> <role> <shard>
     "$T/wk-$1-$2/bank-manifest-out"
 }
 
-# ── lap 0: an established r0 bank (this run's bootstrap source) ─────
-G="$T/lap0-r0"
-mkb "$G" 00go1d99 "gold"
-ci/cas-bank.sh pack_segments "$G" /dev/null "$T/gsegs" > "$T/gsegs.names"
-gseg=$(cat "$T/gsegs.names")
-mkdir -p "$T/gcontainer/$gseg"
-cp "$T/gsegs/$gseg/bulk.tar.zst" "$T/gcontainer/$gseg/"
-jq -c --arg a "cas-segs-$CAS_LINEAGE-50-w0" '. + {artifact: $a}' \
-  "$T/gsegs/$gseg/meta.json" > "$T/gsegs/$gseg/meta.json.tmp" \
-  && mv "$T/gsegs/$gseg/meta.json.tmp" "$T/gsegs/$gseg/meta.json"
-ci/cas-bank.sh write_manifest "$CAS_LINEAGE" 50-1 - - 50 - "$T/gsegs" "$T/gman"
-publish_to_fake "cas-segs-$CAS_LINEAGE-50-w0" "$T/gcontainer"
-publish_to_fake "cas-manifest-$CAS_LINEAGE-r0" "$T/gman"
-echo "ok - lap0: r0 manifest staged (bootstrap source)"
-
-# ── lap 1: w1 owns shard 0; in-range blobs bank, out-of-range spills ─
-W1="$T/lap1-w1"
-work "$W1" w1 100 0   # seeds 00go1d99 from r0's established manifest
-[ -f "$W1/cas/00/00go1d99" ] || fail "lap1: banked blob not seeded"
-mkb "$W1" 0aaa0001 "in-a"
-mkb "$W1" 1bbb0002 "in-b"
-mkb "$W1" 2ccc0003 "out-of-range"
-BANK_WORK="$T/wk-100-w1" GITHUB_RUN_ID=100 ci/cas-bank-publish.sh "$W1" w1 0
-up 100 w1 container spill; up_manifest 100 w1 0
-r0=$(jq -r .generation "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json")
-[ "$r0" = "100-1" ] || fail "lap1: r0 generation $r0"
-zstd -dq -c "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/blobs.txt.zst" \
-  | grep -q 0aaa0001 || fail "lap1: in-range blob not in r0 manifest"
-zstd -dq -c "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/blobs.txt.zst" \
-  | grep -q 2ccc0003 && fail "lap1: out-of-range blob leaked into r0"
-zstd -dq -c "$FAKE_ART/cas-spill-$CAS_LINEAGE-100-w1"/cas-seg-*/blobs.txt.zst \
-  | grep -q 2ccc0003 || fail "lap1: spill missing out-of-range blob"
-echo "ok - lap1: range banked, foreign blob spilled"
-
-# ── lap 2: w2 owns shard 1 (prefixes 2,3) - absorbs w1's spill ──────
-W2="$T/lap2-w2"
-work "$W2" w2 200 1 1  # ABSORB_SPILLS=1
-[ -f "$W2/cas/2c/2ccc0003" ] || fail "lap2: spill blob not absorbed"
-up 200 w2 container; up_manifest 200 w2 1
-zstd -dq -c "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r1/blobs.txt.zst" \
-  | grep -q 2ccc0003 || fail "lap2: absorbed blob not banked in r1"
-echo "ok - lap2: spill absorbed on read, banked by its range owner"
-
-# ── lap 3: straggler - container lands, manifest upload never runs ──
-W3="$T/lap3-w1"
-work "$W3" w1 300 0
-mkb "$W3" 0ddd0004 "straggle"
-BANK_WORK="$T/wk-300-w1" GITHUB_RUN_ID=300 ci/cas-bank-publish.sh "$W3" w1 0
-up 300 w1 container   # NOT manifest - death between the two steps
-r0=$(jq -r .generation "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json")
-[ "$r0" = "100-1" ] || fail "lap3: torn publish moved r0 HEAD to $r0"
-rc=0; BANK_WORK="$T/wk-check" ci/cas-bank-restore.sh "$(mktemp -d)" "-" || rc=$?
-[ "$rc" -eq 0 ] || fail "lap3: check restore rc=$rc"
-grep -q 0ddd0004 "$T/wk-check/bank-blobs.txt" \
-  && fail "lap3: unreferenced straggler blob in the union"
-echo "ok - lap3: torn publish leaves old manifest as HEAD, blob re-packs"
-
-# ── lap 4: subset restore - own range only ──────────────────────────
-W4="$T/lap4-w1"
-work "$W4" w1b 400 0
-for b in 00go1d99 0aaa0001 1bbb0002; do
-  [ -f "$W4/cas/${b:0:2}/$b" ] || fail "lap4: missing own-range blob $b"
-done
-[ -f "$W4/cas/2c/2ccc0003" ] && fail "lap4: foreign range blob seeded"
-[ -f "$W4/cas/0d/0ddd0004" ] && fail "lap4: unreferenced straggler blob seeded"
-echo "ok - lap4: prefix-subset restore, referenced blobs only"
-
-# ── lap 5: ordinary delta lap - history chains, new blob banks ──────
-W5="$T/lap5-w1"
-work "$W5" w1c 500 0
-[ -f "$W5/cas/00/00go1d99" ] || fail "lap5: bootstrap blob lost from r0"
-mkb "$W5" 0e5e0005 "new"
-BANK_WORK="$T/wk-500-w1c" GITHUB_RUN_ID=500 ci/cas-bank-publish.sh "$W5" w1c 0
-jq -e --arg s "$gseg" '.segments[] | select(.name == $s)' \
-  "$T/wk-500-w1c/bank-manifest-out/manifest.json" > /dev/null \
-  || fail "lap5: delta manifest dropped an inherited segment"
-zstd -dq -c "$T/wk-500-w1c/bank-manifest-out/blobs.txt.zst" \
-  | grep -q 0e5e0005 || fail "lap5: new blob missing from the new manifest"
-up 500 w1c container; up_manifest 500 w1c 0
-echo "ok - lap5: delta lap chains history and banks the new blob"
-
-# ── lap 6: own-manifest lookup FAILURE demotes to spill-only ────────
-# A flake must not read as "absent": a thin manifest would clobber the
-# fat one via newest-wins.
-W6="$T/lap6-w1"
-FAKE_FAIL_NAME="cas-manifest-$CAS_LINEAGE-r0" work "$W6" w1d 600 0
-mkb "$W6" 0f0f0006 "flaky-lap"
-FAKE_FAIL_NAME="cas-manifest-$CAS_LINEAGE-r0" BANK_WORK="$T/wk-600-w1d" \
-  GITHUB_RUN_ID=600 ci/cas-bank-publish.sh "$W6" w1d 0
-[ ! -d "$T/wk-600-w1d/bank-manifest-out" ] \
-  || fail "lap6: staged a manifest despite unknown own-range state"
-zstd -dq -c "$T/wk-600-w1d/bank-spill"/cas-seg-*/blobs.txt.zst \
-  | grep -q 0f0f0006 || fail "lap6: new blob not spilled on demotion"
-r0gen=$(jq -r .generation "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json")
-[ "$r0gen" = "500-1" ] || fail "lap6: r0 HEAD moved to $r0gen"
-echo "ok - lap6: lookup flake -> spill-only, fat manifest stands"
+# ── laps 0-6 moved to rebuck2/tests/cas_bank.rs ─────────────────────
+# The CAS restore/publish choreography lives in `rebuck2 bank` now, so a
+# fake `gh` on PATH can no longer intercept it - the API call happens
+# inside the binary. Those laps are Rust tests against a stub server,
+# which drive the real client, the real zip reader and the real ordering:
+# range-vs-spill split, the own-lookup flake demoting to spill-only, and
+# a child lineage inheriting the trunk. What is left here is what is
+# still shell.
 
 # ── lap 7: dice bank round-trip (bootstrap + delta + reload) ────────
 export DICE_SEED="rev1-sweep-treehash1"
@@ -277,57 +190,6 @@ total=$(( $(sqlite3 "$DS3/db/pagable.2.db" "SELECT count(*) FROM pagable_data;")
 [ "$total" -eq 2 ] || fail "dice lap7: reload row count $total"
 unset DICE_SEED
 echo "ok - lap7: dice bank bootstrap, delta, and reload"
-
-# ── lap 8: the range owner compacts in its own teardown ─────────────
-# No separate workflow: the owner's store already holds the range's
-# full view, so compaction = publish-with-empty-diff-base, stamped
-# full, manifest referencing only the fresh packs. Then the trigger
-# must quiesce.
-W8="$T/lap8-w1"
-work "$W8" w1e 800 0
-pre=$(zstd -dq -c "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/blobs.txt.zst" | sort -u)
-BANK_WORK="$T/wk-800-w1e" GITHUB_RUN_ID=800 COMPACT_MIN_MB=0 \
-  ci/cas-bank-publish.sh "$W8" w1e 0
-jq -e '[.segments[] | .full == true] | all' \
-  "$T/wk-800-w1e/bank-manifest-out/manifest.json" > /dev/null \
-  || fail "lap8: compacted manifest has non-full segments"
-post=$(zstd -dq -c "$T/wk-800-w1e/bank-manifest-out/blobs.txt.zst" | sort -u)
-[ "$pre" = "$post" ] || fail "lap8: compaction changed the blob set"
-up 800 w1e container; up_manifest 800 w1e 0
-res=$(COMPACT_MIN_MB=0 ci/cas-bank.sh needs_compaction \
-  "$FAKE_ART/cas-manifest-$CAS_LINEAGE-r0/manifest.json")
-[ "$res" = "no" ] || fail "lap8: trigger did not quiesce: $res"
-# And the compacted range still restores whole - WITHOUT re-merging
-# the global slice (a full-packed range is self-sufficient; the slice
-# re-merge re-fired compaction every lap and doubled seed downloads).
-W8b="$T/lap8-verify"
-BANK_WORK="$T/wk-801" ci/cas-bank-restore.sh "$W8b" 0
-for b in 00go1d99 0aaa0001 1bbb0002 0e5e0005; do
-  [ -f "$W8b/cas/${b:0:2}/$b" ] || fail "lap8: post-compact restore missing $b"
-done
-nd=$(jq '[.segments[] | select(.full != true)] | length' \
-  "$T/wk-801/own-range/manifest.json")
-[ "$nd" -eq 0 ] \
-  || fail "lap8: $nd delta segments re-merged into a full-packed head"
-echo "ok - lap8: owner-side compaction, blob set preserved, trigger quiesces"
-
-# ── lap 9: autotuned trigger - measured delta overhead over budget ──
-W9="$T/lap9-w1"
-BANK_WORK="$T/wk-900" ci/cas-bank-restore.sh "$W9" 0
-echo 999 > "$T/wk-900/.delta-restore-secs"
-out=$(BANK_WORK="$T/wk-900" GITHUB_RUN_ID=900 \
-  ci/cas-bank-publish.sh "$W9" w1f 0)
-echo "$out" | grep -q 'COMPACTING (restore-overhead 999s' \
-  || fail "lap9: measured overhead did not trigger compaction: $out"
-# and under budget stays quiet
-W9b="$T/lap9b-w1"
-BANK_WORK="$T/wk-901" ci/cas-bank-restore.sh "$W9b" 0
-echo 3 > "$T/wk-901/.delta-restore-secs"
-out=$(BANK_WORK="$T/wk-901" GITHUB_RUN_ID=901 \
-  ci/cas-bank-publish.sh "$W9b" w1g 0)
-echo "$out" | grep -q 'COMPACTING' \
-  && fail "lap9: under-budget overhead compacted anyway"
-echo "ok - lap9: restore-overhead autotune fires over budget, quiet under"
 
 # ── lap 10: AC bank - role-authored publish, union restore, order ───
 # Every node banks the rows it authored; the driver reads the union.
@@ -460,40 +322,12 @@ BANK_WORK="$T/acwk-w0c" GITHUB_RUN_ID=1200 \
   || fail "ac: staged a manifest despite unknown own state"
 echo "ok - lap10: own-manifest flake -> stage nothing, fat manifest stands"
 
-# ── lap 11: a child lineage inherits its parent's blob bank ─────────
-# A branch/PR is its own lineage. Without inheritance its first lap is
-# a full cold re-derivation; with it, the trunk's bank is warm and only
-# the branch's own new blobs are banked - under the CHILD's manifest,
-# never the parent's (the cache-poisoning boundary).
-PARENT="$CAS_LINEAGE"
-export CAS_PARENT_LINEAGE="$PARENT"
-export CAS_LINEAGE=child-branch
-W11="$T/lap11-child"
-rc=0; BANK_WORK="$T/wk-1100" ci/cas-bank-restore.sh "$W11" 0 || rc=$?
-[ "$rc" -eq 0 ] || fail "lap11: child restore rc=$rc (cold - no inheritance?)"
-for b in 00go1d99 0aaa0001 0e5e0005; do
-  [ -f "$W11/cas/${b:0:2}/$b" ] || fail "lap11: parent blob $b not inherited"
-done
-grep -q 0aaa0001 "$T/wk-1100/bank-blobs.txt" \
-  || fail "lap11: parent blob missing from the child's union"
-mkb "$W11" 0c1d0007 "child-only"
-BANK_WORK="$T/wk-1100" GITHUB_RUN_ID=1100 ci/cas-bank-publish.sh "$W11" c0 0
-# The staged manifest IS what gets published, so assert there: a child
-# with no own history should reference exactly its own new blob.
-got=$(zstd -dq -c "$T/wk-1100/bank-manifest-out/blobs.txt.zst" | tr -d '[:space:]')
-[ "$got" = "0c1d0007" ] || fail "lap11: child re-banked inherited blobs: $got"
-[ "$(jq '.segments|length' "$T/wk-1100/bank-manifest-out/manifest.json")" -eq 1 ] \
-  || fail "lap11: child manifest references inherited segments"
-[ "$(jq -r .parent_lineage "$T/wk-1100/bank-manifest-out/manifest.json")" \
-  = "$PARENT" ] || fail "lap11: child manifest records no parent"
-pgen=$(jq -r .generation "$FAKE_ART/cas-manifest-$PARENT-r0/manifest.json")
-[ "$pgen" = "800-1" ] || fail "lap11: child publish moved the PARENT head to $pgen"
-echo "ok - lap11: child lineage inherits, banks only its own, parent untouched"
-
 # ── lap 12: AC parentage, and the child's row wins ──────────────────
 # Deliberately give the child a LOWER run id than the parent's last AC
 # lap: ordering must be (lineage, run), not run alone, or the trunk's
 # stale row would beat the branch's rebuild of the same action.
+export CAS_PARENT_LINEAGE="$PARENT"
+export CAS_LINEAGE=child-branch
 AC_C="$T/ac-child"
 # Inheritance itself is covered in rust; here the child simply starts
 # from the parent's banked state and must publish only its own change.
