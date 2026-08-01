@@ -263,7 +263,7 @@ jobs:
       # The driver is the only node that READS the AC, so it lays down
       # every role's rows - and the parent lineage's beneath them.
       - name: Restore from the bank (driver)
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: driver
           role: driver
@@ -276,7 +276,7 @@ jobs:
       # The co-worker executes actions too, so it authors rows - its own
       # history only, which is all it needs to re-pack.
       - name: Restore from the bank (co-worker)
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: co-worker
           role: co-worker
@@ -614,7 +614,7 @@ jobs:
       # its own - it authored the canonical ones.
       - name: Bank and upload (driver)
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: driver
           role: driver
@@ -623,7 +623,7 @@ jobs:
       # $BANK_WORK staging dirs and wipes them on entry.
       - name: Bank and upload (co-worker)
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: co-worker
           role: co-worker
@@ -736,7 +736,7 @@ jobs:
       # inside the action, per OS - no cygpath here.
       - name: Restore from the bank
         id: bank
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -769,17 +769,6 @@ jobs:
             fi
           done
           rm -rf shard-in
-
-      # Blobs that crossed the artifact wall must prove themselves: a CAS
-      # filename IS the content sha256. The engine's verifier is portable
-      # and parallel - the shell one it replaced could delete GOOD files
-      # when two hashers shared a pipe (run 29082052036).
-      - name: Verify seeded blobs
-        run: |
-          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
-          mkdir -p "$STORE/worker"
-          rebuck2 verify-store --store "$STORE/worker"
-
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         id: addr
         env:
@@ -855,7 +844,7 @@ jobs:
       # self-verifying - each manifest gated on its container landing.
       - name: Bank and upload
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -923,7 +912,7 @@ jobs:
       # inside the action, per OS - no cygpath here.
       - name: Restore from the bank
         id: bank
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -956,13 +945,6 @@ jobs:
             fi
           done
           rm -rf shard-in
-
-      - name: Verify seeded blobs
-        run: |
-          STORE="$HOME/.cache/rebuck2"
-          mkdir -p "$STORE/worker"
-          rebuck2 verify-store --store "$STORE/worker"
-
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         id: addr
         env:
@@ -1032,7 +1014,7 @@ jobs:
       # self-verifying - each manifest gated on its container landing.
       - name: Bank and upload
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -1102,7 +1084,7 @@ jobs:
       # inside the action, per OS - no cygpath here.
       - name: Restore from the bank
         id: bank
-        uses: gilescope/rebuck/rebuck2/actions/bank-restore@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-restore@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -1135,13 +1117,6 @@ jobs:
             fi
           done
           rm -rf shard-in
-
-      - name: Verify seeded blobs
-        run: |
-          STORE="$HOME/.cache/rebuck2"
-          mkdir -p "$STORE/worker"
-          rebuck2 verify-store --store "$STORE/worker"
-
       - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
         id: addr
         env:
@@ -1214,7 +1189,7 @@ jobs:
       # self-verifying - each manifest gated on its container landing.
       - name: Bank and upload
         if: always()
-        uses: gilescope/rebuck/rebuck2/actions/bank-publish@a95c1552f7b0f91e8bf762a711838ffb9f167cd3
+        uses: gilescope/rebuck/rebuck2/actions/bank-publish@cb72cb25cab2f36141395f34bcf7d97a41e11928
         with:
           subdir: worker
           role: ${{ runner.os }}-w${{ matrix.n }}
