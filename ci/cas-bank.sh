@@ -126,47 +126,7 @@ ac_rows() {
 # blobs.txt lines: "<key_hi> <key_lo>" (the diff list). Prints segment
 # names. banked_keys may be /dev/null (cold bank).
 dice_pack() {
-  local db="$1" banked="$2" out="$3"
-  local raw_mb="${DICE_SEG_RAW_MB:-256}"
-  mkdir -p "$out"
-  local rows="$out/.rows" i
-  : > "$rows"
-  for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    [ -f "$db/pagable.$i.db" ] || continue
-    sqlite3 -readonly "$db/pagable.$i.db" \
-      "SELECT printf('%d %d %d ', key_lo & 15, key_hi, key_lo) || hex(value)
-       FROM pagable_data ORDER BY key_hi, key_lo;" >> "$rows"
-  done
-  # Diff on (key_hi, key_lo) against the banked set, then greedy-split
-  # into raw parts of <= raw_mb.
-  # FILENAME guard, not NR==FNR: an EMPTY banked file (cold bank via
-  # /dev/null) makes NR==FNR true for the rows file's first lines.
-  awk -v out="$out/.part" -v max=$((raw_mb * 1024 * 1024)) \
-      -v bankfile="$banked" '
-    FILENAME == bankfile { bank[$0] = 1; next }
-    {
-      if (($2 " " $3) in bank) next
-      if (bytes >= max) { close(out "." part); part++; bytes = 0 }
-      print > (out "." part)
-      bytes += length($0) + 1
-    }' "$banked" "$rows"
-  rm -f "$rows"
-  local part sha tmp
-  for part in "$out"/.part.*; do
-    [ -f "$part" ] || continue
-    sha=$(_sha256 "$part")
-    tmp="$out/cas-seg-$sha"
-    mkdir -p "$tmp"
-    awk '{print $2 " " $3}' "$part" | sort > "$tmp/blobs.txt"
-    zstd -q --rm "$tmp/blobs.txt"
-    local nrows bytes
-    nrows=$(zstd -dq -c "$tmp/blobs.txt.zst" | wc -l | tr -d ' ')
-    zstd -q -8 --rm "$part" -o "$tmp/rows.txt.zst"
-    bytes=$(wc -c < "$tmp/rows.txt.zst" | tr -d ' ')
-    printf '{"name":"cas-seg-%s","bytes":%s,"blobs":%s,"prefixes":"*"}\n' \
-      "$sha" "$bytes" "$nrows" > "$tmp/meta.json"
-    echo "cas-seg-$sha"
-  done
+  _tool dice-pack "$1" "$2" "$3"
 }
 
 # ── dice_merge <db_dir> <segment_dir>... ────────────────────────────
@@ -174,41 +134,13 @@ dice_pack() {
 # addressed keys: idempotent, order-independent, conflict-free.
 dice_merge() {
   local db="$1"; shift
-  mkdir -p "$db"
-  local i d
-  for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    sqlite3 "$db/pagable.$i.db" \
-      "CREATE TABLE IF NOT EXISTS pagable_data (
-         key_lo INTEGER NOT NULL, key_hi INTEGER NOT NULL,
-         value BLOB NOT NULL, UNIQUE(key_hi, key_lo));"
-  done
-  local work
-  work=$(mktemp -d)
-  for d in "$@"; do
-    [ -f "$d/rows.txt.zst" ] || continue
-    zstd -dq -c "$d/rows.txt.zst" | awk -v w="$work" -v q="'" '
-      {
-        print "INSERT OR IGNORE INTO pagable_data VALUES(" \
-          $3 "," $2 ",X" q $4 q ");" >> (w "/shard" $1 ".sql")
-      }'
-  done
-  for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    [ -f "$work/shard$i.sql" ] || continue
-    { echo "BEGIN;"; cat "$work/shard$i.sql"; echo "COMMIT;"; } \
-      | sqlite3 "$db/pagable.$i.db"
-  done
-  rm -rf "$work"
+  _tool dice-merge "$db" "$@"
 }
 
 # ── dice_keys <db_dir> ──────────────────────────────────────────────
 # Sorted "<key_hi> <key_lo>" list of every row (the banked-set shape).
 dice_keys() {
-  local db="$1" i
-  for i in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-    [ -f "$db/pagable.$i.db" ] || continue
-    sqlite3 -readonly "$db/pagable.$i.db" \
-      "SELECT printf('%d %d', key_hi, key_lo) FROM pagable_data;"
-  done | sort
+  _tool dice-keys "$1"
 }
 
 # Allow `ci/cas-bank.sh <fn> args...` for tests and workflow one-liners.
