@@ -155,18 +155,6 @@ jobs:
           # than silently building without (run 29198759978 no-op'd the
           # unpack dedupe exactly this way).
           git apply --verbose ci/prelude-unpack-dedupe.patch
-
-      # Roadmap #9: the driver seeds only the ACTION CACHE. CAS shards
-      # restore on the WORKERS (parallel, during the join window); bloom
-      # gossip + HasMany verification makes them count in
-      # FindMissingBlobs. Monolith restore stays as transition fallback.
-      - name: Restore driver hot-CAS
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: snapshot-hotcas
-          key: rebuck2-hotcas-${{ github.run_id }}
-          restore-keys: rebuck2-hotcas-
-
       # AC bank (ci/ac-bank-plan.md): every node banks the rows it
       # AUTHORED into its own role manifest, on 90d artifact retention -
       # the actions cache evicts after 7 idle days and took the whole
@@ -178,7 +166,7 @@ jobs:
       # every role's rows - and the parent lineage's beneath them.
       # Install, seed the bank, start, publish the address, wait for
       # quorum, point buck2 at it. What used to be fourteen steps.
-      - uses: gilescope/rebuck/rebuck2/actions/driver@176a3c78308f261324a2ef950bb584a42f9b5337
+      - uses: gilescope/rebuck/rebuck2/actions/driver@d877a7828d5aa73b6bca7a5feaa1dc13908a9880
         with:
           session: hetero-${{ github.run_id }}
           rebuck2-git: ${{ env.REBUCK2_GIT }}
@@ -324,30 +312,8 @@ jobs:
       # their own pack steps in parallel with ours.
       # Stop (so the fleet packs in parallel), mark the lap finished for
       # late workers, bank what this box authored, collect the logs.
-      - uses: gilescope/rebuck/rebuck2/actions/driver-finish@176a3c78308f261324a2ef950bb584a42f9b5337
+      - uses: gilescope/rebuck/rebuck2/actions/driver-finish@d877a7828d5aa73b6bca7a5feaa1dc13908a9880
         if: always()
-
-      - name: Pack driver hot-CAS
-        id: hotpack
-        if: always()
-        run: |
-          STORE="$HOME/.cache/rebuck2"
-          if [ ! -d "$STORE/driver/cas" ]; then echo "skip=1" >> "$GITHUB_OUTPUT"; exit 0; fi
-          mkdir -p snapshot-hotcas
-          # -4, no --long: this pack ran 435s at -8/--long=27 every lap
-          # (run 29564589011) for a marginal ratio gain on tiny rmetas;
-          # the seed side's -d --long=27 reads both formats fine.
-          ( cd "$STORE/driver" && find cas -type f -size -262144c -print0 \
-            | tar --null -c -T - ) | zstd -T0 -4 > snapshot-hotcas/hotcas.tar.zst
-          ls -lh snapshot-hotcas/ || true
-
-      - name: Save driver hot-CAS
-        if: always() && steps.hotpack.outputs.skip != '1'
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: snapshot-hotcas
-          key: rebuck2-hotcas-${{ github.run_id }}
-
       # The driver box owns no range: everything new it holds spills,
       # and range owners absorb it on a later lap's restore.
       # The driver box owns no CAS range: everything new it holds spills,
@@ -436,7 +402,7 @@ jobs:
       # Same two lines as every other worker. DEV_DRIVE is picked up by
       # the action's own path resolution - the caller never says where
       # the store goes.
-      - uses: gilescope/rebuck/rebuck2/actions/worker@176a3c78308f261324a2ef950bb584a42f9b5337
+      - uses: gilescope/rebuck/rebuck2/actions/worker@d877a7828d5aa73b6bca7a5feaa1dc13908a9880
         with:
           session: hetero-${{ github.run_id }}
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -483,7 +449,7 @@ jobs:
 
       # A worker job is fleet POSITION and nothing else - no build config,
       # no store paths, no bank plumbing. The action is the rest of it.
-      - uses: gilescope/rebuck/rebuck2/actions/worker@176a3c78308f261324a2ef950bb584a42f9b5337
+      - uses: gilescope/rebuck/rebuck2/actions/worker@d877a7828d5aa73b6bca7a5feaa1dc13908a9880
         with:
           session: hetero-${{ github.run_id }}
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -532,7 +498,7 @@ jobs:
 
       # A worker job is fleet POSITION and nothing else - no build config,
       # no store paths, no bank plumbing. The action is the rest of it.
-      - uses: gilescope/rebuck/rebuck2/actions/worker@176a3c78308f261324a2ef950bb584a42f9b5337
+      - uses: gilescope/rebuck/rebuck2/actions/worker@d877a7828d5aa73b6bca7a5feaa1dc13908a9880
         with:
           session: hetero-${{ github.run_id }}
           role: ${{ runner.os }}-w${{ matrix.n }}
