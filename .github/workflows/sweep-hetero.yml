@@ -134,36 +134,6 @@ jobs:
             echo "asset fetch failed — release-mode sweep"
             rm -rf fork-bin
           fi
-
-      # Dice bank: append-only row segments + a manifest carrying the
-      # graph skeleton whole (19MB; the 4GB is the sqlite value shards,
-      # content-addressed and INSERT OR IGNORE-mergeable). Replaces the
-      # 1.1GB monolithic cache save; the cache step below remains as
-      # the cold-bank bootstrap fallback.
-      - name: Restore dice bank
-        id: dicebank
-        if: steps.forkbin.outputs.rev != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          DICE_SEED: ${{ steps.forkbin.outputs.rev }}-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}
-        run: |
-          echo "seed8=$(printf '%s' "$DICE_SEED" | sha256sum | cut -c1-8)"             >> "$GITHUB_OUTPUT"
-          export BANK_WORK="$RUNNER_TEMP/bank"
-          rc=0; ./ci/dice-bank-restore.sh dice-snap/sweep || rc=$?
-          if [ "$rc" -eq 3 ]; then
-            echo "cold=1" >> "$GITHUB_OUTPUT"
-          elif [ "$rc" -ne 0 ]; then
-            exit "$rc"
-          fi
-
-      - name: Restore dice snapshots (cold-bank bootstrap fallback)
-        if: steps.forkbin.outputs.rev != '' && steps.dicebank.outputs.cold == '1'
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: dice-snap
-          key: dice-snap-hetero-never-matches
-          restore-keys: dice-snap-hetero-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}-
-
       - name: Enable dice persistence (fork binary + matched prelude)
         if: steps.forkbin.outputs.rev != ''
         run: |
@@ -208,7 +178,7 @@ jobs:
       # every role's rows - and the parent lineage's beneath them.
       # Install, seed the bank, start, publish the address, wait for
       # quorum, point buck2 at it. What used to be fourteen steps.
-      - uses: gilescope/rebuck/rebuck2/actions/driver@6db63bd709fdfb3c617052de5628d1bc2ba2b346
+      - uses: gilescope/rebuck/rebuck2/actions/driver@176a3c78308f261324a2ef950bb584a42f9b5337
         with:
           session: hetero-${{ github.run_id }}
           rebuck2-git: ${{ env.REBUCK2_GIT }}
@@ -218,6 +188,10 @@ jobs:
           no-local-exec: "true"
           cache-failures: "true"
           extra-args: --require-shards 8 --prefetch-metadata --locality
+          # Must equal BUCK2_DICE_SNAPSHOT_SEED below: banked rows are
+          # only valid within one fork-rev + graph shape.
+          dice-seed: ${{ steps.forkbin.outputs.rev }}-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}
+          dice-dir: dice-snap/sweep
           execution-platforms: root//platforms:re-exec
 
       - name: Reclaim runner ballast in the background
@@ -344,42 +318,13 @@ jobs:
           # shards dominate; graph.meta is the small byte-stable part.
           du -sh dice-snap/sweep/* 2>/dev/null || true
           du -sh dice-snap/* 2>/dev/null || true
-
-      # Dice delta -> bank (replaces the 1.1GB cache save + prune; a
-      # barely-changed graph now costs tens of MB). Self-verified by
-      # step order: manifest only uploads after its container landed.
-      - name: Publish dice bank (delta)
-        id: diceout
-        if: always() && steps.forkbin.outputs.rev != ''
-        env:
-          DICE_SEED: ${{ steps.forkbin.outputs.rev }}-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}
-        run: |
-          export BANK_WORK="$RUNNER_TEMP/bank"
-          ./ci/dice-bank-publish.sh dice-snap/sweep
-
-      - name: Upload dice container
-        id: updice
-        if: always() && steps.diceout.outputs.have == '1'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-dice-segs-${{ env.CAS_LINEAGE }}-${{ github.run_id }}
-          path: ${{ runner.temp }}/bank/dice-container
-          compression-level: 0
-
-      - name: Publish dice manifest
-        if: always() && steps.diceout.outputs.have == '1' && steps.updice.outcome == 'success'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: cas-manifest-${{ env.CAS_LINEAGE }}-dice-${{ steps.dicebank.outputs.seed8 }}
-          path: ${{ runner.temp }}/bank/dice-manifest-out
-
       # Banking no longer rides the mesh: each range owner publishes
       # its own manifest, self-verified by step order. Stopping the
       # driver here broadcasts exit to the fleet, so workers start
       # their own pack steps in parallel with ours.
       # Stop (so the fleet packs in parallel), mark the lap finished for
       # late workers, bank what this box authored, collect the logs.
-      - uses: gilescope/rebuck/rebuck2/actions/driver-finish@6db63bd709fdfb3c617052de5628d1bc2ba2b346
+      - uses: gilescope/rebuck/rebuck2/actions/driver-finish@176a3c78308f261324a2ef950bb584a42f9b5337
         if: always()
 
       - name: Pack driver hot-CAS
@@ -491,7 +436,7 @@ jobs:
       # Same two lines as every other worker. DEV_DRIVE is picked up by
       # the action's own path resolution - the caller never says where
       # the store goes.
-      - uses: gilescope/rebuck/rebuck2/actions/worker@6db63bd709fdfb3c617052de5628d1bc2ba2b346
+      - uses: gilescope/rebuck/rebuck2/actions/worker@176a3c78308f261324a2ef950bb584a42f9b5337
         with:
           session: hetero-${{ github.run_id }}
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -538,7 +483,7 @@ jobs:
 
       # A worker job is fleet POSITION and nothing else - no build config,
       # no store paths, no bank plumbing. The action is the rest of it.
-      - uses: gilescope/rebuck/rebuck2/actions/worker@6db63bd709fdfb3c617052de5628d1bc2ba2b346
+      - uses: gilescope/rebuck/rebuck2/actions/worker@176a3c78308f261324a2ef950bb584a42f9b5337
         with:
           session: hetero-${{ github.run_id }}
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -587,7 +532,7 @@ jobs:
 
       # A worker job is fleet POSITION and nothing else - no build config,
       # no store paths, no bank plumbing. The action is the rest of it.
-      - uses: gilescope/rebuck/rebuck2/actions/worker@6db63bd709fdfb3c617052de5628d1bc2ba2b346
+      - uses: gilescope/rebuck/rebuck2/actions/worker@176a3c78308f261324a2ef950bb584a42f9b5337
         with:
           session: hetero-${{ github.run_id }}
           role: ${{ runner.os }}-w${{ matrix.n }}

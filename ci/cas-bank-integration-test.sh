@@ -164,7 +164,8 @@ sqlite3 "$DS/db/pagable.2.db" \
      UNIQUE(key_hi, key_lo));
    INSERT INTO pagable_data VALUES(18, 7, X'AA11');"
 printf 'skeleton-gen-1' > "$DS/graph.meta"
-BANK_WORK="$T/dwk1" GITHUB_RUN_ID=700 ci/dice-bank-publish.sh "$DS"
+BANK_WORK="$T/dwk1" ci/cas-bank.sh _tool dice-publish \
+  "$DS" "$CAS_LINEAGE" "$DICE_SEED" 700 "${CAS_PARENT_LINEAGE:--}"
 [ -d "$T/dwk1/dice-container" ] || fail "dice lap7: no container staged"
 [ -f "$T/dwk1/dice-manifest-out/manifest.json" ] \
   || fail "dice lap7: no manifest staged"
