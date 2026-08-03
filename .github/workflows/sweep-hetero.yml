@@ -53,16 +53,6 @@ env:
   USE_DEV_DRIVE: "1"
   REBUCK2_GIT: https://github.com/gilescope/rebuck
   REBUCK2_BRANCH: giles-iroh-re-punch
-  # Concurrent output-tree ingestion (4c402ee: the 78-254s http_archive
-  # mega-unpack tails on every leg's critical path) + worker liveness
-  # watchdog / driver exit broadcast (6c676dc: win worker 1 idled 1h+
-  # past the driver, run 29194749613). Prior lap 29195973667: build
-  # 8m44s, win staging p90 18.7s -> 3s, second straight 8/8 bank.
-  # 7fda4e8: exec-bit guarantee on Linked materialization (bank-seeded
-  # build scripts staged 0o100644, EACCES) + canonical hits carry
-  # execution_metadata (buck2's client hard-rejects bare ActionResults;
-  # every name-independent hit was an internal error).
-  REBUCK2_REV_PIN: 09a6caada3dc3583c6248d608db3fa63aef55244
   TOTAL_WORKERS: "11"
   # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
   # sweep proceed (late joiners still connect - 30min window) while a whole
@@ -170,7 +160,6 @@ jobs:
         with:
           session: hetero-${{ github.run_id }}
           rebuck2-git: ${{ env.REBUCK2_GIT }}
-          rebuck2-rev: ${{ env.REBUCK2_REV_PIN }}
           min-workers: ${{ env.QUORUM_WORKERS }}
           co-worker-slots: half
           no-local-exec: "true"
@@ -408,7 +397,6 @@ jobs:
           role: ${{ runner.os }}-w${{ matrix.n }}
           shard: ${{ matrix.owns }}
           rebuck2-git: ${{ env.REBUCK2_GIT }}
-          rebuck2-rev: ${{ env.REBUCK2_REV_PIN }}
 
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -455,7 +443,6 @@ jobs:
           role: ${{ runner.os }}-w${{ matrix.n }}
           shard: ${{ matrix.owns }}
           rebuck2-git: ${{ env.REBUCK2_GIT }}
-          rebuck2-rev: ${{ env.REBUCK2_REV_PIN }}
 
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -504,7 +491,6 @@ jobs:
           role: ${{ runner.os }}-w${{ matrix.n }}
           shard: ${{ matrix.owns }}
           rebuck2-git: ${{ env.REBUCK2_GIT }}
-          rebuck2-rev: ${{ env.REBUCK2_REV_PIN }}
 
       - if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
