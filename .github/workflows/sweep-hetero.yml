@@ -108,6 +108,18 @@ jobs:
         with:
           toolchain: "1.92.0"
 
+      # The baseline buck2, and the only thing that puts $HOME/bin on PATH.
+      # The fork binary below OVERLAYS this one; it is not a replacement -
+      # the fork fetch is conditional, so without this a release-mode sweep
+      # has no buck2 at all and every leg exits 127.
+      - name: Install buck2
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-unknown-linux-musl.zst" | zstd -d > "$HOME/bin/buck2"
+          chmod +x "$HOME/bin/buck2"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/buck2" --version
+
       - name: Fetch fork buck2 (dice persistence)
         id: forkbin
         run: |
@@ -127,9 +139,8 @@ jobs:
       - name: Enable dice persistence (fork binary + matched prelude)
         if: steps.forkbin.outputs.rev != ''
         run: |
-          # The runner image does not ship $HOME/bin, and nothing else here
-          # creates it - without this the whole sweep dies on the first cp.
-          mkdir -p "$HOME/bin"
+          # $HOME/bin exists and is on PATH because of "Install buck2" above;
+          # this step only swaps the binary underneath it.
           cp fork-bin/buck2 "$HOME/bin/buck2"
           chmod +x "$HOME/bin/buck2"
           "$HOME/bin/buck2" --version
