@@ -127,6 +127,9 @@ jobs:
       - name: Enable dice persistence (fork binary + matched prelude)
         if: steps.forkbin.outputs.rev != ''
         run: |
+          # The runner image does not ship $HOME/bin, and nothing else here
+          # creates it - without this the whole sweep dies on the first cp.
+          mkdir -p "$HOME/bin"
           cp fork-bin/buck2 "$HOME/bin/buck2"
           chmod +x "$HOME/bin/buck2"
           "$HOME/bin/buck2" --version
@@ -140,11 +143,11 @@ jobs:
           git -C "$RUNNER_TEMP/fork-src" checkout --quiet FETCH_HEAD
           rm -rf prelude
           cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
-          # The fork prelude just REPLACED the vendored one, discarding
-          # repo-local prelude changes. Re-apply them; fail loudly rather
-          # than silently building without (run 29198759978 no-op'd the
-          # unpack dedupe exactly this way).
-          git apply --verbose ci/prelude-unpack-dedupe.patch
+          # No re-apply: the fork's own prelude now carries the unpack dedupe
+          # and the buildscript exec-bit heal (gilescope/buck2#1, merged to
+          # main and in this release). Applying the patch on top of a prelude
+          # that already has it fails outright - which is the loud failure the
+          # old comment here asked for, just arriving a step earlier.
       # AC bank (ci/ac-bank-plan.md): every node banks the rows it
       # AUTHORED into its own role manifest, on 90d artifact retention -
       # the actions cache evicts after 7 idle days and took the whole
