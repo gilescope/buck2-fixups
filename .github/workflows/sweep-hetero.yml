@@ -170,7 +170,7 @@ jobs:
       # every role's rows - and the parent lineage's beneath them.
       # Install, seed the bank, start, publish the address, wait for
       # quorum, point buck2 at it. What used to be fourteen steps.
-      - uses: gilescope/rebuck/rebuck2/actions/driver@ee1e7160d08d3f8a27a055674a96a73933dd019d
+      - uses: gilescope/rebuck/rebuck2/actions/driver@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
         with:
           session: hetero-${{ github.run_id }}
           rebuck2-git: ${{ env.REBUCK2_GIT }}
@@ -315,7 +315,7 @@ jobs:
       # their own pack steps in parallel with ours.
       # Stop (so the fleet packs in parallel), mark the lap finished for
       # late workers, bank what this box authored, collect the logs.
-      - uses: gilescope/rebuck/rebuck2/actions/driver-finish@ee1e7160d08d3f8a27a055674a96a73933dd019d
+      - uses: gilescope/rebuck/rebuck2/actions/driver-finish@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
         if: always()
       # The driver box owns no range: everything new it holds spills,
       # and range owners absorb it on a later lap's restore.
@@ -405,7 +405,7 @@ jobs:
       # Same two lines as every other worker. DEV_DRIVE is picked up by
       # the action's own path resolution - the caller never says where
       # the store goes.
-      - uses: gilescope/rebuck/rebuck2/actions/worker@ee1e7160d08d3f8a27a055674a96a73933dd019d
+      - uses: gilescope/rebuck/rebuck2/actions/worker@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
         with:
           session: hetero-${{ github.run_id }}
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -451,7 +451,7 @@ jobs:
 
       # A worker job is fleet POSITION and nothing else - no build config,
       # no store paths, no bank plumbing. The action is the rest of it.
-      - uses: gilescope/rebuck/rebuck2/actions/worker@ee1e7160d08d3f8a27a055674a96a73933dd019d
+      - uses: gilescope/rebuck/rebuck2/actions/worker@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
         with:
           session: hetero-${{ github.run_id }}
           role: ${{ runner.os }}-w${{ matrix.n }}
@@ -499,7 +499,7 @@ jobs:
 
       # A worker job is fleet POSITION and nothing else - no build config,
       # no store paths, no bank plumbing. The action is the rest of it.
-      - uses: gilescope/rebuck/rebuck2/actions/worker@ee1e7160d08d3f8a27a055674a96a73933dd019d
+      - uses: gilescope/rebuck/rebuck2/actions/worker@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
         with:
           session: hetero-${{ github.run_id }}
           role: ${{ runner.os }}-w${{ matrix.n }}
