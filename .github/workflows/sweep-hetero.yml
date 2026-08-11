@@ -183,7 +183,42 @@ jobs:
           # only valid within one fork-rev + graph shape.
           dice-seed: ${{ steps.forkbin.outputs.rev }}-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}
           dice-dir: dice-snap/sweep
-          execution-platforms: root//platforms:re-exec
+          # THIS repo's root cell is named `fixups`, not `root` (.buckconfig
+          # [cells]). rebuck's README example says root// because ITS root cell
+          # is root; here that label names a cell buck2 has never heard of, so
+          # the platform never resolves and every action falls back to the
+          # local-only default - buck2 connects to the driver and asks nothing.
+          # `hetero-all` is what all three legs want (single daemon, routing by
+          # exec-compatibility), so the file value is the only one needed.
+          execution-platforms: fixups//platforms:hetero-all
+
+      # Preflight: prove the exec platform RESOLVES before spending four
+      # hours discovering it did not. Run 31299045921 burned a full lap on
+      # a label naming a cell that does not exist here - buck2 opened 85
+      # connections to the driver and issued zero requests, which reads
+      # identically to a healthy idle driver in every counter we have.
+      # Throwaway isolation dir: the legs' daemon inherits env from its
+      # FIRST client, and that must be a leg (BUCK2_DICE_* persistence).
+      - name: Preflight - the exec platform resolves
+        run: |
+          set -euo pipefail
+          echo "--- .buckconfig.local as written ---"
+          cat .buckconfig.local
+          plat=$(buck2 --isolation-dir preflight audit config \
+                   --style json build.execution_platforms 2>/dev/null \
+                 | jq -r '.["build.execution_platforms"] // ""')
+          echo "buck2 resolved execution_platforms = ${plat:-<EMPTY>}"
+          if [ -z "$plat" ]; then
+            echo "::error::execution_platforms is empty - buck2 is not reading" \
+                 ".buckconfig.local (check buck-root / the legs' cwd)."
+            exit 1
+          fi
+          if ! buck2 --isolation-dir preflight targets "$plat" > /dev/null; then
+            echo "::error::execution_platforms='$plat' does not resolve." \
+                 "This repo's root cell is 'fixups' (see .buckconfig [cells])."
+            exit 1
+          fi
+          buck2 --isolation-dir preflight kill || true
 
       - name: Reclaim runner ballast in the background
         run: |
