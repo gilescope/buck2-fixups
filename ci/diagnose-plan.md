@@ -1,10 +1,60 @@
 # Diagnosing the zero-dispatch sweep
 
-Status: **FOUND — candidate 1, in the label rather than the file path.** Fixed
-in `sweep-hetero.yml`; a preflight now catches the whole class in seconds. The
-narrowing below is kept because it is what made the answer cheap to reach.
+Status: **the label was a real bug and NOT the cause.** Fixed, and the failure
+moved rather than cleared — which is itself the most useful thing this file
+records. Read "Lap 2" first; everything under "The answer" was true and
+insufficient.
 
-## The answer
+## Lap 2 — run 31462535308, and where the bug actually lives
+
+The preflight went green (the label resolves), and the sweep failed the same
+way. That is progress, not a wash: the failure mode changed.
+
+| | lap 1 (31357870177) | lap 2 (31462535308) |
+| ---------------- | ------------------- | ------------------- |
+| exec platform | never resolved | resolves, preflight green |
+| actions offered to RE | none | **7,999** |
+| where they got to | n/a | ALL stuck in `[re_action_cache]` |
+| pending count over 4h | n/a | flat at 7998 from minute ~2 |
+| driver | `conns=85`, zero requests | `conns=82`, zero requests |
+| driver counters | `ac_ok=0 ac_fail=0` | `ac_ok=0 ac_fail=0`, `grpc[ac 0/0/0u]` |
+
+So buck2 now DOES route every action to remote execution, opens 82 connections
+to the driver, blocks on the ActionCache query — and the driver parses no
+request at all. **Connection established, request never arrives.** That is a
+gRPC-layer interop problem between buck2's RE client and rebuck2's REAPI
+server, and it is in **rebuck2**, not this repo. The original claim at the top
+of this file — "both candidates in THIS repo, neither in rebuck2" — is
+falsified, and was falsified by the fix that made the question askable.
+
+The driver's `round-trip verified` self-check does not cover this: it proves
+the server serves ITS OWN client, not buck2's. Same blind spot that made
+`conns=N` necessary — each diagnostic we add reveals the next thing that reads
+identically to health.
+
+### Next probe
+
+Escalate the preflight from "the label resolves" to "one action ROUND-TRIPS":
+build a single trivial target once the driver is up, and assert the driver's
+counters moved. Two minutes instead of four hours ten, and it retires this
+whole class rather than this instance.
+
+Pair it with per-connection logging at accept AND at first byte read. Today
+"82 accepted, 0 asked" and "82 accepted, 82 mid-handshake" are the same line.
+
+### Two findings that fell out sideways
+
+- **`LEG_MODE: par` is not parallel.** One isolation dir is one daemon, and
+  buck2 serialises commands on it: the linux and mac legs spent the whole lap
+  printing `Waiting for command […] to finish` and never built anything. The
+  "SINGLE DAEMON … three legs concurrently" comment describes an intent buck2
+  does not grant. A 3x makespan bug, invisible until the legs had work to do.
+- **The legs write `leg-*.log` into the watched project root** —
+  `File changed: fixups//leg-win.log` appears in the build's own opening lines.
+  Three events then quiet, so benign today, but the build is invalidating the
+  source tree with its own output. `[project] ignore` does not list them.
+
+## The answer to lap 1 (necessary, not sufficient)
 
 `.buckconfig.local` said `execution_platforms = root//platforms:re-exec`.
 **There is no `root` cell in this repo.** `.buckconfig` names the root cell
