@@ -1,0 +1,37 @@
+# Local rebuck2 sweep: driver + 2 memory-capped workers, real iroh mesh.
+#   docker compose -f compose/docker-compose.yml up --build --abort-on-container-exit
+# PATTERN scopes the build (default: one small crate to prove plumbing);
+# the full linux base leg is PATTERN="//third-party: //third-party/conflict-rigs/...".
+# Worker mem_limits rehearse the runner OOM -> requeue story locally.
+services:
+  driver:
+    build: .
+    command: bash compose/driver.sh
+    working_dir: /work
+    volumes:
+      - ..:/work
+    environment:
+      SESSION: ${SESSION:-rebuck2-compose}
+      PATTERN: ${PATTERN:-//third-party:anyhow}
+    mem_limit: 4g
+    depends_on: [worker1, worker2]
+
+  worker1:
+    build: .
+    command: bash compose/worker.sh
+    working_dir: /work
+    volumes:
+      - ..:/work
+    environment:
+      SESSION: ${SESSION:-rebuck2-compose}
+    mem_limit: 6g
+
+  worker2:
+    build: .
+    command: bash compose/worker.sh
+    working_dir: /work
+    volumes:
+      - ..:/work
+    environment:
+      SESSION: ${SESSION:-rebuck2-compose}
+    mem_limit: 6g

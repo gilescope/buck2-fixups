@@ -1,0 +1,387 @@
+# macOS (arm64) crate sweep on rebuck2 — the reproducible twin of sweep-re.
+# GH macos runners are arm64 like the dev machines, so any failure here is a
+# local `buck2 build` away. Public-repo macOS concurrency caps at 5 jobs:
+# 1 driver + 4 workers.
+name: sweep-re-mac
+# mac fork-mode maiden: dice ladder live (fork binary cached).
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths:
+      - .github/workflows/sweep-re-mac.yml
+      - ci/expected-failures-Darwin-arm64.txt
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sweep-re-mac
+  cancel-in-progress: false
+
+env:
+  BUCK2_VERSION: 2026-06-01
+  REBUCK2_GIT: https://github.com/gilescope/rebuck
+  REBUCK2_BRANCH: giles-iroh-re-punch
+  # Start dispatching at 2 joiners (of 5: 4 fleet + co-worker, the macOS
+  # public-repo job cap): the pull-queue holds, late joiners drain it, and
+  # the latch means a shrinking pool never re-blocks.
+  QUORUM_WORKERS: "2"
+
+jobs:
+  driver:
+    name: driver
+    runs-on: macos-15
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      # Pinned rustc: PATH-resolved toolchains are not part of action digests.
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
+      - name: Install buck2
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-aarch64-apple-darwin.zst" | zstd -d > "$HOME/bin/buck2"
+          chmod +x "$HOME/bin/buck2"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/buck2" --version
+
+      # DICE persistence ladder, mac edition. Fork binaries are release
+      # assets on gilescope/buck2 (eviction-proof); fetch failure = plain sweep.
+      - name: Fetch fork buck2 (dice persistence)
+        id: forkbin
+        run: |
+          REL="https://github.com/gilescope/buck2/releases/download/dice-persistence"
+          REV=$(curl -fsSL "$REL/manifest.txt" 2>/dev/null | head -1 || true)
+          if [ -z "$REV" ]; then echo "no fork release manifest — release-mode sweep"; exit 0; fi
+          mkdir -p fork-bin
+          if curl -fsSL "$REL/buck2-mac-$REV.zst" | zstd -d > fork-bin/buck2; then
+            chmod +x fork-bin/buck2
+            echo "$REV" > fork-bin/REV
+            echo "rev=$REV" >> "$GITHUB_OUTPUT"
+            echo "fork binary $REV fetched"
+          else
+            echo "asset fetch failed — release-mode sweep"
+            rm -rf fork-bin
+          fi
+
+      - name: Restore dice snapshot
+        if: steps.forkbin.outputs.rev != ''
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: dice-snap
+          key: dice-snap-mac-never-matches
+          restore-keys: dice-snap-mac-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-
+
+      - name: Enable dice persistence
+        if: steps.forkbin.outputs.rev != ''
+        run: |
+          cp fork-bin/buck2 "$HOME/bin/buck2"
+          chmod +x "$HOME/bin/buck2"
+          "$HOME/bin/buck2" --version
+          echo "fork rev: $(cat fork-bin/REV 2>/dev/null || echo unknown)"
+          mkdir -p dice-snap
+          {
+            echo "BUCK2_DICE_DB_PATH=$GITHUB_WORKSPACE/dice-snap/db"
+            echo "BUCK2_DICE_SNAPSHOT_PATH=$GITHUB_WORKSPACE/dice-snap/graph.meta"
+            echo "BUCK2_DICE_SNAPSHOT_SEED=$(cat fork-bin/REV 2>/dev/null)-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}"
+          } >> "$GITHUB_ENV"
+          # Binary and prelude must be version-matched (fork prelude, not
+          # the vendored release one).
+          REV=$(cat fork-bin/REV)
+          git init --quiet "$RUNNER_TEMP/fork-src"
+          git -C "$RUNNER_TEMP/fork-src" remote add origin https://github.com/gilescope/buck2
+          git -C "$RUNNER_TEMP/fork-src" fetch --quiet --depth 1 --filter=blob:none origin "$REV"
+          git -C "$RUNNER_TEMP/fork-src" sparse-checkout set prelude
+          git -C "$RUNNER_TEMP/fork-src" checkout --quiet FETCH_HEAD
+          rm -rf prelude
+          cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
+          if ! "$HOME/bin/buck2" targets fixups//third-party: > /dev/null 2> probe.err; then
+            echo "preflight FAILED - fork binary cannot parse the repo:"
+            tail -12 probe.err
+            exit 1
+          fi
+          echo "preflight OK"
+          # RE addresses bake at daemon startup; recycle the preflight daemon.
+          "$HOME/bin/buck2" kill > /dev/null 2>&1 || true
+
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache rebuck2 binary (keyed by rebuck commit)
+        id: rebuck2bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/rebuck2
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      - name: Restore store snapshot
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot
+          key: rebuck2-store-mac-${{ github.run_id }}
+          restore-keys: rebuck2-store-mac-
+
+      - name: Seed the store from the snapshot
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          mkdir -p "$STORE/driver"
+          for t in snapshot/bulk.tar.zst snapshot/tail.tar.zst; do
+            if [ -f "$t" ]; then
+              zstd -d --long=27 < "$t" | tar -x -C "$STORE/driver"
+              echo "seeded from $t ($(du -h "$t" | cut -f1))"
+            fi
+          done
+          rm -rf snapshot; mkdir -p snapshot
+          # Record what we seeded: unchanged store at run end = skip the save.
+          ./ci/store-snapshot.sh manifest "$STORE/driver" > seeded.manifest
+          echo "seeded manifest: $(cat seeded.manifest)"
+
+      - name: Start driver (remote exec only, quorum barrier)
+        run: |
+          STORE="$HOME/.cache/rebuck2"
+          rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures \
+            --session "mac-$GITHUB_RUN_ID" \
+            --addr-file driver-addr.json \
+            --store "$STORE/driver" > driver.log 2>&1 &
+          echo $! > driver.pid
+          # The driver is network-bound; lend half its cores to the pool.
+          rebuck2 worker --session "mac-$GITHUB_RUN_ID" --slots $(($(sysctl -n hw.ncpu) / 2)) \
+            --store "$STORE/co-worker" > co-worker.log 2>&1 &
+
+      - name: Wait for driver addr
+        run: |
+          for _ in $(seq 1 60); do [ -s driver-addr.json ] && exit 0; sleep 2; done
+          echo "driver never wrote its addr"; cat driver.log; exit 1
+
+      # Workers fetch this and dial the relay directly - no n0 discovery
+      # dependency (hetero lost two runs to a regional discovery outage).
+      - name: Publish driver addr
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: driver-addr
+          path: driver-addr.json
+
+      - name: Wait for worker quorum
+        run: |
+          # 45min: a rebuck2 rev bump makes every worker cold-compile the
+          # binary before it can join.
+          for _ in $(seq 1 540); do
+            joined=$(grep -c " joined: " driver.log || true)
+            [ "$joined" -ge "$QUORUM_WORKERS" ] && { grep " joined: " driver.log; exit 0; }
+            kill -0 "$(cat driver.pid)" || { cat driver.log; echo "driver died"; exit 1; }
+            sleep 5
+          done
+          cat driver.log; echo "quorum never formed"; exit 1
+
+      - name: Point buck2 at rebuck2
+        run: |
+          cat > .buckconfig.local <<'EOF'
+          [build]
+          execution_platforms = fixups//platforms:re-exec
+
+          [buck2_re_client]
+          action_cache_address = grpc://127.0.0.1:9092
+          cas_address = grpc://127.0.0.1:9092
+          engine_address = grpc://127.0.0.1:9092
+          tls = false
+          EOF
+
+      - name: Build the tree
+        env:
+          SKIP_EXPECTED: "1"
+        run: |
+          # Bulk-tar the store as the queue drains; delta after the build.
+          (
+            while true; do
+              sleep 60
+              pending=$(grep -o "pending_jobs=[0-9]*" driver.log | tail -1 | cut -d= -f2)
+              [ -n "$pending" ] || continue
+              total=$(grep -c -- "-> worker " driver.log || true)
+              if [ "$total" -gt 1000 ] && [ "$pending" -lt 300 ]; then
+                echo "[snapshot] queue draining (pending=$pending) — bulk tar starts"
+                touch snapshot/.bulk-marker
+                STORE="$HOME/.cache/rebuck2"
+                tar -c -C "$STORE/driver" ac cas | zstd -T0 --long=27 -8 > snapshot/bulk.tar.zst
+                echo "[snapshot] bulk done: $(du -h snapshot/bulk.tar.zst | cut -f1)"
+                break
+              fi
+            done
+          ) &
+          echo $! > snapshotter.pid
+          ./build-all.sh //third-party: //third-party/conflict-rigs/...
+
+      - name: Save dice snapshot (page-out doubles as the save point)
+        if: always() && steps.forkbin.outputs.rev != ''
+        run: |
+          buck2 debug hydration page-out || echo "page-out failed (non-fatal)"
+          ls -lh dice-snap/ || true
+
+      - name: Finish snapshot (delta since the bulk tar)
+        id: finishsnap
+        if: always()
+        run: |
+          kill "$(cat snapshotter.pid)" 2>/dev/null || true
+          STORE="$HOME/.cache/rebuck2"
+          if ./ci/store-snapshot.sh unchanged "$STORE/driver" seeded.manifest; then
+            echo "[snapshot] store unchanged since seed — skipping tar + upload"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            rm -rf snapshot
+            exit 0
+          fi
+          cd "$STORE/driver"
+          MARKER="$GITHUB_WORKSPACE/snapshot/.bulk-marker"
+          if [ -f "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst" ]; then
+            find ac cas -type f -newer "$MARKER" | tar -c -T - | zstd -3 \
+              > "$GITHUB_WORKSPACE/snapshot/tail.tar.zst" || true
+          else
+            echo "[snapshot] bulk never triggered — full tar now"
+            tar -c ac cas | zstd -T0 --long=27 -8 > "$GITHUB_WORKSPACE/snapshot/bulk.tar.zst"
+          fi
+          rm -f "$MARKER"
+          ls -lh "$GITHUB_WORKSPACE/snapshot/"
+
+      - name: Save store snapshot
+        if: always() && steps.finishsnap.outputs.skip != '1'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot
+          key: rebuck2-store-mac-${{ github.run_id }}
+
+      - name: Save dice snapshot cache
+        if: always() && steps.forkbin.outputs.rev != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: dice-snap
+          key: dice-snap-mac-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-${{ github.run_id }}
+
+      - name: Dispatch stats
+        if: always()
+        run: |
+          echo "jobs dispatched: $(grep -c -- '-> worker ' driver.log || true)"
+          grep -o -- '-> worker [0-9]*' driver.log | sort | uniq -c || true
+          grep "requeueing" driver.log || true
+          tail -5 driver.log
+
+      - name: Collect buck2 event log (client-side download attribution)
+        if: always()
+        run: |
+          mkdir -p evtlog
+          EL=$(buck2 log path 2>/dev/null | tail -1 || true)
+          if [ -n "$EL" ] && [ -f "$EL" ]; then cp "$EL" evtlog/; ls -lh evtlog/; else echo "no event log found"; fi
+
+      - name: Upload driver log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: driver-log-mac
+          path: |
+            driver.log
+            evtlog/
+
+      - name: Stop driver
+        if: always()
+        run: kill "$(cat driver.pid)" 2>/dev/null || true
+
+    # A lost worker must not redden the run - the driver job is the
+    # verdict, and the mesh tolerates stragglers.
+  worker:
+    name: worker ${{ matrix.n }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        n: [1, 2, 3, 4]
+    runs-on: macos-15
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache rebuck2 binary (keyed by rebuck commit)
+        id: rebuck2bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/rebuck2
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 240); do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+                 --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
+               && [ -s aid.txt ]; then
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(cat aid.txt)/zip" > addr.zip 2>/dev/null \
+                && unzip -o addr.zip > /dev/null && [ -s driver-addr.json ] && break
+            fi
+            sleep 10
+          done
+          ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
+
+      - name: Serve until the driver disconnects
+        run: |
+          ADDR_FLAG=()
+          [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
+          STORE="$HOME/.cache/rebuck2"
+          # macos runners ship without GNU coreutils: no timeout/gtimeout.
+          # The job-level timeout-minutes guards the bare fallback.
+          if command -v timeout >/dev/null 2>&1; then T=(timeout 20400)
+          elif command -v gtimeout >/dev/null 2>&1; then T=(gtimeout 20400)
+          else T=(); fi
+          "${T[@]}" rebuck2 worker \
+            --session "mac-$GITHUB_RUN_ID" \
+            "${ADDR_FLAG[@]}" \
+            --connect-wait-secs 1800 \
+            --store "$STORE/worker" | tee worker.log

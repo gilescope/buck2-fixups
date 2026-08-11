@@ -1,0 +1,50 @@
+# Why does exec-platform resolution fail for cross legs on WINDOWS hosts
+# only? Prints buck2's per-candidate skip reasons for the failing target.
+name: debug-hetero
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths: [.github/workflows/debug-hetero.yml]
+
+permissions:
+  contents: read
+
+env:
+  BUCK2_VERSION: 2026-06-01
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+      - name: Install buck2
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Resolution probe (linux leg on windows host)
+        run: |
+          T="fixups//third-party/conflict-rigs/sqlx:tracing"
+          echo "== audit execution-platform-resolution"
+          buck2 audit execution-platform-resolution "$T" \
+            --target-platforms fixups//platforms:t-linux \
+            -c build.execution_platforms=fixups//platforms:re-exec-linux 2>&1 | tail -40 || true
+          echo "== audit providers (the original failure)"
+          buck2 audit providers "$T" \
+            --target-platforms fixups//platforms:t-linux \
+            -c build.execution_platforms=fixups//platforms:re-exec-linux 2>&1 | tail -25 || true
+          echo "== control: same probe for the win leg"
+          buck2 audit providers "$T" \
+            --target-platforms fixups//platforms:t-win \
+            -c build.execution_platforms=fixups//platforms:re-exec-win 2>&1 | tail -8 || true

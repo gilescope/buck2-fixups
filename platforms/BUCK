@@ -1,0 +1,176 @@
+load("@prelude//platforms:defs.bzl", "host_configuration")
+load(":defs.bzl", "re_execution_platform", "re_execution_platforms")
+
+# OS-generic limited-hybrid RE platform (linux/mac sweeps, compose rig).
+# Requires the pinned buck2 (host_configuration uses newer prelude API).
+re_execution_platform(
+    name = "re-exec",
+    cpu_configuration = host_configuration.cpu,
+    local_enabled = True,
+    os_configuration = host_configuration.os,
+    use_limited_hybrid = True,
+    visibility = ["PUBLIC"],
+)
+
+# Selected by writing `[build] execution_platforms = fixups//platforms:re-exec-win`
+# into .buckconfig.local (sweep-re.yml does this). Default builds are untouched.
+# Constraints hardcoded (not host_configuration) — this platform only exists
+# for the x86_64 windows sweep runners.
+# Limited hybrid: compiles go remote; only local_only actions (the prelude's
+# msvc/vswhere discovery) run beside buck2 — negligible memory on the driver.
+re_execution_platform(
+    name = "re-exec-win",
+    cpu_configuration = "prelude//cpu:x86_64",
+    local_enabled = True,
+    os_configuration = "prelude//os:windows",
+    remote_execution_properties = {
+        "Arch": "x86_64",
+        "OSFamily": "windows",
+    },
+    use_limited_hybrid = True,
+    use_windows_path_separators = True,
+    visibility = ["PUBLIC"],
+)
+
+# Hetero v2: pure-remote windows leg (vswhere discovery is remote-routable
+# now - prelude/toolchains/msvc/tools.bzl - so nothing needs a windows
+# host beside the daemon and the driver can be linux).
+re_execution_platform(
+    name = "re-exec-win-remote",
+    cpu_configuration = "prelude//cpu:x86_64",
+    local_enabled = False,
+    os_configuration = "prelude//os:windows",
+    remote_execution_properties = {
+        "Arch": "x86_64",
+        "OSFamily": "windows",
+    },
+    use_windows_path_separators = True,
+    visibility = ["PUBLIC"],
+)
+
+# ── Heterogeneous sweep (one driver, mixed-OS fleet) ─────────────────────
+# One exec platform per worker OS; rebuck2 routes each action to a worker
+# whose Hello matches these properties. The driver box runs one buck2
+# invocation per leg (separate isolation dirs) against the same store.
+# Cross legs are pure-remote: "local" on the driver box is the WRONG OS, and
+# limited-hybrid happily runs small actions (build-script compiles) locally -
+# windows rustc has no linux/mac std. Genuinely local_only actions on these
+# legs fail loudly and become baseline entries instead of silent misbuilds.
+re_execution_platform(
+    name = "re-exec-linux",
+    cpu_configuration = "prelude//cpu:x86_64",
+    local_enabled = False,
+    os_configuration = "prelude//os:linux",
+    remote_execution_properties = {
+        "Arch": "x86_64",
+        "OSFamily": "linux",
+    },
+    visibility = ["PUBLIC"],
+)
+
+re_execution_platform(
+    name = "re-exec-mac",
+    cpu_configuration = "prelude//cpu:arm64",
+    local_enabled = False,
+    os_configuration = "prelude//os:macos",
+    remote_execution_properties = {
+        "Arch": "aarch64",
+        "OSFamily": "macos",
+    },
+    visibility = ["PUBLIC"],
+)
+
+# Target platforms for cross-leg builds (--target-platforms ...).
+platform(
+    name = "t-win",
+    constraint_values = [
+        "prelude//os/constraints:windows",
+        "prelude//cpu/constraints:x86_64",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+platform(
+    name = "t-linux",
+    constraint_values = [
+        "prelude//os/constraints:linux",
+        "prelude//cpu/constraints:x86_64",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+platform(
+    name = "t-mac",
+    constraint_values = [
+        "prelude//os/constraints:macos",
+        "prelude//cpu/constraints:arm64",
+    ],
+    visibility = ["PUBLIC"],
+)
+
+# ── Cross-leg archive unpack dedupe ──────────────────────────────────────
+# Marker constraint injected into the canonical archive-unpack configuration
+# via `buck2.archive_unpack_constraints` (see prelude//http_archive:cfg.bzl).
+# The hetero sweep sets that buckconfig; single-platform runs leave it unset
+# and the transition is a no-op.
+constraint_setting(
+    name = "unpack-exec",
+    visibility = ["PUBLIC"],
+)
+
+constraint_value(
+    name = "unpack-exec-linux",
+    constraint_setting = ":unpack-exec",
+    visibility = ["PUBLIC"],
+)
+
+# Exec platform for deduped unpacks: linux x86_64 workers (the hetero fleet
+# always has them; tar handles every crates.io archive there).
+re_execution_platform(
+    name = "re-exec-unpack",
+    cpu_configuration = "prelude//cpu:x86_64",
+    extra_constraints = [":unpack-exec-linux"],
+    local_enabled = False,
+    os_configuration = "prelude//os:linux",
+    remote_execution_properties = {
+        "Arch": "x86_64",
+        "OSFamily": "linux",
+    },
+    visibility = ["PUBLIC"],
+)
+
+# Per-leg registrations for the hetero sweep: leg platform first (default
+# for everything unconstrained), shared unpack platform second (reachable
+# only through the archive-unpack exec pin).
+re_execution_platforms(
+    name = "hetero-win",
+    platforms = [":re-exec-win-remote", ":re-exec-unpack"],
+    visibility = ["PUBLIC"],
+)
+
+re_execution_platforms(
+    name = "hetero-linux",
+    platforms = [":re-exec-linux", ":re-exec-unpack"],
+    visibility = ["PUBLIC"],
+)
+
+re_execution_platforms(
+    name = "hetero-mac",
+    platforms = [":re-exec-mac", ":re-exec-unpack"],
+    visibility = ["PUBLIC"],
+)
+
+# ── Single-daemon experiment: one registration for all legs ─────────────
+# Routing must come from per-target exec-compatibility (toolchains, unpack
+# pin), NOT registration order: order only breaks ties among compatible
+# platforms.
+re_execution_platforms(
+    name = "hetero-all",
+    platforms = [
+        ":re-exec-win-remote",
+        ":re-exec-linux",
+        ":re-exec-mac",
+        ":re-exec-unpack",
+    ],
+    visibility = ["PUBLIC"],
+)

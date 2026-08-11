@@ -1,0 +1,549 @@
+# Stabilize lap: primary-only finalize + 180s (reverted redundant/dup-artifact mess). All 8 shards present; aiming for a clean 8/8 bank.
+# Heterogeneous sweep: ONE rebuck2 driver + a mixed win/linux/mac fleet.
+# WARM READER on the first clean-era pool (banked by 29089941213,
+# 68m52s: quorum 50s / legs 64m33s / finalize 2m05s).
+# Lap N+1: parallel verify-cas (the 31-min windows sequential hash was
+# the join race behind BOTH the 23k-unservable class and the 31-min
+# win-leg stall) + engine 835401b-era (memo + sync-24).
+# Scope: full //third-party: (2,185 crates) + conflict rigs + snapshot
+# rigs re-entering one per lap (2024-11 in; 2025-05/2025-11/2026-05
+# pending). ~53-73% of each rig's crate versions are content-identical
+# with base, so the CAS serves their sources; compiles are per-rig work.
+# The driver box runs three concurrent buck2 invocations (one per target OS,
+# separate isolation dirs) against the same localhost driver; rebuck2 routes
+# each action to a worker whose OS/arch matches the exec platform's REAPI
+# properties. One store, one action cache, one mesh.
+#
+# v1 caveat: local_only toolchain discovery (vswhere-class) runs beside the
+# driver, so it is native only for the windows leg - the driver is windows.
+# linux/mac cxx-discovery failures land in those legs' expected lists.
+# Snapshot rigs stay excluded (base + conflict rigs only).
+# roadmap #9: fleet-sharded snapshots — workers restore + save CAS shards;
+# the driver owns only the AC and dice. Finalize handoff post-build.
+# take 4: cross legs pure-remote - hybrid ran linux compiles on the win box.
+# goal run: healing 3 - full engine (validated AC, read-through, affinity,
+# parallel probes, canonical materialization). Heals writer5 seeds then the
+# next run is the measured reader.
+# - unservable results re-execute and self-heal the artifact-hosted shards.
+# size_bytes deferral, AC-only driver seed. The reader after this one is the
+# measured hetero time.
+name: sweep-hetero
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths:
+      - .github/workflows/sweep-hetero.yml
+  # Opt-in per PR: `branches` filters the BASE, so the SOURCE-branch
+  # prefix gate lives in each job's `if` (SWEEP_PR_PREFIX below).
+  # Name a branch sweep-<something> and its PR gets a full fleet lap,
+  # inheriting the base branch's bank; every other PR skips all jobs.
+  pull_request:
+    branches: [main, giles-rebuck2-sweep]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sweep-hetero
+  cancel-in-progress: false
+
+env:
+  BUCK2_VERSION: 2026-06-01
+  USE_DEV_DRIVE: "1"
+  REBUCK2_GIT: https://github.com/gilescope/rebuck
+  REBUCK2_BRANCH: giles-iroh-re-punch
+  TOTAL_WORKERS: "11"
+  # Quorum: discovery flakes strand individual workers; 8 of 11 lets the
+  # sweep proceed (late joiners still connect - 30min window) while a whole
+  # missing platform still stalls only its own leg's queue.
+  QUORUM_WORKERS: "8"
+  # CAS bank (ci/cas-bank-design.md): lineage = the branch. Artifact
+  # names embed it, and restore's provenance check requires the
+  # publishing run's head_branch to equal it. On a pull_request that is
+  # the SOURCE branch (github.ref_name would be "<n>/merge").
+  CAS_LINEAGE: ${{ github.head_ref || github.ref_name }}
+  # The trunk this lineage inherits from, read-only: its bank seeds the
+  # store and joins the diff base, so a branch's first lap is warm and
+  # banks only its own new content - under its own manifest. Empty on
+  # the trunk itself. Write isolation is what makes this safe to read:
+  # a PR never publishes into the parent's names, so on merge the trunk
+  # re-derives everything under its own trust.
+  CAS_PARENT_LINEAGE: ${{ github.base_ref != '' && github.base_ref || (github.ref_name != 'main' && 'main' || '') }}
+  SEG_MAX_MB: "64"
+  # par: all three legs concurrently (~longest-leg wall time). seq -
+  # one leg at a time with a daemon page-out+restart between legs -
+  # bounds peak memory to one leg and is the right setting for a COLD
+  # fleet (three cold parallel legs put the daemon at 10GiB and the
+  # 16GB box died by thrash, run 29499874526). Warm laps are cache
+  # replay and fit easily; the watchdog/choom/swap net catches a
+  # surprise cold lap by checkpointing it (banks, next lap continues).
+  LEG_MODE: "par"
+
+jobs:
+  driver:
+    name: driver
+    # SWEEP_PR_PREFIX gate: PRs sweep only from a sweep-* branch.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sweep-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: write # dice-snap pruning (cache DELETE)
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
+      # The baseline buck2, and the only thing that puts $HOME/bin on PATH.
+      # The fork binary below OVERLAYS this one; it is not a replacement -
+      # the fork fetch is conditional, so without this a release-mode sweep
+      # has no buck2 at all and every leg exits 127.
+      - name: Install buck2
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-unknown-linux-musl.zst" | zstd -d > "$HOME/bin/buck2"
+          chmod +x "$HOME/bin/buck2"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/buck2" --version
+
+      - name: Fetch fork buck2 (dice persistence)
+        id: forkbin
+        run: |
+          REL="https://github.com/gilescope/buck2/releases/download/dice-persistence"
+          REV=$(curl -fsSL "$REL/manifest.txt" 2>/dev/null | head -1 || true)
+          if [ -z "$REV" ]; then echo "no fork release manifest — release-mode sweep"; exit 0; fi
+          mkdir -p fork-bin
+          if curl -fsSL "$REL/buck2-linux-$REV.zst" | zstd -d > fork-bin/buck2; then
+            chmod +x fork-bin/buck2
+            echo "$REV" > fork-bin/REV
+            echo "rev=$REV" >> "$GITHUB_OUTPUT"
+            echo "fork binary $REV fetched"
+          else
+            echo "asset fetch failed — release-mode sweep"
+            rm -rf fork-bin
+          fi
+      - name: Enable dice persistence (fork binary + matched prelude)
+        if: steps.forkbin.outputs.rev != ''
+        run: |
+          # $HOME/bin exists and is on PATH because of "Install buck2" above;
+          # this step only swaps the binary underneath it.
+          cp fork-bin/buck2 "$HOME/bin/buck2"
+          chmod +x "$HOME/bin/buck2"
+          "$HOME/bin/buck2" --version
+          echo "FORK_REV=$(cat fork-bin/REV 2>/dev/null || echo unknown)" >> "$GITHUB_ENV"
+          mkdir -p dice-snap
+          REV=$(cat fork-bin/REV)
+          git init --quiet "$RUNNER_TEMP/fork-src"
+          git -C "$RUNNER_TEMP/fork-src" remote add origin https://github.com/gilescope/buck2
+          git -C "$RUNNER_TEMP/fork-src" fetch --quiet --depth 1 --filter=blob:none origin "$REV"
+          git -C "$RUNNER_TEMP/fork-src" sparse-checkout set prelude
+          git -C "$RUNNER_TEMP/fork-src" checkout --quiet FETCH_HEAD
+          rm -rf prelude
+          cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
+          # No re-apply: the fork's own prelude now carries the unpack dedupe
+          # and the buildscript exec-bit heal (gilescope/buck2#1, merged to
+          # main and in this release). Applying the patch on top of a prelude
+          # that already has it fails outright - which is the loud failure the
+          # old comment here asked for, just arriving a step earlier.
+      # AC bank (ci/ac-bank-plan.md): every node banks the rows it
+      # AUTHORED into its own role manifest, on 90d artifact retention -
+      # the actions cache evicts after 7 idle days and took the whole
+      # ledger with it (lap 30239636346: 67,822 honest re-executions).
+      # The driver is the only READER, so it lays down the union of
+      # every role in (run, role) order, its own rows last. Additive
+      # during lap A: the cache snapshot below still seeds on top.
+      # The driver is the only node that READS the AC, so it lays down
+      # every role's rows - and the parent lineage's beneath them.
+      # Install, seed the bank, start, publish the address, wait for
+      # quorum, point buck2 at it. What used to be fourteen steps.
+      - uses: gilescope/rebuck/rebuck2/actions/driver@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
+        with:
+          session: hetero-${{ github.run_id }}
+          rebuck2-git: ${{ env.REBUCK2_GIT }}
+          min-workers: ${{ env.QUORUM_WORKERS }}
+          co-worker-slots: half
+          no-local-exec: "true"
+          cache-failures: "true"
+          extra-args: --require-shards 8 --prefetch-metadata --locality
+          # Must equal BUCK2_DICE_SNAPSHOT_SEED below: banked rows are
+          # only valid within one fork-rev + graph shape.
+          dice-seed: ${{ steps.forkbin.outputs.rev }}-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}
+          dice-dir: dice-snap/sweep
+          # THIS repo's root cell is named `fixups`, not `root` (.buckconfig
+          # [cells]). rebuck's README example says root// because ITS root cell
+          # is root; here that label names a cell buck2 has never heard of, so
+          # the platform never resolves and every action falls back to the
+          # local-only default - buck2 connects to the driver and asks nothing.
+          # `hetero-all` is what all three legs want (single daemon, routing by
+          # exec-compatibility), so the file value is the only one needed.
+          execution-platforms: fixups//platforms:hetero-all
+
+      # Preflight: prove the exec platform RESOLVES before spending four
+      # hours discovering it did not. Run 31299045921 burned a full lap on
+      # a label naming a cell that does not exist here - buck2 opened 85
+      # connections to the driver and issued zero requests, which reads
+      # identically to a healthy idle driver in every counter we have.
+      # Throwaway isolation dir: the legs' daemon inherits env from its
+      # FIRST client, and that must be a leg (BUCK2_DICE_* persistence).
+      - name: Preflight - the exec platform resolves
+        run: |
+          set -euo pipefail
+          echo "--- .buckconfig.local as written ---"
+          cat .buckconfig.local
+          plat=$(buck2 --isolation-dir preflight audit config \
+                   --style json build.execution_platforms 2>/dev/null \
+                 | jq -r '.["build.execution_platforms"] // ""')
+          echo "buck2 resolved execution_platforms = ${plat:-<EMPTY>}"
+          if [ -z "$plat" ]; then
+            echo "::error::execution_platforms is empty - buck2 is not reading" \
+                 ".buckconfig.local (check buck-root / the legs' cwd)."
+            exit 1
+          fi
+          if ! buck2 --isolation-dir preflight targets "$plat" > /dev/null; then
+            echo "::error::execution_platforms='$plat' does not resolve." \
+                 "This repo's root cell is 'fixups' (see .buckconfig [cells])."
+            exit 1
+          fi
+          buck2 --isolation-dir preflight kill || true
+
+      - name: Reclaim runner ballast in the background
+        run: |
+          (sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+             /opt/hostedtoolcache/CodeQL /usr/local/.ghcup 2>/dev/null; df -h /) &
+
+      # Frozen analysis heaps are write-once-read-rarely - ideal swap
+      # candidates. 16GB on the /mnt SSD lets earlier legs' cold heaps
+      # spill while the live leg's transients keep the RAM (images ship
+      # only 4GB swap).
+      - name: Add swap on /mnt
+        run: |
+          sudo fallocate -l 16G /mnt/swapfile2
+          sudo chmod 600 /mnt/swapfile2
+          sudo mkswap -q /mnt/swapfile2
+          sudo swapon /mnt/swapfile2
+          sudo sysctl -q vm.swappiness=80
+          swapon --show
+          free -h
+
+      - name: Build all three legs concurrently
+        env:
+          SKIP_EXPECTED: "1"
+        run: |
+          # SINGLE DAEMON: one isolation dir + one exec-platform
+          # registration (hetero-all) for all three legs. Routing comes
+          # from per-target exec-compatibility (toolchain anchors +
+          # archive unpack pin), not per-invocation registration. One
+          # buck-out means the legs share unpack action digests - the
+          # completion of the cross-leg dedupe (the per-leg isolation
+          # prefix split them; run 29200907975).
+          leg() {
+            local name="$1" plat="$2" tplat="$3" explat="$4"
+            local dice=()
+            if [ -n "${FORK_REV:-}" ]; then
+              mkdir -p "dice-snap/sweep"
+              dice=(BUCK2_DICE_DB_PATH="$GITHUB_WORKSPACE/dice-snap/sweep/db"
+                    BUCK2_DICE_SNAPSHOT_PATH="$GITHUB_WORKSPACE/dice-snap/sweep/graph.meta"
+                    BUCK2_DICE_SNAPSHOT_SEED="$FORK_REV-sweep-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**', 'toolchains/**', 'ci/prelude-unpack-dedupe.patch') }}")
+            fi
+            # choom: if the OOM killer fires despite the watchdog, it
+            # must pick the build (daemon inherits the score from its
+            # first client), never the runner agent - a dead agent
+            # skips every remaining step, always() included.
+            env "${dice[@]}" PLATFORM_OVERRIDE="$plat" BUCK2_ISOLATION="sweep" \
+            BUCK2_BUILD_ARGS="--target-platforms fixups//platforms:$tplat -c build.execution_platforms=fixups//platforms:$explat -c buck2.archive_unpack_constraints=fixups//platforms:unpack-exec-linux" \
+              choom -n 900 -- timeout 15000 ./build-all.sh //third-party: //third-party/conflict-rigs/... //third-party/snapshots/2024-11/... \
+              > "leg-$name.log" 2>&1
+            local rc=$?
+            # 124 = the 250-min checkpoint cap; 143 = the memory
+            # watchdog. Either way progress banks in teardown and the
+            # next run continues from it.
+            { [ $rc -eq 124 ] || [ $rc -eq 143 ]; } \
+              && echo "leg $name checkpointed rc=$rc (banks in teardown)"
+            echo "leg $name exited rc=$rc"
+            return $rc
+          }
+          touch leg-win.log leg-linux.log leg-mac.log
+          tail -F leg-win.log leg-linux.log leg-mac.log &
+          TAIL=$!
+          # Memory watchdog: checkpoint BEFORE the VM dies. Kills the
+          # clients then the DAEMON (the daemon holds the RSS and
+          # outlives its clients); the step then exits normally and the
+          # always() teardown banks AC/dice progress. An OOM'd/thrashed
+          # runner skips teardown entirely - the AC stayed pinned at
+          # run 29398083498 for a full day of laps exactly that way.
+          (
+            while sleep 10; do
+              avail=$(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo)
+              # PSI catches swap-thrash that MemAvailable never shows
+              # (run 29499874526 died with "available" memory): full
+              # avg10 > 20 means the box is stalling on memory.
+              psi=$(awk -F'avg10=' '/full/ {print int($2)}' /proc/pressure/memory)
+              if [ "$avail" -lt 2500 ] || [ "${psi:-0}" -gt 20 ]; then
+                echo "[watchdog] MemAvailable=${avail}MB psi_full10=${psi:-0} - checkpointing"
+                pkill -f build-all.sh 2>/dev/null || true
+                sleep 5
+                buck2 --isolation-dir sweep kill 2>/dev/null \
+                  || pkill -f buck2d 2>/dev/null || true
+                break
+              fi
+            done
+          ) &
+          WATCHDOG=$!
+          # Page-out + daemon restart: drops the accumulated analysis
+          # RSS to zero between legs; the next leg reloads the graph
+          # from the dice snapshot (the persistence feature's day job).
+          checkpoint_daemon() {
+            buck2 --isolation-dir sweep debug hydration page-out \
+              2>/dev/null || echo "[seq] page-out failed (non-fatal)"
+            buck2 --isolation-dir sweep kill 2>/dev/null || true
+          }
+          rc=0
+          if [ "$LEG_MODE" = "par" ]; then
+            leg win   Windows-x86_64 t-win   hetero-all & WIN=$!
+            leg linux Linux-x86_64   t-linux hetero-all & LIN=$!
+            leg mac   Darwin-arm64   t-mac   hetero-all   & MAC=$!
+            wait $WIN || { echo "WIN LEG ENDED rc=$?"; rc=1; }
+            wait $LIN || { echo "LINUX LEG ENDED rc=$?"; rc=1; }
+            wait $MAC || { echo "MAC LEG ENDED rc=$?"; rc=1; }
+          else
+            leg win   Windows-x86_64 t-win   hetero-all \
+              || { echo "WIN LEG ENDED rc=$?"; rc=1; }
+            checkpoint_daemon
+            leg linux Linux-x86_64  t-linux hetero-all \
+              || { echo "LINUX LEG ENDED rc=$?"; rc=1; }
+            checkpoint_daemon
+            leg mac   Darwin-arm64  t-mac   hetero-all \
+              || { echo "MAC LEG ENDED rc=$?"; rc=1; }
+          fi
+          kill $WATCHDOG $TAIL 2>/dev/null || true
+          for l in win linux mac; do
+            echo "=== leg $l tail ==="
+            tail -30 "leg-$l.log"
+          done
+          exit $rc
+
+      - name: Save dice snapshots (page-out per leg)
+        if: always() && steps.forkbin.outputs.rev != ''
+        run: |
+          buck2 --isolation-dir sweep debug hydration page-out || echo "page-out failed (non-fatal)"
+          # Split matters for delta-banking dice: the sqlite value
+          # shards dominate; graph.meta is the small byte-stable part.
+          du -sh dice-snap/sweep/* 2>/dev/null || true
+          du -sh dice-snap/* 2>/dev/null || true
+      # Banking no longer rides the mesh: each range owner publishes
+      # its own manifest, self-verified by step order. Stopping the
+      # driver here broadcasts exit to the fleet, so workers start
+      # their own pack steps in parallel with ours.
+      # Stop (so the fleet packs in parallel), mark the lap finished for
+      # late workers, bank what this box authored, collect the logs.
+      - uses: gilescope/rebuck/rebuck2/actions/driver-finish@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
+        if: always()
+      # The driver box owns no range: everything new it holds spills,
+      # and range owners absorb it on a later lap's restore.
+      # The driver box owns no CAS range: everything new it holds spills,
+      # and range owners absorb it on a later restore. Its AC rows are
+      # its own - it authored the canonical ones.
+      - name: Collect buck2 event logs (per leg, download attribution)
+        if: always()
+        run: |
+          mkdir -p evtlog
+          # `log path` returns the LAST command - the dice page-out step
+          # runs between build and collection, so that grabbed 2KB
+          # hydration logs instead of the builds (healing5). Copy every
+          # invocation's log from the isolation dir instead.
+          # Single daemon: every leg's invocations share one isolation dir.
+          EL=$(buck2 --isolation-dir sweep log path 2>/dev/null | tail -1 || true)
+          if [ -n "$EL" ] && [ -d "$(dirname "$EL")" ]; then
+            for f in "$(dirname "$EL")"/*.pb.zst; do
+              [ -f "$f" ] && cp "$f" "evtlog/sweep-$(basename "$f")"
+            done
+          else
+            echo "no event logs"
+          fi
+          ls -lh evtlog/ || true
+
+
+      # driver-finish ships the driver + co-worker logs; the leg logs and
+      # buck2 event logs are this consumer's own.
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hetero-build-logs
+          path: |
+            leg-*.log
+            evtlog/
+          if-no-files-found: ignore
+  worker-win:
+    name: win worker ${{ matrix.n }}
+    # SWEEP_PR_PREFIX gate: PRs sweep only from a sweep-* branch.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sweep-')
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        # owns: the range this worker is PRIMARY manifest writer for
+        # ('-' = secondary/read-only: serves the range, spills its new
+        # blobs for the primary to absorb - one writer per manifest).
+        include:
+          - {n: 1, shard: 0, owns: 0}
+          - {n: 2, shard: 1, owns: 1}
+          - {n: 3, shard: 2, owns: 2}
+          - {n: 4, shard: 3, owns: 3}
+    runs-on: windows-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      # The engine's cache-miss path is `cargo install`, so a toolchain
+      # must be on PATH. A cache hit skips it entirely.
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: stable
+
+      - name: Mount ReFS Dev Drive
+        if: env.USE_DEV_DRIVE == '1'
+        uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
+        with:
+          drive-size: 24GB
+          drive-format: ReFS
+      # Roadmap #9 v2: preload this worker's prefix range from the CAS
+      # bank (ci/cas-bank-design.md); bloom gossip announces it, the
+      # driver's HasMany verifies it. Exit 3 = cold bank -> bootstrap
+      # from the legacy monolithic shard artifact below.
+      # One `uses:` for the whole warm path: CAS range, AC rows this role
+      # authored, parent-lineage inheritance, and the hash verification of
+      # everything that crossed the artifact wall. Store paths resolve
+      # inside the action, per OS - no cygpath here.
+
+      # Same two lines as every other worker. DEV_DRIVE is picked up by
+      # the action's own path resolution - the caller never says where
+      # the store goes.
+      - uses: gilescope/rebuck/rebuck2/actions/worker@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
+        with:
+          session: hetero-${{ github.run_id }}
+          role: ${{ runner.os }}-w${{ matrix.n }}
+          shard: ${{ matrix.owns }}
+          rebuck2-git: ${{ env.REBUCK2_GIT }}
+
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: worker-log-${{ runner.os }}-${{ matrix.n }}
+          path: ${{ runner.temp }}/rebuck2-worker/worker.log
+          if-no-files-found: ignore
+  worker-linux:
+    name: linux worker ${{ matrix.n }}
+    # SWEEP_PR_PREFIX gate: PRs sweep only from a sweep-* branch.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sweep-')
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        # owns: primary manifest writer for the range ('-' = secondary).
+        include:
+          - {n: 1, shard: 4, owns: 4}
+          - {n: 2, shard: 5, owns: 5}
+          - {n: 3, shard: 6, owns: 6}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      # The engine's cache-miss path is `cargo install`, so a toolchain
+      # must be on PATH. A cache hit skips it entirely.
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: stable
+
+      # A worker job is fleet POSITION and nothing else - no build config,
+      # no store paths, no bank plumbing. The action is the rest of it.
+      - uses: gilescope/rebuck/rebuck2/actions/worker@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
+        with:
+          session: hetero-${{ github.run_id }}
+          role: ${{ runner.os }}-w${{ matrix.n }}
+          shard: ${{ matrix.owns }}
+          rebuck2-git: ${{ env.REBUCK2_GIT }}
+
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: worker-log-${{ runner.os }}-${{ matrix.n }}
+          path: ${{ runner.temp }}/rebuck2-worker/worker.log
+          if-no-files-found: ignore
+  worker-mac:
+    name: mac worker ${{ matrix.n }}
+    # SWEEP_PR_PREFIX gate: PRs sweep only from a sweep-* branch.
+    if: github.event_name != 'pull_request' || startsWith(github.head_ref, 'sweep-')
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        # mac 2-4 mirror win 1-3's shards for serving redundancy but
+        # are SECONDARY (owns: '-'): one manifest writer per range.
+        include:
+          - {n: 1, shard: 7, owns: 7}
+          - {n: 2, shard: 0, owns: "-"}
+          - {n: 3, shard: 1, owns: "-"}
+          - {n: 4, shard: 2, owns: "-"}
+    runs-on: macos-15
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      # The engine's cache-miss path is `cargo install`, so a toolchain
+      # must be on PATH. A cache hit skips it entirely.
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: stable
+
+      # A worker job is fleet POSITION and nothing else - no build config,
+      # no store paths, no bank plumbing. The action is the rest of it.
+      - uses: gilescope/rebuck/rebuck2/actions/worker@d4426bb4ad5a58134ad69f8c0afcdb2b43229865
+        with:
+          session: hetero-${{ github.run_id }}
+          role: ${{ runner.os }}-w${{ matrix.n }}
+          shard: ${{ matrix.owns }}
+          rebuck2-git: ${{ env.REBUCK2_GIT }}
+
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: worker-log-${{ runner.os }}-${{ matrix.n }}
+          path: ${{ runner.temp }}/rebuck2-worker/worker.log
+          if-no-files-found: ignore

@@ -1,0 +1,539 @@
+# Windows crate sweep on rebuck2 (distributed RE over iroh — gilescope/rebuck).
+# HARD MODE: one driver, ONE buck2 invocation for the entire tree (base +
+# conflict rigs + all snapshots — the per-leg split was only ever a workaround
+# for single-runner limits), 8 workers doing all the compiling. The driver box
+# never runs cl.exe/rustc — the 16 GB single-runner OOM cannot happen there —
+# and it deletes runner-image ballast in the background while workers join,
+# ahead of the rlib flood into its store.
+# Dice-WARM reader: snapshot written by this same binary last run - the full-analysis warm windows number, at last.
+# Rendezvous is keyless: driver + workers derive the driver's iroh key from
+# GITHUB_RUN_ID. Opt-in only — the normal sweep is untouched.
+name: sweep-re
+on:
+  workflow_dispatch: {}
+  # workflow_dispatch only registers once this file reaches the default
+  # branch; on the PR branch the trigger is a push touching this file.
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths:
+      - .github/workflows/sweep-re.yml
+      - ci/expected-failures-*.txt
+
+permissions:
+  contents: read
+
+# One sweep at a time — a second trigger queues instead of doubling 15 runners.
+concurrency:
+  group: sweep-re
+  cancel-in-progress: false
+
+env:
+  BUCK2_VERSION: 2026-06-01
+  # "1": store+exec live on a ReFS Dev Drive (block-clone CoW + Defender
+  # performance mode). "0": old windows mode — plain C:, NTFS hardlinks.
+  USE_DEV_DRIVE: "1"
+  # rebuck2 built from the rebuck repo's engine branch.
+  # TODO pin to a --rev once giles-iroh-re-punch is signed/stable.
+  REBUCK2_GIT: https://github.com/gilescope/rebuck
+  REBUCK2_BRANCH: giles-iroh-re-punch
+  # Start dispatching at 2 joiners: the pull-queue holds, late joiners
+  # drain it, and the latch means a shrinking pool never re-blocks. One
+  # no-show runner must not scrap the run (28915315742: 7 joined, worker 8
+  # never scheduled, 15min idle then abort).
+  QUORUM_WORKERS: "2"
+
+jobs:
+  driver:
+    name: driver
+    runs-on: windows-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      # pyo3 0.24 supports python <= 3.13; the runner default is newer.
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      # Pinned rustc: PATH-resolved toolchains are not part of action digests,
+      # so warm cache hits are only honest if every run compiles with the
+      # same compiler.
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
+      - name: Install buck2
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+          "$HOME/bin/buck2.exe" --version
+
+      # DICE persistence ladder: fork binaries live as release assets on
+      # gilescope/buck2 (the actions cache LRU-evicted them twice in a day).
+      # manifest.txt names a coherent sha-stamped asset set. Fetch failure =
+      # today's behaviour: plain release-mode sweep.
+      - name: Fetch fork buck2 (dice persistence)
+        id: forkbin
+        run: |
+          REL="https://github.com/gilescope/buck2/releases/download/dice-persistence"
+          REV=$(curl -fsSL "$REL/manifest.txt" 2>/dev/null | head -1 || true)
+          if [ -z "$REV" ]; then echo "no fork release manifest — release-mode sweep"; exit 0; fi
+          mkdir -p fork-bin
+          if curl -fsSL "$REL/buck2-win-$REV.zst" | zstd -d > fork-bin/buck2.exe; then
+            echo "$REV" > fork-bin/REV
+            echo "rev=$REV" >> "$GITHUB_OUTPUT"
+            echo "fork binary $REV fetched"
+          else
+            echo "asset fetch failed — release-mode sweep"
+            rm -rf fork-bin
+          fi
+
+      - name: Restore dice snapshot
+        if: steps.forkbin.outputs.rev != ''
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: dice-snap
+          key: dice-snap-never-matches
+          restore-keys: dice-snap-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-
+
+      - name: Enable dice persistence
+        if: steps.forkbin.outputs.rev != ''
+        run: |
+          cp fork-bin/buck2.exe "$HOME/bin/buck2.exe"
+          "$HOME/bin/buck2.exe" --version
+          echo "fork rev: $(cat fork-bin/REV 2>/dev/null || echo unknown)"
+          mkdir -p dice-snap
+          {
+            echo "BUCK2_DICE_DB_PATH=$GITHUB_WORKSPACE/dice-snap/db"
+            echo "BUCK2_DICE_SNAPSHOT_PATH=$GITHUB_WORKSPACE/dice-snap/graph.meta"
+            echo "BUCK2_DICE_SNAPSHOT_SEED=$(cat fork-bin/REV 2>/dev/null)-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}"
+          } >> "$GITHUB_ENV"
+          ls -la dice-snap/ || true
+          # The binary and prelude must be version-matched: the vendored
+          # prelude tracks the pinned release, so in fork mode we swap in the
+          # fork's own prelude (same custom cc-rs fixes, matching version).
+          echo "-- swap vendored prelude for the fork's matched one (pinned to REV)"
+          REV=$(cat fork-bin/REV)
+          git init --quiet "$RUNNER_TEMP/fork-src"
+          git -C "$RUNNER_TEMP/fork-src" remote add origin https://github.com/gilescope/buck2
+          git -C "$RUNNER_TEMP/fork-src" fetch --quiet --depth 1 --filter=blob:none origin "$REV"
+          git -C "$RUNNER_TEMP/fork-src" sparse-checkout set prelude
+          git -C "$RUNNER_TEMP/fork-src" checkout --quiet FETCH_HEAD
+          rm -rf prelude
+          cp -r "$RUNNER_TEMP/fork-src/prelude" prelude
+          echo "-- preflight: fork binary + fork prelude must parse the tree"
+          if ! "$HOME/bin/buck2.exe" targets fixups//third-party: > /dev/null 2> probe.err; then
+            echo "preflight FAILED - fork binary cannot parse the repo:"
+            tail -12 probe.err
+            exit 1
+          fi
+          echo "preflight OK"
+          # Fork-mode-only skip: the newer binary's symlinked-dirs RE upload
+          # trips on this crate (remote_upload_error on
+          # LPTF-depsfull-symlinked_dirs.json) - upstream bug to chase.
+          # Runtime-only append: release-mode sweeps still build it.
+          echo "fixups//third-party:ppv-lite86-0.2" >> ci/expected-failures-Windows-x86_64.txt
+          # The preflight birthed a daemon BEFORE .buckconfig.local exists;
+          # RE addresses are read at daemon startup. Kill it so the build
+          # step spawns a fresh daemon with the RE config (and the dice
+          # snapshot load) in place.
+          "$HOME/bin/buck2.exe" kill > /dev/null 2>&1 || true
+
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache rebuck2 binary (keyed by rebuck commit)
+        id: rebuck2bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/rebuck2.exe
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      - name: Mount ReFS Dev Drive
+        if: env.USE_DEV_DRIVE == '1'
+        uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
+        with:
+          drive-size: 24GB
+          drive-format: ReFS
+
+      # Roadmap #9 (ported from hetero): the driver seeds only the ACTION
+      # CACHE. CAS shards restore on the WORKERS during the join window.
+      # AC family is per-vehicle (a win-only AC must not shadow hetero's
+      # tri-OS one); CAS shards share hetero's keys — content-addressed,
+      # the fleets cross-pollinate.
+      - name: Restore AC snapshot
+        id: acsnap
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot-ac
+          key: rebuck2-ac-win-${{ github.run_id }}
+          restore-keys: rebuck2-ac-win-
+
+      - name: Restore store monolith (transition fallback)
+        if: steps.acsnap.outputs.cache-matched-key == ''
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot
+          key: rebuck2-store-${{ github.run_id }}
+          restore-keys: rebuck2-store-
+
+      - name: Seed the driver store
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          mkdir -p "$STORE/driver"
+          for t in snapshot-ac/ac.tar.zst snapshot/bulk.tar.zst snapshot/tail.tar.zst; do
+            if [ -f "$t" ]; then
+              zstd -d --long=27 < "$t" | tar -x -C "$STORE/driver"
+              echo "seeded from $t ($(du -h "$t" | cut -f1))"
+            fi
+          done
+          rm -rf snapshot-ac snapshot
+          # AC-only manifest: unchanged AC at run end = skip pack + upload.
+          ./ci/store-snapshot.sh manifest "$STORE/driver" ac > seeded.manifest
+          echo "seeded AC manifest: $(cat seeded.manifest)"
+
+      - name: Reclaim runner ballast in the background (disk for the store)
+        run: |
+          # The driver is network-bound once dispatch starts; spend the idle
+          # cycles freeing C: for ~8000 crates of rlibs. Python stays (pinned
+          # toolchain lives in hostedtoolcache).
+          (rm -rf /c/Android "/c/Program Files/dotnet" \
+             /c/hostedtoolcache/windows/Java* /c/hostedtoolcache/windows/go \
+             /c/hostedtoolcache/windows/node /c/hostedtoolcache/windows/Ruby \
+             /c/hostedtoolcache/windows/CodeQL 2>/dev/null; df -h /c) &
+
+      - name: Start driver (remote exec only, quorum barrier)
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          rebuck2 driver --grpc-port 9092 --min-workers "$QUORUM_WORKERS" --no-local-exec --cache-failures \
+            --session "$GITHUB_RUN_ID" \
+            --addr-file driver-addr.json \
+            --finalize-file finalize.signal \
+            --store "$STORE/driver" > driver.log 2>&1 &
+          echo $! > driver.pid
+          # The driver is network-bound; lend half its cores to the pool.
+          rebuck2 worker --session "$GITHUB_RUN_ID" --slots $(($(nproc) / 2)) \
+            --store "$STORE/co-worker" > co-worker.log 2>&1 &
+
+      - name: Wait for driver addr
+        run: |
+          for _ in $(seq 1 60); do [ -s driver-addr.json ] && exit 0; sleep 2; done
+          echo "driver never wrote its addr"; cat driver.log; exit 1
+
+      # Workers fetch this and dial the relay directly - no n0 discovery
+      # dependency (hetero lost two runs to a regional discovery outage).
+      - name: Publish driver addr
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: driver-addr
+          path: driver-addr.json
+
+      - name: Wait for worker quorum
+        run: |
+          # 45min: a rebuck2 rev bump makes every worker cold-compile the
+          # binary (~10-15min) before it can join.
+          for _ in $(seq 1 540); do
+            joined=$(grep -c " joined: " driver.log || true)
+            [ "$joined" -ge "$QUORUM_WORKERS" ] && { grep " joined: " driver.log; exit 0; }
+            kill -0 "$(cat driver.pid)" || { cat driver.log; echo "driver died"; exit 1; }
+            sleep 5
+          done
+          cat driver.log; echo "quorum never formed"; exit 1
+
+      - name: Point buck2 at rebuck2
+        run: |
+          cat > .buckconfig.local <<'EOF'
+          [build]
+          execution_platforms = fixups//platforms:re-exec-win
+
+          [buck2_re_client]
+          action_cache_address = grpc://127.0.0.1:9092
+          cas_address = grpc://127.0.0.1:9092
+          engine_address = grpc://127.0.0.1:9092
+          tls = false
+          EOF
+
+      - name: Build the tree (snaps paused for iteration speed)
+        env:
+          # Iteration mode: skip known-failures entirely. Unset for the
+          # honest full run (stale detection needs failures requested).
+          SKIP_EXPECTED: "1"
+        run: |
+          # Whole tree = //third-party/... — restore once engine iteration
+          # settles. Base+conflict keeps runs ~3x shorter.
+          ./build-all.sh //third-party: //third-party/conflict-rigs/...
+
+      - name: Save dice snapshot (page-out doubles as the save point)
+        if: always() && steps.forkbin.outputs.rev != ''
+        run: |
+          buck2 debug hydration page-out || echo "page-out failed (non-fatal)"
+          ls -lh dice-snap/ || true
+
+      # Hand CAS persistence to the fleet: driver assigns shards, workers
+      # sync + save them in their own teardown (parallel, off our path).
+      - name: Finalize shards across the fleet
+        if: always()
+        run: |
+          touch finalize.signal
+          for _ in $(seq 1 200); do
+            [ -f finalize.signal.done ] && { echo "finalized: $(cat finalize.signal.done) workers"; exit 0; }
+            kill -0 "$(cat driver.pid)" 2>/dev/null || { echo "driver gone before finalize"; exit 0; }
+            sleep 5
+          done
+          echo "finalize timed out (workers save what they synced)"
+
+      - name: Pack AC snapshot
+        id: acpack
+        if: always()
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          if ./ci/store-snapshot.sh unchanged "$STORE/driver" seeded.manifest ac; then
+            echo "[snapshot] AC unchanged since seed — skipping pack + upload"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p snapshot-ac
+          tar -c -C "$STORE/driver" ac | zstd -T0 --long=27 -8 > snapshot-ac/ac.tar.zst
+          ls -lh snapshot-ac/
+
+      - name: Save AC snapshot
+        if: always() && steps.acpack.outputs.skip != '1'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: snapshot-ac
+          key: rebuck2-ac-win-${{ github.run_id }}
+
+      - name: Save dice snapshot cache
+        if: always() && steps.forkbin.outputs.rev != ''
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: dice-snap
+          key: dice-snap-${{ hashFiles('rust-toolchain', 'third-party/**/BUCK', 'platforms/**') }}-${{ github.run_id }}
+
+      - name: Dispatch stats
+        if: always()
+        run: |
+          kill -0 "$(cat driver.pid)" 2>/dev/null || echo "*** DRIVER PROCESS DIED — check driver.log tail below ***"
+          echo "jobs dispatched: $(grep -c -- '-> worker ' driver.log || true)"
+          grep -o -- '-> worker [0-9]*' driver.log | sort | uniq -c || true
+          grep -c "requeueing" driver.log >/dev/null 2>&1 && grep "requeueing" driver.log || true
+          tail -5 driver.log
+
+      - name: Collect buck2 event log (client-side download attribution)
+        if: always()
+        run: |
+          # Warm runs pull ~1.1 GiB from CAS despite materializations=none —
+          # the event log records per-action downloads, so we can name the
+          # culprit (depfile refetch is the suspect) offline.
+          mkdir -p evtlog
+          EL=$(buck2 log path 2>/dev/null | tail -1 || true)
+          if [ -n "$EL" ] && [ -f "$EL" ]; then
+            cp "$EL" evtlog/
+            ls -lh evtlog/
+          else
+            echo "no event log found"
+          fi
+
+      - name: Upload driver log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: driver-log
+          path: |
+            driver.log
+            evtlog/
+
+      - name: Stop driver
+        if: always()
+        run: kill "$(cat driver.pid)" 2>/dev/null || true
+
+    # A lost worker must not redden the run - the driver job is the
+    # verdict, and the mesh tolerates stragglers.
+  worker:
+    name: worker ${{ matrix.n }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {n: 1, shard: 0}
+          - {n: 2, shard: 1}
+          - {n: 3, shard: 2}
+          - {n: 4, shard: 3}
+          - {n: 5, shard: 4}
+          - {n: 6, shard: 5}
+          - {n: 7, shard: 6}
+          - {n: 8, shard: 7}
+    runs-on: windows-latest
+    timeout-minutes: 350
+    permissions:
+      contents: read
+      actions: read
+    env:
+      FORCE_COLOR: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Pin python for pyo3
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
+      - name: Resolve rebuck2 rev
+        id: rebuck2rev
+        run: echo "rev=$(git ls-remote "$REBUCK2_GIT" "refs/heads/$REBUCK2_BRANCH" | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache rebuck2 binary (keyed by rebuck commit)
+        id: rebuck2bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/rebuck2.exe
+          key: rebuck2-bin-${{ runner.os }}-${{ runner.arch }}-${{ steps.rebuck2rev.outputs.rev }}
+
+      - name: Install rebuck2 (cache miss only)
+        if: steps.rebuck2bin.outputs.cache-hit != 'true'
+        env:
+          REBUCK2_REV: ${{ steps.rebuck2rev.outputs.rev }}
+        run: cargo install --locked --git "$REBUCK2_GIT" --rev "$REBUCK2_REV" rebuck2
+
+      - name: Mount ReFS Dev Drive
+        if: env.USE_DEV_DRIVE == '1'
+        uses: samypr100/setup-dev-drive@cf663fdf88945e3faaa980ec525b5bc2350fbf9d # v3
+        with:
+          drive-size: 24GB
+          drive-format: ReFS
+
+      # Roadmap #9: preload this worker's slice of the CAS during the join
+      # window; bloom gossip announces it, the driver's HasMany verifies it.
+      - name: Restore cas shard ${{ matrix.shard }} (newest artifact, any run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Artifacts, not the actions cache: the 10GB cache LRU evicted the
+          # whole shard set within an hour. Shared with sweep-hetero - the
+          # fleets cross-pollinate through the same artifact names.
+          mkdir -p shard-in
+          AID=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=cas-shard-${{ matrix.shard }}&per_page=1" \
+            --jq '[.artifacts[] | select(.expired==false)][0].id // empty' 2>/dev/null || true)
+          if [ -n "$AID" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$AID/zip" > shard.zip \
+              && unzip -o -q shard.zip -d shard-in && rm -f shard.zip \
+              && ls -lh shard-in/ || echo "shard artifact fetch failed - cold start"
+          else
+            echo "no cas-shard-${{ matrix.shard }} artifact yet - cold start"
+          fi
+
+      - name: Seed the worker store from the shard
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          mkdir -p "$STORE/worker"
+          for t in shard-in/bulk.tar.zst shard-in/tail.tar.zst; do
+            if [ -f "$t" ]; then
+              zstd -d --long=27 < "$t" | tar -x -C "$STORE/worker"
+              echo "seeded from $t ($(du -h "$t" | cut -f1))"
+            fi
+          done
+          rm -rf shard-in
+          # Record the restored shard's manifest — if finalize assigns this
+          # same shard back and nothing changed, the re-save is skipped.
+          a=$(printf '%x' $(( ${{ matrix.shard }} * 2 ))); b=$(printf '%x' $(( ${{ matrix.shard }} * 2 + 1 )))
+          ./ci/store-snapshot.sh manifest "$STORE/worker" "cas/$a* cas/$b*" > seeded.manifest
+          echo "seeded shard manifest: $(cat seeded.manifest)"
+
+      - name: Fetch driver addr (poll 40min — driver runner allocation can tail past 30; discovery remains the fallback)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 240); do
+            if gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts" \
+                 --jq '.artifacts[] | select(.name=="driver-addr") | .id' 2>/dev/null | head -1 > aid.txt \
+               && [ -s aid.txt ]; then
+              gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$(cat aid.txt)/zip" > addr.zip 2>/dev/null \
+                && unzip -o addr.zip > /dev/null && [ -s driver-addr.json ] && break
+            fi
+            sleep 10
+          done
+          ls -la driver-addr.json 2>/dev/null || echo "no addr artifact - falling back to discovery"
+
+      - name: Serve until the driver disconnects
+        # Exits 0 when the driver job's process closes the control stream;
+        # `timeout` guards a driver that never shows up (20400s < job cap).
+        run: |
+          ADDR_FLAG=()
+          [ -s driver-addr.json ] && ADDR_FLAG=(--driver-addr-file driver-addr.json)
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          timeout 20400 rebuck2 worker \
+            --session "$GITHUB_RUN_ID" \
+            "${ADDR_FLAG[@]}" \
+            --connect-wait-secs 1800 \
+            --store "$STORE/worker" | tee worker.log
+
+      - name: Read assigned shard
+        id: sid
+        if: always()
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          # shard.id has no trailing newline: read returns rc=1 at EOF even
+          # after assigning - under bash -e that killed this step on EVERY
+          # worker, so shards were never published (not evicted: never saved).
+          shard=""; of=""
+          [ -f "$STORE/worker/shard.id" ] && { read -r shard of < "$STORE/worker/shard.id" || true; }
+          if [ -n "$shard" ]; then
+            echo "shard=$shard" >> "$GITHUB_OUTPUT"
+            echo "assigned shard $shard of $of"
+          else
+            echo "no shard assigned (driver died pre-finalize?)"
+          fi
+
+      - name: Pack + save assigned shard
+        id: shardpack
+        if: always() && steps.sid.outputs.shard != ''
+        run: |
+          STORE="${DEV_DRIVE:+$(cygpath -u "$DEV_DRIVE")/rebuck2}"; STORE="${STORE:-$HOME/.cache/rebuck2}"
+          i=${{ steps.sid.outputs.shard }}
+          a=$(printf '%x' $((i * 2))); b=$(printf '%x' $((i * 2 + 1)))
+          if [ "$i" = "${{ matrix.shard }}" ] \
+             && ./ci/store-snapshot.sh unchanged "$STORE/worker" seeded.manifest "cas/$a* cas/$b*"; then
+            echo "[shard] shard $i unchanged since seed — skipping pack + upload"
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p shard-out
+          cd "$STORE/worker"
+          find cas -mindepth 1 -maxdepth 1 -name "[$a$b]*" \
+            | tar -c -T - | zstd -T0 --long=27 -8 \
+            > "$GITHUB_WORKSPACE/shard-out/bulk.tar.zst"
+          ls -lh "$GITHUB_WORKSPACE/shard-out/"
+
+      - name: Publish assigned shard (artifact)
+        if: always() && steps.sid.outputs.shard != '' && steps.shardpack.outputs.skip != '1'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cas-shard-${{ steps.sid.outputs.shard }}
+          path: shard-out/bulk.tar.zst
+          compression-level: 0

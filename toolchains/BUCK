@@ -5,19 +5,58 @@ load("@prelude//toolchains:python.bzl", "system_python_bootstrap_toolchain")
 load("@prelude//toolchains:remote_test_execution.bzl", "remote_test_execution_toolchain")
 load("@prelude//toolchains:rust.bzl", "system_rust_toolchain")
 
+# Single-daemon sweeps register every leg's exec platform at once
+# (fixups//platforms:hetero-all); these anchors make each target-OS's
+# compilation resolve an exec platform of the SAME OS (the sweep's
+# native-compilation model), instead of everything floating to the
+# first registered platform. Single-platform registrations are
+# unaffected: the constraint is satisfied by the only candidate.
+_NATIVE_EXEC = select({
+    "config//os:windows": ["config//os:windows"],
+    "config//os:linux": ["config//os:linux"],
+    "config//os:macos": ["config//os:macos"],
+    "DEFAULT": [],
+})
+
 system_genrule_toolchain(
     name = "genrule",
+    exec_compatible_with = _NATIVE_EXEC,
     visibility = ["PUBLIC"],
 )
 
 system_rust_toolchain(
     name = "rust",
     default_edition = "2021",
+    exec_compatible_with = _NATIVE_EXEC,
     # aarch64-pc-windows-msvc unwinding needs the C++ EH personality
     # (__CxxFrameHandler3) from vcruntime.lib, which the explicit native-lib
     # list omits; x86_64 uses SEH and doesn't. Harmless where unneeded.
+    #
+    # /Brepro + /pdbaltpath: link.exe stamps every PE (proc-macro dlls,
+    # cdylibs, exes) with a timestamp, a fresh PDB GUID, and the absolute
+    # PDB path - so a re-executed link emits different bytes and every
+    # downstream action re-keys. Measured on the hetero sweep: ~100 win
+    # roots re-executing (lost CAS shards) cascaded into 2,269 re-keyed
+    # win actions per lap (~25 min). The cxx side already passes /Brepro
+    # (prelude cxx compiler.bzl/archive.bzl); this covers rustc-driven
+    # links. /pdbaltpath:%_PDB% embeds just the pdb filename, not its path.
+    # Belt-and-braces beside /Brepro below: rustc >=1.69 passes /Brepro
+    # itself under SOURCE_DATE_EPOCH, and timestamp-embedding buildscript
+    # crates emit a fixed epoch. Win-only: it enters every rustc action
+    # key, and win re-keys this cycle anyway (the /Brepro flags); mac and
+    # linux caches stay warm. Requires fork prelude >= a2fc3cbf8
+    # (rustc_env on system_rust_toolchain) - i.e. fork release manifest
+    # must carry it BEFORE this lands in a sweep.
+    rustc_env = select({
+        "config//os:windows": {"SOURCE_DATE_EPOCH": "0"},
+        "DEFAULT": {},
+    }),
     rustc_flags = select({
-        "config//os:windows": ["-Clink-arg=vcruntime.lib"],
+        "config//os:windows": [
+            "-Clink-arg=vcruntime.lib",
+            "-Clink-arg=/Brepro",
+            "-Clink-arg=/pdbaltpath:%_PDB%",
+        ],
         "DEFAULT": [],
     }),
     visibility = ["PUBLIC"],
@@ -25,6 +64,7 @@ system_rust_toolchain(
 
 system_cxx_toolchain(
     name = "cxx",
+    exec_compatible_with = _NATIVE_EXEC,
     # Absolute path: the prelude's buildscript cc shim execs the compiler
     # via os.execl, which does no PATH lookup - a bare "clang" fails with
     # FileNotFoundError (prelude/rust/tools/from_any_dir.py). Absolute paths
@@ -51,6 +91,7 @@ system_cxx_toolchain(
 
 system_python_bootstrap_toolchain(
     name = "python_bootstrap",
+    exec_compatible_with = _NATIVE_EXEC,
     visibility = ["PUBLIC"],
 )
 

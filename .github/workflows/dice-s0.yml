@@ -1,0 +1,68 @@
+# DICE persistence S0: where does the cold ~2 minutes go?
+# Times the graph layers on the sweep workload with a staged same-daemon
+# sequence: targets (parse) -> cquery (+configure) -> audit providers
+# (+analysis), then repeats warm to show what a persistent DICE would save.
+name: dice-s0
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths: [.github/workflows/dice-s0.yml]
+
+permissions:
+  contents: read
+
+env:
+  BUCK2_VERSION: 2026-06-01
+
+jobs:
+  measure:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: '3.13'
+
+      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.92.0"
+
+      - name: Install buck2
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -fsSL "https://github.com/facebook/buck2/releases/download/${BUCK2_VERSION}/buck2-x86_64-pc-windows-msvc.exe.zst" | zstd -d > "$HOME/bin/buck2.exe"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Stage timings (cold daemon, then warm repeat)
+        run: |
+          phase() {
+            local name="$1"; shift
+            local t0 t1
+            t0=$(date +%s%3N)
+            "$@" > /dev/null 2>phase.err || { echo "$name: FAILED"; grep -v "^\[" phase.err | head -20; return 0; }
+            t1=$(date +%s%3N)
+            echo "$name: $((t1 - t0)) ms"
+          }
+          echo "== COLD (fresh daemon; each phase includes the layers before it)"
+          phase "parse    (targets)          " buck2 targets fixups//third-party:
+          phase "configure(cquery)           " buck2 cquery fixups//third-party:
+          # Analyse what the sweep builds: the aliases (audit providers does
+          # not skip platform-incompatible sub-targets, so no bare package).
+          buck2 uquery "kind('^alias\$', fixups//third-party:)" > aliases.txt
+          wc -l aliases.txt
+          phase "analysis (audit providers)  " buck2 audit providers @aliases.txt
+          echo "== WARM (same daemon — what durable DICE state would give us)"
+          phase "parse    (targets)          " buck2 targets fixups//third-party:
+          phase "configure(cquery)           " buck2 cquery fixups//third-party:
+          phase "analysis (audit providers)  " buck2 audit providers @aliases.txt
+          echo "== COLD RESTART (daemon killed — today's every-CI-run reality)"
+          buck2 killall > /dev/null 2>&1 || true
+          phase "full stack after restart    " buck2 audit providers @aliases.txt

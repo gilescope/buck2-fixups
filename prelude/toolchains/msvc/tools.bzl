@@ -32,7 +32,13 @@ def _find_msvc_tools_impl(ctx: AnalysisContext) -> list[Provider]:
     ctx.actions.run(
         cmd,
         category = "vswhere",
-        local_only = True,
+        # Discovery probes MACHINE state: it may run remotely (any windows
+        # executor has VS installed at the same image paths), but its output
+        # must never enter a cache - a runner-image update would serve stale
+        # paths. Previously local_only, which pinned the whole build to a
+        # windows host box (heterogeneous sweeps have a linux driver).
+        prefer_remote = True,
+        allow_cache_upload = False,
     )
 
     run_msvc_tool = ctx.attrs.run_msvc_tool[RunInfo]

@@ -177,7 +177,17 @@ def run_buildscript(
             cwd=cwd,
         )
     except OSError as ex:
-        print(f"Failed to run {buildscript} because {ex}", file=sys.stderr)
+        # Forensics for EACCES-class failures: is the staged file a real
+        # executable, a mode-stripped copy, or a directory?
+        try:
+            st = os.stat(buildscript, follow_symlinks=False)
+            detail = f"mode={oct(st.st_mode)} size={st.st_size}"
+        except OSError as stat_ex:
+            detail = f"stat failed: {stat_ex}"
+        print(
+            f"Failed to run {buildscript} because {ex} ({detail})",
+            file=sys.stderr,
+        )
         sys.exit(1)
     except subprocess.CalledProcessError as ex:
         sys.exit(ex.returncode)

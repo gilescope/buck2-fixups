@@ -20,9 +20,11 @@ if [ "$os" = Windows ]; then
   esac
 fi
 platform="${os}-${arch}"
+[ -n "${PLATFORM_OVERRIDE:-}" ] && platform="$PLATFORM_OVERRIDE"
 expected="ci/expected-failures-${platform}.txt"
 report=$(mktemp)
-trap 'rm -f "$report"' EXIT
+targetsfile=$(mktemp)
+trap 'rm -f "$report" "$targetsfile"' EXIT
 
 # Build the top-level crate aliases reindeer generated (one per Cargo.toml dep)
 # under the given buck2 target pattern(s). Default = the whole tree (main rig +
@@ -48,12 +50,32 @@ for p in "${patterns[@]}"; do
   scope_re="${scope_re:+$scope_re|}${re}"
   universe="${universe:+$universe + }${p}"   # buck2 query union operator
 done
-targets=$(buck2 uquery "kind('^alias\$', ${universe})" 2>/dev/null)
+# Hetero-leg hooks: BUCK2_ISOLATION gives each concurrent leg its own
+# daemon; BUCK2_BUILD_ARGS carries --target-platforms etc.
+B2="buck2${BUCK2_ISOLATION:+ --isolation-dir $BUCK2_ISOLATION}"
+targets=$($B2 uquery "kind('^alias\$', ${universe})" 2>/dev/null)
 echo "Building $(echo "$targets" | grep -c .) crates for ${platform} (scope: ${patterns[*]})..."
 
 buildlog=$(mktemp)
-# shellcheck disable=SC2086
-buck2 build --keep-going --build-report "$report" $targets 2>&1 | tee "$buildlog" || true
+# SKIP_EXPECTED=1: iteration mode — don't request crates that are known
+# not to build clean (the expected-failures list). The scheduled full run
+# omits this, keeping "started passing" detection honest.
+if [ "${SKIP_EXPECTED:-}" = "1" ] && [ -f "$expected" ]; then
+  known=$(sed '/^#/d;/^$/d' "$expected" | sort -u)
+  before=$(echo "$targets" | grep -c .)
+  targets=$(comm -23 <(echo "$targets" | sort -u) <(echo "$known"))
+  after=$(echo "$targets" | grep -c .)
+  echo "SKIP_EXPECTED: requesting $after of $before targets ($((before - after)) known-failures skipped)"
+fi
+
+# Targets go via an argfile: 2185 labels ≈ 87 KB of argv, and Windows'
+# CreateProcess caps the command line at ~32 KB ("Argument list too long").
+echo "$targets" > "$targetsfile"
+# --materializations=none: the sweep's product is the report, not the
+# artifacts — skipping output materialization saves GBs of pointless
+# download+write on warm cache-hit runs.
+# shellcheck disable=SC2086 # $B2 and BUCK2_BUILD_ARGS intentionally word-split (multi-arg strings)
+$B2 build --keep-going --materializations=none ${BUCK2_BUILD_ARGS:-} --build-report "$report" @"$targetsfile" 2>&1 | tee "$buildlog" || true
 # A concurrent buck2 command or a BUCK rewrite mid-build cancels DICE keys;
 # the report then marks unbuilt targets as failures. Don't diff bogus data.
 if grep -q "evaluation of this key was cancelled" "$buildlog"; then
@@ -78,7 +100,11 @@ expected_content=""
 # Scope expected entries to the built pattern(s) so a per-leg build only
 # reconciles its own rig's known failures (else every other rig's entries look
 # "stale"). grep -E on the derived label-prefix regex.
-[ -f "$expected" ] && expected_content=$(sed '/^#/d;/^$/d' "$expected" | grep -E "$scope_re" | sort -u)
+if [ "${SKIP_EXPECTED:-}" = "1" ]; then
+  expected_content=""   # nothing expected was requested; any failure is news
+elif [ -f "$expected" ]; then
+  expected_content=$(sed '/^#/d;/^$/d' "$expected" | grep -E "$scope_re" | sort -u)
+fi
 
 new_failures=$(comm -23 <(echo "$failed") <(echo "$expected_content"))
 # Stale detection only applies to entries this sweep actually builds as targets

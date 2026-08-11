@@ -1,0 +1,69 @@
+# Builds the gilescope/buck2 fork (giles-dice-persistence) for windows and
+# parks the binary in the actions cache. The sweep driver enables DICE
+# persistence only when this cache exists - until the fork branch is pushed,
+# this workflow fails fast at checkout and the sweep runs exactly as today.
+# rev 3: BuildKey/ensure-key snapshot deny (LPTF root-cause fix).
+name: buck2-fork
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [giles-rebuck2-sweep]
+    paths: [.github/workflows/buck2-fork.yml]
+  schedule:
+    - cron: '17 4 * * 1' # weekly refresh so the cache never expires away
+
+permissions:
+  contents: read
+
+env:
+  FORK_REPO: gilescope/buck2
+  FORK_REF: giles-dice-persistence
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            slug: win
+            bin: buck2.exe
+          - os: macos-15
+            slug: mac
+            bin: buck2
+          - os: ubuntu-latest
+            slug: linux
+            bin: buck2
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          repository: gilescope/buck2
+          ref: giles-dice-persistence
+
+      - name: Resolve fork rev
+        id: rev
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache fork binary (keyed by fork commit)
+        id: bincache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: fork-bin
+          key: buck2-fork-${{ matrix.slug }}-${{ steps.rev.outputs.sha }}
+
+      - name: Build buck2 (cache miss only)
+        if: steps.bincache.outputs.cache-hit != 'true'
+        run: |
+          # rust-toolchain.toml in the repo pins the channel; rustup obeys.
+          cargo build --release --bin buck2
+          mkdir -p fork-bin
+          cp "target/release/${{ matrix.bin }}" fork-bin/
+          echo "${{ steps.rev.outputs.sha }}" > fork-bin/REV
